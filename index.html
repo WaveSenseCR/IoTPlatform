@@ -1,0 +1,4138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IoT Platform</title>
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<!-- Three.js + Draco -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<!-- Chart.js -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+
+<style>
+  /* ─── RESET & BASE ─── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0c10;
+    --bg2: #111318;
+    --bg3: #181b22;
+    --panel: #1c1f28;
+    --border: rgba(255,255,255,0.07);
+    --border2: rgba(255,255,255,0.13);
+    --accent: #00e5a0;
+    --accent2: #00b4ff;
+    --accent3: #ff6b35;
+    --text: #e8eaf0;
+    --text2: #8a8fa8;
+    --text3: #545870;
+    --ok: #00e5a0;
+    --warn: #ffb800;
+    --err: #ff4d4d;
+    --font: 'IBM Plex Mono', 'Courier New', monospace;
+    --sans: 'Inter', system-ui, sans-serif;
+    --radius: 8px;
+    --radius2: 12px;
+  }
+
+  html, body {
+    height: 100%;
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    overflow: hidden;
+  }
+
+  /* ─── LAYOUT ─── */
+  .app {
+    display: grid;
+    grid-template-rows: 48px 1fr;
+    grid-template-columns: 220px 1fr 280px;
+    height: 100vh;
+  }
+
+  /* ─── HEADER ─── */
+  header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 0 20px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--accent);
+  }
+  .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+
+  .header-tabs {
+    display: flex;
+    gap: 2px;
+    margin-left: 24px;
+  }
+  .tab {
+    padding: 6px 14px;
+    border-radius: var(--radius);
+    cursor: pointer;
+    color: var(--text2);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    transition: all .15s;
+    border: none;
+    background: transparent;
+    font-family: var(--font);
+  }
+  .tab:hover { background: var(--bg3); color: var(--text); }
+  .tab.active { background: var(--bg3); color: var(--accent); }
+
+  .header-right {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .status-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border: 1px solid;
+  }
+  .status-badge.online { border-color: var(--ok); color: var(--ok); }
+  .status-badge.online::before { content:''; width:6px; height:6px; border-radius:50%; background:var(--ok); animation: pulse 1.5s infinite; }
+  .status-badge.offline { border-color: var(--err); color: var(--err); }
+  .status-badge.offline::before { content:''; width:6px; height:6px; border-radius:50%; background:var(--err); }
+
+  .btn-sm {
+    padding: 5px 12px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    font-size: 11px;
+    font-family: var(--font);
+    transition: all .15s;
+    letter-spacing: 0.02em;
+  }
+  .btn-sm:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-sm.accent { border-color: var(--accent); color: var(--accent); }
+  .btn-sm.accent:hover { background: var(--accent); color: #000; }
+
+  /* ─── SIDEBAR LEFT ─── */
+  .sidebar-left {
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .sidebar-section {
+    padding: 14px 14px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .sidebar-label {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 10px;
+  }
+
+  .device-card {
+    padding: 10px 10px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all .15s;
+    background: var(--bg3);
+  }
+  .device-card:hover { border-color: var(--border2); }
+  .device-card.active { border-color: var(--accent); }
+
+  .device-name {
+    font-size: 12px;
+    color: var(--text);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .device-id { font-size: 10px; color: var(--text3); }
+  .device-status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+  }
+  .dot-ok { background: var(--ok); }
+  .dot-warn { background: var(--warn); }
+  .dot-err { background: var(--err); }
+
+  .sensor-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 8px;
+    border-radius: 6px;
+    margin-bottom: 2px;
+    cursor: pointer;
+    transition: background .12s;
+  }
+  .sensor-row:hover { background: var(--bg3); }
+  .sensor-row.linked { background: rgba(0,229,160,0.06); }
+
+  .sensor-name { font-size: 11px; color: var(--text2); }
+  .sensor-val { font-size: 12px; color: var(--accent); font-weight: 600; }
+  .sensor-unit { font-size: 10px; color: var(--text3); margin-left: 2px; }
+
+  /* ─── MAIN AREA ─── */
+  .main {
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ─── 3D VIEWPORT ─── */
+  #viewport {
+    flex: 1;
+    position: relative;
+    background: radial-gradient(ellipse at 50% 60%, #12172a 0%, #0a0c10 70%);
+    overflow: hidden;
+  }
+
+  #three-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: grab;
+  }
+  #three-canvas:active { cursor: grabbing; }
+
+  .viewport-overlay {
+    position: absolute;
+    top: 12px; left: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+
+  .viewport-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: rgba(0,0,0,0.6);
+    border: 1px solid var(--border2);
+    font-size: 10px;
+    color: var(--text2);
+    backdrop-filter: blur(4px);
+    pointer-events: auto;
+  }
+
+  .viewport-controls {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    background: rgba(0,0,0,0.55);
+    border: 1px solid var(--border2);
+    border-radius: 30px;
+    padding: 5px 10px;
+    backdrop-filter: blur(6px);
+  }
+  .vc-btn {
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: none;
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+    font-size: 11px;
+    font-family: var(--font);
+    transition: all .12s;
+  }
+  .vc-btn:hover { background: var(--bg3); color: var(--text); }
+
+  .drop-zone {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: rgba(10,12,16,0.85);
+    border: 2px dashed var(--border2);
+    border-radius: 0;
+    z-index: 10;
+  }
+  .drop-zone.hidden { display: none; }
+  .drop-zone-text { font-size: 14px; color: var(--text2); }
+  .drop-zone-sub { font-size: 11px; color: var(--text3); }
+  .drop-zone-btn {
+    padding: 8px 20px;
+    border-radius: var(--radius);
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+    font-size: 12px;
+    font-family: var(--font);
+  }
+  .drop-zone-btn:hover { background: var(--accent); color: #000; }
+
+  /* History bar */
+  .history-bar {
+    height: 60px;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 12px;
+    flex-shrink: 0;
+  }
+  .time-selector {
+    display: flex;
+    gap: 4px;
+  }
+  .ts-btn {
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text3);
+    cursor: pointer;
+    font-size: 10px;
+    font-family: var(--font);
+    transition: all .12s;
+    letter-spacing: 0.04em;
+  }
+  .ts-btn.active { border-color: var(--accent2); color: var(--accent2); background: rgba(0,180,255,0.08); }
+  .ts-btn:hover { color: var(--text); border-color: var(--border2); }
+
+  .history-status {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--text3);
+  }
+
+  /* ─── SIDEBAR RIGHT ─── */
+  .sidebar-right {
+    background: var(--bg2);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel-header {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .panel-title {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text3);
+  }
+  .panel-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+  }
+
+  /* ─── CHART ─── */
+  .chart-container {
+    position: relative;
+    width: 100%;
+    height: 160px;
+    margin-bottom: 12px;
+  }
+
+  /* ─── DIAGRAM OVERLAY ─── */
+  #diagram-overlay {
+    display: none;
+    position: fixed;
+    inset: 48px 0 0 220px;
+    background: var(--bg);
+    z-index: 50;
+    flex-direction: column;
+  }
+  #diagram-overlay.active { display: flex; }
+
+  .diag-toolbar {
+    height: 46px;
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px;
+    flex-shrink: 0;
+  }
+  .diag-toolbar-sep { width: 1px; height: 20px; background: var(--border); margin: 0 2px; }
+
+  .diag-canvas-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: default;
+  }
+  .diag-canvas-inner {
+    position: absolute;
+    width: 4000px;
+    height: 3000px;
+  }
+
+  /* ─── Machine node ─── */
+  .mach-node {
+    position: absolute;
+    width: 160px;
+    background: var(--panel);
+    border: 1.5px solid var(--border2);
+    border-radius: 10px;
+    cursor: move;
+    user-select: none;
+    transition: border-color .15s, box-shadow .15s;
+    overflow: visible;
+  }
+  .mach-node:hover { border-color: var(--accent); }
+  .mach-node.selected { border-color: var(--accent2); box-shadow: 0 0 0 2px rgba(0,180,255,0.25); }
+  .mach-node.conn-target:hover { border-color: #ff6b35; box-shadow: 0 0 0 2px rgba(255,107,53,0.3); }
+
+  .mach-thumb {
+    width: 100%;
+    height: 80px;
+    border-radius: 8px 8px 0 0;
+    overflow: hidden;
+    background: var(--bg3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .mach-thumb canvas { width: 100% !important; height: 100% !important; display: block; }
+  .mach-thumb svg { width: 46px; height: 46px; color: var(--text3); }
+
+  .mach-body { padding: 8px 10px 6px; }
+  .mach-title {
+    font-size: 11px;
+    color: var(--text);
+    font-weight: 600;
+    margin-bottom: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mach-type-label {
+    font-size: 9px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 5px;
+  }
+  .mach-sensor-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    padding: 2px 0;
+    border-top: 1px solid var(--border);
+  }
+  .mach-sensor-row .sk { color: var(--text3); }
+  .mach-sensor-row .sv { color: var(--accent); font-weight: 600; }
+
+  .mach-footer {
+    padding: 4px 8px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 4px;
+  }
+  .mach-btn {
+    flex: 1;
+    font-size: 9px;
+    padding: 3px 6px;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 4px;
+    color: var(--text2);
+    cursor: pointer;
+    font-family: var(--font);
+  }
+  .mach-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ─── Cápsula node ─── */
+  .capsule-node {
+    position: absolute;
+    width: 170px;
+    background: var(--panel);
+    border: 2px dashed rgba(167,139,250,0.35);
+    border-radius: 12px;
+    cursor: move;
+    user-select: none;
+    overflow: visible;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .capsule-node:hover { border-color: rgba(167,139,250,0.8); }
+  .capsule-node.selected { border-color: var(--accent2); box-shadow: 0 0 0 2px rgba(0,180,255,0.25); }
+  .capsule-node.conn-target:hover { border-color: #ff6b35; box-shadow: 0 0 0 2px rgba(255,107,53,0.3); }
+
+  .capsule-header {
+    padding: 8px 10px 7px;
+    border-bottom: 1px solid var(--border);
+    border-radius: 10px 10px 0 0;
+    background: rgba(167,139,250,0.05);
+    display: flex; align-items: center; gap: 7px;
+  }
+  .capsule-icon { font-size: 14px; flex-shrink: 0; line-height: 1; }
+  .capsule-title-wrap { flex: 1; min-width: 0; }
+  .capsule-title { font-size: 11px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .capsule-sub { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: .06em; }
+  .capsule-badge {
+    background: rgba(167,139,250,0.18);
+    color: #a78bfa;
+    border-radius: 10px;
+    padding: 2px 7px;
+    font-size: 9px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .capsule-body { padding: 7px 10px 5px; }
+  .capsule-machine-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 3px 0; border-top: 1px solid var(--border); font-size: 10px;
+  }
+  .capsule-machine-row .cmr-name { color: var(--text2); }
+  .capsule-machine-row .cmr-val  { color: var(--accent); font-weight: 600; }
+  .capsule-empty { font-size: 9px; color: var(--text3); padding: 4px 0; }
+
+  .capsule-thumb {
+    width: 100%; height: 70px;
+    background: var(--bg3);
+    display: flex; align-items: center; justify-content: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .capsule-thumb canvas { width: 100% !important; height: 100% !important; display: block; }
+  .capsule-thumb svg { width: 38px; height: 38px; color: rgba(167,139,250,0.5); }
+
+  .capsule-footer {
+    padding: 4px 8px;
+    border-top: 1px solid var(--border);
+    display: flex; gap: 4px;
+  }
+  .capsule-open-btn {
+    flex: 1; font-size: 9px; padding: 4px 6px;
+    background: rgba(167,139,250,0.1); border: 1px solid rgba(167,139,250,0.3);
+    border-radius: 4px; color: #a78bfa; cursor: pointer; font-family: var(--font); font-weight: 600;
+  }
+  .capsule-open-btn:hover { background: rgba(167,139,250,0.22); }
+
+  /* ─── Capsule view breadcrumb ─── */
+  .capsule-breadcrumb {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .capsule-breadcrumb-sep { color: var(--text3); font-size: 12px; }
+  .capsule-breadcrumb-name { font-size: 11px; color: #a78bfa; font-weight: 600; }
+
+  /* ─── Panel node (standalone board/enclosure) ─── */
+  .panel-node {
+    position: absolute;
+    width: 200px;
+    background: var(--panel);
+    border: 1.5px dashed var(--border2);
+    border-radius: 10px;
+    cursor: move;
+    user-select: none;
+    overflow: visible;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .panel-node:hover { border-color: var(--accent); }
+  .panel-node.selected { border-color: var(--accent2); box-shadow: 0 0 0 2px rgba(0,180,255,0.25); }
+  .panel-node.conn-target:hover { border-color: #ff6b35; box-shadow: 0 0 0 2px rgba(255,107,53,0.3); }
+
+  .panel-header {
+    padding: 7px 10px 6px;
+    border-bottom: 1px solid var(--border);
+    border-radius: 8px 8px 0 0;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .panel-header-accent { width: 3px; height: 22px; border-radius: 2px; flex-shrink: 0; }
+  .panel-header-text { flex: 1; min-width: 0; }
+  .panel-title { font-size: 11px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .panel-type-lbl { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; }
+
+  .panel-thumb {
+    width: 100%; height: 70px;
+    background: var(--bg3);
+    display: flex; align-items: center; justify-content: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-thumb canvas { width: 100% !important; height: 100% !important; display: block; }
+  .panel-thumb svg { width: 38px; height: 38px; color: var(--text3); }
+
+  .panel-elements-area {
+    padding: 6px 8px 4px;
+    display: flex; flex-wrap: wrap; gap: 4px; min-height: 30px;
+  }
+  .panel-elem-chip {
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 5px; padding: 3px 7px;
+    display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 58px;
+  }
+  .pec-label { font-size: 8px; color: var(--text3); font-family: var(--font); }
+  .pec-val   { font-size: 10px; color: var(--accent); font-weight: 600; font-family: var(--font); }
+  .panel-footer { padding: 4px 8px; border-top: 1px solid var(--border); display: flex; gap: 4px; }
+
+  /* ─── Port dots ─── */
+  .port-dot {
+    position: absolute;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--bg2);
+    border: 2px solid var(--border2);
+    pointer-events: all;
+    cursor: crosshair;
+    transition: background .1s, border-color .1s;
+    z-index: 2;
+  }
+  .port-dot:hover, .port-dot.active { background: var(--accent); border-color: var(--accent); }
+  .port-right  { right: -6px;  top: calc(50% - 5px); }
+  .port-left   { left: -6px;   top: calc(50% - 5px); }
+  .port-top    { top: -6px;    left: calc(50% - 5px); }
+  .port-bottom { bottom: -6px; left: calc(50% - 5px); }
+
+  /* ─── SVG connections ─── */
+  #diag-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+  }
+  .conn-hit { pointer-events: stroke; cursor: pointer; stroke: transparent; stroke-width: 12; fill: none; }
+  .conn-visual { pointer-events: none; fill: none; }
+  .conn-arrow { pointer-events: none; }
+
+  .conn-label-text {
+    font-size: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    dominant-baseline: central;
+    text-anchor: middle;
+    pointer-events: none;
+  }
+
+  /* ─── Connection legend ─── */
+  .conn-legend {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    margin-left: auto;
+  }
+  .conn-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 9px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .cleg-line { width: 22px; height: 0; border-bottom-width: 2px; border-bottom-style: solid; }
+
+  /* ─── Connection detail panel ─── */
+  .conn-detail-panel {
+    position: absolute;
+    right: 14px;
+    top: 14px;
+    width: 210px;
+    background: var(--panel);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius2);
+    padding: 14px;
+    z-index: 10;
+  }
+  .conn-detail-panel label { font-size: 10px; color: var(--text3); }
+  .conn-detail-panel select {
+    width: 100%;
+    margin-top: 4px;
+    font-size: 10px;
+    padding: 4px 6px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text);
+    border-radius: 4px;
+    font-family: var(--font);
+  }
+
+  /* ─── Pending connection cursor line ─── */
+  .conn-pending { pointer-events: none; }
+
+  /* ─── MODAL ─── */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(3px);
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal {
+    background: var(--panel);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius2);
+    width: 520px;
+    max-width: 95vw;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 24px;
+    position: relative;
+  }
+
+  .modal-close {
+    position: absolute;
+    top: 14px; right: 14px;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    color: var(--text2);
+    width: 28px; height: 28px;
+    cursor: pointer;
+    font-size: 14px;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .modal-close:hover { color: var(--text); border-color: var(--border2); }
+
+  .modal-title { font-size: 16px; color: var(--text); margin-bottom: 4px; }
+  .modal-sub { font-size: 11px; color: var(--text3); margin-bottom: 20px; }
+
+  .modal-section-label {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 8px;
+    margin-top: 16px;
+  }
+
+  .metric-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .metric-box {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+  }
+  .metric-box-label { font-size: 10px; color: var(--text3); margin-bottom: 4px; }
+  .metric-box-val { font-size: 20px; color: var(--accent); font-weight: 700; }
+  .metric-box-unit { font-size: 10px; color: var(--text3); }
+
+  /* ─── OFFLINE QUEUE ─── */
+  .queue-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 10px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 6px;
+  }
+  .queue-item-time { font-size: 10px; color: var(--text3); }
+  .queue-item-count { font-size: 10px; color: var(--warn); }
+
+  /* ─── TOAST ─── */
+  #toast-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    pointer-events: none;
+  }
+  .toast {
+    padding: 10px 16px;
+    border-radius: var(--radius);
+    background: var(--panel);
+    border: 1px solid var(--border2);
+    font-size: 12px;
+    color: var(--text);
+    animation: slideIn .2s ease;
+    pointer-events: auto;
+  }
+  .toast.ok { border-color: var(--ok); }
+  .toast.warn { border-color: var(--warn); }
+  .toast.err { border-color: var(--err); }
+  @keyframes slideIn { from{transform:translateX(20px);opacity:0} to{transform:translateX(0);opacity:1} }
+
+  /* ─── FORM ELEMENTS ─── */
+  input, select, textarea {
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 7px 10px;
+    font-size: 12px;
+    font-family: var(--font);
+    width: 100%;
+    outline: none;
+  }
+  input:focus, select:focus { border-color: var(--accent); }
+  select option { background: var(--bg2); }
+
+  label { font-size: 11px; color: var(--text2); display: block; margin-bottom: 4px; margin-top: 10px; }
+
+  .field-group { margin-bottom: 10px; }
+
+  /* ─── SENSOR ICONS OVERLAY ─── */
+  .sensor-icon {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    transform: translate(-50%, -100%);
+    pointer-events: auto;
+    cursor: pointer;
+    transition: opacity .2s;
+    z-index: 20;
+  }
+  .sensor-icon:hover { z-index: 30; }
+  .sensor-icon:hover .sensor-icon-bubble { border-color: #fff; transform: scale(1.1); }
+
+  .sensor-icon-bubble {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 5px 9px 4px;
+    border-radius: 8px;
+    border: 1px solid;
+    backdrop-filter: blur(8px);
+    background: rgba(10,12,16,0.82);
+    transition: transform .15s, border-color .15s;
+    white-space: nowrap;
+    position: relative;
+    min-width: 64px;
+    text-align: center;
+  }
+  /* Arrow tip below bubble */
+  .sensor-icon-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid;
+  }
+
+  .sensor-icon-type {
+    font-size: 8px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+    opacity: 0.7;
+  }
+  .sensor-icon-val {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+  }
+  .sensor-icon-name {
+    font-size: 9px;
+    opacity: 0.6;
+    margin-top: 1px;
+  }
+  .sensor-icon-stem {
+    width: 1px;
+    background: linear-gradient(to bottom, rgba(255,255,255,0.3), transparent);
+    height: 14px;
+  }
+  .sensor-icon-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    border: 1px solid rgba(255,255,255,0.5);
+    margin-top: -2px;
+  }
+
+  /* Color themes per type */
+  .sensor-icon.type-sensor .sensor-icon-bubble {
+    border-color: rgba(0,229,160,0.55);
+  }
+  .sensor-icon.type-sensor .sensor-icon-bubble::after {
+    border-top-color: rgba(0,229,160,0.55);
+  }
+  .sensor-icon.type-sensor .sensor-icon-val { color: #00e5a0; }
+  .sensor-icon.type-sensor .sensor-icon-type { color: #00e5a0; }
+  .sensor-icon.type-sensor .sensor-icon-dot { background: #00e5a0; }
+
+  .sensor-icon.type-motor .sensor-icon-bubble {
+    border-color: rgba(255,107,53,0.55);
+  }
+  .sensor-icon.type-motor .sensor-icon-bubble::after {
+    border-top-color: rgba(255,107,53,0.55);
+  }
+  .sensor-icon.type-motor .sensor-icon-val { color: #ff6b35; }
+  .sensor-icon.type-motor .sensor-icon-type { color: #ff6b35; }
+  .sensor-icon.type-motor .sensor-icon-dot { background: #ff6b35; }
+
+  .sensor-icon.type-warn .sensor-icon-bubble {
+    border-color: rgba(255,184,0,0.55);
+  }
+  .sensor-icon.type-warn .sensor-icon-bubble::after {
+    border-top-color: rgba(255,184,0,0.55);
+  }
+  .sensor-icon.type-warn .sensor-icon-val { color: #ffb800; }
+  .sensor-icon.type-warn .sensor-icon-dot { background: #ffb800; }
+
+  @keyframes iconPop {
+    0% { opacity:0; transform: translate(-50%,-100%) scale(0.7); }
+    60% { transform: translate(-50%,-100%) scale(1.08); }
+    100% { opacity:1; transform: translate(-50%,-100%) scale(1); }
+  }
+  .sensor-icon.entering { animation: iconPop .3s ease forwards; }
+
+  /* ─── MISC ─── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+  .tag {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .tag-sensor { background: rgba(0,229,160,0.12); color: var(--ok); border: 1px solid rgba(0,229,160,0.2); }
+  .tag-motor { background: rgba(255,107,53,0.12); color: var(--accent3); border: 1px solid rgba(255,107,53,0.2); }
+  .tag-node { background: rgba(0,180,255,0.1); color: var(--accent2); border: 1px solid rgba(0,180,255,0.2); }
+
+  .divider { height: 1px; background: var(--border); margin: 12px 0; }
+
+  .link-assignment {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 4px;
+    font-size: 11px;
+    color: var(--text2);
+  }
+  .link-badge { font-size: 9px; color: var(--accent); }
+
+  /* ─── MAIN VIEW PANELS ─── */
+  #view-realtime { display: flex; flex-direction: column; height: 100%; }
+  #view-history { display: none; flex-direction: column; height: 100%; padding: 20px; overflow-y: auto; }
+  #view-offline { display: none; flex-direction: column; height: 100%; padding: 20px; overflow-y: auto; }
+  #view-settings { display: none; flex-direction: column; height: 100%; padding: 20px; overflow-y: auto; }
+
+  /* History view */
+  .history-chart-wrap { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius2); padding: 16px; margin-bottom: 16px; }
+  .history-title { font-size: 13px; color: var(--text); margin-bottom: 4px; }
+  .history-sub { font-size: 11px; color: var(--text3); margin-bottom: 16px; }
+
+  .export-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  /* Settings */
+  .settings-section { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius2); padding: 16px; margin-bottom: 12px; }
+  .settings-title { font-size: 12px; color: var(--text); margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ─── HEADER ─── -->
+  <header>
+    <div class="logo">
+      <div class="logo-dot"></div>
+      IoT PLATFORM
+    </div>
+    <div class="header-tabs">
+      <button class="tab active" onclick="switchTab('realtime',this)">Tiempo Real</button>
+      <button class="tab" onclick="switchTab('history',this)">Histórico</button>
+      <button class="tab" onclick="switchTab('diagram',this)">Diagrama 2D</button>
+      <button class="tab" onclick="switchTab('offline',this)">Cola Offline</button>
+      <button class="tab" onclick="switchTab('settings',this)">Configuración</button>
+    </div>
+    <div class="header-right">
+      <div class="status-badge online" id="conn-badge">EN LÍNEA</div>
+      <button class="btn-sm" onclick="toggleSimulate()">Simular Datos</button>
+      <button class="btn-sm accent" onclick="exportTodayCSV()">↓ Exportar CSV</button>
+    </div>
+  </header>
+
+  <!-- ─── SIDEBAR LEFT ─── -->
+  <aside class="sidebar-left">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Dispositivos</div>
+      <div id="devices-list"></div>
+      <button class="btn-sm" style="width:100%;margin-top:6px;" onclick="openAddDevice()">+ Agregar Dispositivo</button>
+    </div>
+    <div class="sidebar-section" style="flex:1">
+      <div class="sidebar-label">Sensores Activos</div>
+      <div id="sensors-list"></div>
+    </div>
+  </aside>
+
+  <!-- ─── MAIN ─── -->
+  <main class="main">
+
+    <!-- REALTIME VIEW -->
+    <div id="view-realtime">
+      <!-- 3D Viewport -->
+      <div id="viewport">
+        <canvas id="three-canvas"></canvas>
+
+        <div class="drop-zone" id="drop-zone">
+          <div class="drop-zone-text">Cargar Modelo 3D</div>
+          <div class="drop-zone-sub">Arrastra un archivo .glb (con compresión Draco)</div>
+          <button class="drop-zone-btn" onclick="document.getElementById('glb-input').click()">Seleccionar Archivo</button>
+          <input type="file" id="glb-input" accept=".glb,.gltf" style="display:none" onchange="loadGLBFile(event)">
+          <button class="drop-zone-btn" style="margin-top:4px;border-color:var(--border2);color:var(--text2);" onclick="loadDemoScene()">Cargar Escena Demo</button>
+        </div>
+
+        <!-- Sensor icon overlays - positioned by JS projection -->
+        <div id="sensor-icons-layer" style="position:absolute;inset:0;pointer-events:none;overflow:hidden;"></div>
+
+        <div class="viewport-overlay">
+          <div class="viewport-badge">
+            <span id="model-name-badge">Sin modelo</span>
+          </div>
+          <div class="viewport-badge" id="hover-badge" style="display:none;">
+            <span id="hover-object-name">—</span>
+          </div>
+        </div>
+
+        <div class="viewport-controls">
+          <button class="vc-btn" onclick="resetCamera()">Centrar</button>
+          <button class="vc-btn" onclick="toggleWireframe()">Wireframe</button>
+          <button class="vc-btn" onclick="toggleHighlights()">Resaltar Sensores</button>
+          <button class="vc-btn" onclick="updateSensorIcons();refreshSensorIconAnchors();toast('Iconos actualizados','ok');">Actualizar Iconos</button>
+        </div>
+      </div>
+
+      <!-- History time bar -->
+      <div class="history-bar">
+        <span style="font-size:10px;color:var(--text3);letter-spacing:.06em;">RANGO ›</span>
+        <div class="time-selector">
+          <button class="ts-btn active" onclick="setTimeRange('1h',this)">1H</button>
+          <button class="ts-btn" onclick="setTimeRange('6h',this)">6H</button>
+          <button class="ts-btn" onclick="setTimeRange('24h',this)">24H</button>
+          <button class="ts-btn" onclick="setTimeRange('7d',this)">7D</button>
+        </div>
+        <div class="history-status" id="last-update-bar">— Esperando datos…</div>
+      </div>
+    </div>
+
+    <!-- HISTORY VIEW -->
+    <div id="view-history">
+      <div style="font-size:14px;color:var(--text);margin-bottom:4px;">Datos Históricos</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:20px;">Almacenados en Google Drive · Exportados automáticamente cada 24h</div>
+
+      <div class="history-chart-wrap">
+        <div class="history-title">Historial por Sensor</div>
+        <div class="history-sub">Selecciona un sensor para ver su evolución histórica</div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;" id="history-sensor-select"></div>
+        <div style="position:relative;height:240px;">
+          <canvas id="history-chart"></canvas>
+        </div>
+      </div>
+
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius2);padding:16px;">
+        <div class="history-title" style="margin-bottom:12px;">Archivos en Google Drive</div>
+        <div class="export-row" style="margin-bottom:12px;">
+          <input type="date" id="hist-date" style="width:160px;" value="">
+          <button class="btn-sm accent" onclick="loadDriveCSV()">Cargar CSV</button>
+          <button class="btn-sm" onclick="triggerDriveExport()">↑ Exportar Hoy a Drive</button>
+        </div>
+        <div id="drive-files-list" style="font-size:11px;color:var(--text3);">Configure Google Drive en Configuración para listar archivos.</div>
+      </div>
+    </div>
+
+    <!-- OFFLINE VIEW -->
+    <div id="view-offline">
+      <div style="font-size:14px;color:var(--text);margin-bottom:4px;">Cola Offline</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:20px;">Datos pendientes de sincronizar cuando haya conexión</div>
+
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius2);padding:16px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div>
+            <span style="font-size:13px;color:var(--text);" id="queue-count">0 entradas pendientes</span>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn-sm" onclick="retryQueue()">↑ Reintentar Todo</button>
+            <button class="btn-sm" onclick="clearQueue()" style="color:var(--err);border-color:var(--err);">Limpiar Cola</button>
+          </div>
+        </div>
+        <div id="queue-list"></div>
+      </div>
+
+      <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius2);padding:16px;">
+        <div class="history-title" style="margin-bottom:12px;">Subida Manual</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:12px;">Sube un archivo JSON o CSV con datos históricos del dispositivo</div>
+        <input type="file" id="manual-upload-input" accept=".json,.csv" style="margin-bottom:10px;">
+        <button class="btn-sm accent" onclick="manualUpload()" style="width:100%;">Procesar y Subir a Firebase</button>
+        <div id="upload-log" style="margin-top:10px;font-size:11px;color:var(--text3);"></div>
+      </div>
+    </div>
+
+    <!-- SETTINGS VIEW -->
+    <div id="view-settings">
+      <div style="font-size:14px;color:var(--text);margin-bottom:4px;">Configuración</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:20px;">Conexiones a Firebase, Google Drive y AppScript</div>
+
+      <div class="settings-section">
+        <div class="settings-title">Firebase Realtime Database</div>
+        <div class="field-group">
+          <label>API Key</label>
+          <input type="text" id="cfg-fb-apikey" placeholder="AIzaSy...">
+        </div>
+        <div class="field-group">
+          <label>Database URL</label>
+          <input type="text" id="cfg-fb-dburl" placeholder="https://proyecto.firebaseio.com">
+        </div>
+        <div class="field-group">
+          <label>Auth Domain</label>
+          <input type="text" id="cfg-fb-authdomain" placeholder="proyecto.firebaseapp.com">
+        </div>
+        <div class="field-group">
+          <label>Project ID</label>
+          <input type="text" id="cfg-fb-projectid" placeholder="mi-proyecto-iot">
+        </div>
+        <div class="field-group">
+          <label>Ruta Base en RTDB (ej: /dispositivos)</label>
+          <input type="text" id="cfg-fb-path" placeholder="/dispositivos">
+        </div>
+        <button class="btn-sm accent" style="margin-top:12px;" onclick="saveFirebaseConfig()">Guardar y Conectar</button>
+        <span id="fb-status" style="font-size:10px;color:var(--text3);margin-left:10px;"></span>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-title">Google Drive / AppScript</div>
+        <div class="field-group">
+          <label>URL del Web App (AppScript)</label>
+          <input type="text" id="cfg-gas-url" placeholder="https://script.google.com/macros/s/.../exec">
+        </div>
+        <div class="field-group">
+          <label>Folder ID en Google Drive</label>
+          <input type="text" id="cfg-drive-folder" placeholder="1abc...xyz">
+        </div>
+        <div class="field-group">
+          <label>Hora de Exportación Automática (formato 24h)</label>
+          <input type="time" id="cfg-export-time" value="00:00">
+        </div>
+        <button class="btn-sm accent" style="margin-top:12px;" onclick="saveDriveConfig()">Guardar</button>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-title">Esquema RTDB Esperado</div>
+        <pre style="font-size:10px;color:var(--text2);line-height:1.7;overflow-x:auto;">{
+  "dispositivos": {
+    "device_01": {
+      "meta": { "nombre": "ESP32-A", "ubicacion": "Sala" },
+      "sensores": {
+        "temp": { "valor": 25.3, "unidad": "°C", "ts": 1700000000 },
+        "hum":  { "valor": 62.1, "unidad": "%",  "ts": 1700000000 }
+      },
+      "motores": {
+        "motor1": { "estado": 1, "rpm": 1200, "ts": 1700000000 }
+      },
+      "offline_queue": [ ... ]
+    }
+  }
+}</pre>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ─── SIDEBAR RIGHT ─── -->
+  <aside class="sidebar-right">
+    <!-- REALTIME PANEL -->
+    <div id="rt-panel" style="display:flex;flex-direction:column;height:100%;">
+      <div class="panel-header">
+        <span class="panel-title">Panel de Sensores</span>
+      </div>
+      <div class="panel-body" id="rt-sensor-panel">
+        <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:40px;">
+          Selecciona un sensor o presiona un objeto del modelo 3D
+        </div>
+      </div>
+    </div>
+
+  </aside>
+
+</div><!-- /app -->
+
+<!-- ═══════════════════════════════════════════════════════
+     DIAGRAM OVERLAY (full-screen over main + sidebar)
+════════════════════════════════════════════════════════ -->
+<div id="diagram-overlay">
+
+  <!-- Toolbar -->
+  <div class="diag-toolbar">
+    <!-- Capsule breadcrumb (shown when inside a capsule) -->
+    <div class="capsule-breadcrumb" id="capsule-breadcrumb" style="display:none;">
+      <div class="diag-toolbar-sep"></div>
+      <button class="btn-sm" onclick="closeCapsuleView()" style="color:var(--text2);">Diagrama principal</button>
+      <span class="capsule-breadcrumb-sep">›</span>
+      <span class="capsule-breadcrumb-name" id="capsule-breadcrumb-name"></span>
+    </div>
+    <div class="diag-toolbar-sep" id="toolbar-sep-add"></div>
+    <button class="btn-sm" id="btn-add-machine" onclick="openAddMachineModal()">+ Máquina</button>
+    <button class="btn-sm" id="btn-add-panel" onclick="openAddPanelModal()">+ Panel</button>
+    <button class="btn-sm" id="btn-add-capsule" onclick="openAddCapsuleModal()" style="color:#a78bfa;border-color:rgba(167,139,250,0.4);">⬡ Cápsula</button>
+    <div class="diag-toolbar-sep"></div>
+    <span style="font-size:10px;color:var(--text3);">Nueva conexión:</span>
+    <select id="new-conn-type" onchange="DIAG.newConnType=this.value"
+      style="font-size:10px;padding:3px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+      <option value="hydraulic">Hidráulica</option>
+      <option value="electrical">Eléctrica</option>
+      <option value="steam">Vapor</option>
+      <option value="pneumatic">Neumática</option>
+      <option value="signal">Señal / Datos</option>
+    </select>
+    <button class="btn-sm" id="btn-cancel-conn" style="display:none;color:var(--warn);border-color:var(--warn);" onclick="cancelConn()">✕ Cancelar</button>
+    <div class="conn-legend" id="conn-legend"></div>
+  </div>
+
+  <!-- Canvas -->
+  <div class="diag-canvas-wrap" id="diag-canvas-wrap">
+    <div class="diag-canvas-inner" id="diag-canvas-inner">
+      <svg id="diag-svg"></svg>
+      <!-- machine nodes injected by JS -->
+    </div>
+
+    <!-- Connection detail panel (absolute inside wrap) -->
+    <div class="conn-detail-panel" id="conn-detail-panel" style="display:none;">
+      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Conexión seleccionada</div>
+      <div id="conn-detail-type" style="font-size:12px;font-weight:600;margin-bottom:10px;"></div>
+      <label>Sensor en esta conexión</label>
+      <select id="conn-sensor-select" onchange="assignConnSensor(this.value)">
+        <option value="">Sin sensor</option>
+      </select>
+      <div id="conn-sensor-val" style="margin-top:8px;font-size:14px;color:var(--accent);font-weight:600;min-height:20px;"></div>
+      <button class="btn-sm" style="width:100%;margin-top:12px;color:var(--err);border-color:var(--err);" onclick="removeSelectedConn()">Eliminar conexión</button>
+    </div>
+  </div>
+
+</div><!-- /diagram-overlay -->
+
+<!-- ─── MODAL: Agregar Máquina ─── -->
+<div class="modal-overlay" id="add-machine-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('add-machine-modal')">✕</button>
+    <div class="modal-title">Agregar Máquina</div>
+    <div class="modal-sub">Nuevo equipo en el diagrama de sistema</div>
+    <div class="field-group">
+      <label>Nombre</label>
+      <input type="text" id="new-mach-name" placeholder="Bomba Principal">
+    </div>
+    <div class="field-group">
+      <label>Tipo de equipo</label>
+      <select id="new-mach-type" style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+        <option value="pump">Bomba</option>
+        <option value="tank">Tanque</option>
+        <option value="motor">Motor</option>
+        <option value="valve">Válvula</option>
+        <option value="sensor">Sensor</option>
+        <option value="generic">Genérico</option>
+      </select>
+    </div>
+    <div class="field-group">
+      <label>Modelo 3D (objeto en escena)</label>
+      <select id="new-mach-model" style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+        <option value="">Sin modelo — usar ícono</option>
+      </select>
+    </div>
+    <button class="btn-sm accent" style="width:100%;margin-top:14px;" onclick="confirmAddMachine()">Agregar Máquina</button>
+  </div>
+</div>
+
+<!-- ─── MODAL: Detalle de Máquina ─── -->
+<div class="modal-overlay" id="machine-detail-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('machine-detail-modal')">✕</button>
+    <div class="modal-title" id="mach-modal-title">Máquina</div>
+    <div class="modal-sub" id="mach-modal-sub"></div>
+
+    <div class="field-group">
+      <label>Nombre</label>
+      <input type="text" id="mach-edit-name" oninput="updateMachineLabel(this.value)">
+    </div>
+    <div class="field-group">
+      <label>Modelo 3D</label>
+      <select id="mach-edit-model" onchange="updateMachineModel(this.value)"
+        style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+        <option value="">Sin modelo — usar ícono</option>
+      </select>
+    </div>
+
+    <div class="field-group">
+      <label>Cápsula contenedora</label>
+      <select id="mach-capsule-select" onchange="assignMachineToCapsule(this.value)"
+        style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+        <option value="">— Sin cápsula (diagrama principal) —</option>
+      </select>
+    </div>
+
+    <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin:14px 0 8px;">Sensores asignados</div>
+    <div id="mach-modal-sensors-list"></div>
+
+    <div class="field-group" style="margin-top:12px;">
+      <label>Agregar sensor</label>
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <select id="mach-add-sensor-select"
+          style="flex:1;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+          <option value="">Seleccionar...</option>
+        </select>
+        <button class="btn-sm accent" onclick="addSensorToMachine()">+</button>
+      </div>
+    </div>
+
+    <button class="btn-sm" style="width:100%;margin-top:14px;color:var(--err);border-color:var(--err);" onclick="removeMachine()">Eliminar máquina</button>
+  </div>
+</div>
+
+<!-- ─── MODAL: Agregar Panel ─── -->
+<div class="modal-overlay" id="add-panel-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('add-panel-modal')">✕</button>
+    <div class="modal-title">Agregar Panel de Control</div>
+    <div class="modal-sub">Nodo de tablero o enclosure en el diagrama</div>
+    <div class="field-group">
+      <label>Nombre</label>
+      <input type="text" id="new-panel-name" placeholder="Gabinete Principal">
+    </div>
+    <div class="field-group">
+      <label>Tipo</label>
+      <select id="new-panel-type" style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+        <option value="cabinet">Gabinete eléctrico</option>
+        <option value="hmi">Panel HMI</option>
+        <option value="junction">Caja de empalme</option>
+        <option value="rack">Rack de instrumentos</option>
+        <option value="generic">Genérico</option>
+      </select>
+    </div>
+    <div class="field-group">
+      <label>Ensamble 3D (grupo en escena)</label>
+      <select id="new-panel-assembly" style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+        <option value="">Sin ensamble — usar ícono</option>
+      </select>
+    </div>
+    <button class="btn-sm accent" style="width:100%;margin-top:14px;" onclick="confirmAddPanel()">Agregar Panel</button>
+  </div>
+</div>
+
+<!-- ─── MODAL: Detalle de Panel ─── -->
+<div class="modal-overlay" id="panel-detail-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('panel-detail-modal')">✕</button>
+    <div class="modal-title" id="panel-modal-title">Panel</div>
+    <div class="modal-sub" id="panel-modal-sub"></div>
+    <div class="field-group">
+      <label>Nombre</label>
+      <input type="text" id="panel-edit-name" oninput="updatePanelLabel(this.value)">
+    </div>
+    <div class="field-group">
+      <label>Ensamble 3D</label>
+      <select id="panel-edit-assembly" onchange="updatePanelAssembly(this.value)"
+        style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+        <option value="">Sin ensamble — usar ícono</option>
+      </select>
+    </div>
+    <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin:14px 0 8px;">Sensores asignados</div>
+    <div id="panel-modal-elements-list"></div>
+    <div class="field-group" style="margin-top:12px;">
+      <label>Agregar sensor</label>
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <select id="panel-add-sensor-select"
+          style="flex:1;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+          <option value="">Seleccionar...</option>
+        </select>
+        <button class="btn-sm accent" onclick="addSensorToPanel()">+</button>
+      </div>
+    </div>
+    <button class="btn-sm" style="width:100%;margin-top:14px;color:var(--err);border-color:var(--err);" onclick="removePanel()">Eliminar panel</button>
+  </div>
+</div>
+
+<!-- ─── MODAL: Agregar Cápsula ─── -->
+<div class="modal-overlay" id="add-capsule-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('add-capsule-modal')">✕</button>
+    <div class="modal-title">⬡ Nueva Cápsula</div>
+    <div class="modal-sub">Agrupa máquinas en un nodo colapsable</div>
+    <div class="field-group">
+      <label>Nombre</label>
+      <input type="text" id="new-cap-name" placeholder="Subsistema hidráulico">
+    </div>
+    <div class="field-group">
+      <label>Ensamble 3D (opcional)</label>
+      <select id="new-cap-assembly" style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+        <option value="">Sin ensamble</option>
+      </select>
+    </div>
+    <button class="btn-sm" style="width:100%;margin-top:14px;background:rgba(167,139,250,0.15);border-color:rgba(167,139,250,0.4);color:#a78bfa;" onclick="confirmAddCapsule()">Crear Cápsula</button>
+  </div>
+</div>
+
+<!-- ─── MODAL: Detalle de Cápsula ─── -->
+<div class="modal-overlay" id="capsule-detail-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('capsule-detail-modal')">✕</button>
+    <div class="modal-title" id="cap-modal-title">Cápsula</div>
+    <div class="modal-sub" id="cap-modal-sub"></div>
+    <div class="field-group">
+      <label>Nombre</label>
+      <input type="text" id="cap-edit-name" oninput="updateCapsuleLabel(this.value)">
+    </div>
+    <div class="field-group">
+      <label>Ensamble 3D</label>
+      <select id="cap-edit-assembly" onchange="updateCapsuleAssembly(this.value)"
+        style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+        <option value="">Sin ensamble</option>
+      </select>
+    </div>
+
+    <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin:14px 0 8px;">Máquinas en esta cápsula</div>
+    <div id="cap-modal-machines-list"></div>
+
+    <button class="capsule-open-btn" style="width:100%;margin-top:12px;padding:7px;" onclick="openCapsuleViewFromModal()">▶ Abrir vista interna</button>
+    <button class="btn-sm" style="width:100%;margin-top:8px;color:var(--err);border-color:var(--err);" onclick="removeCapsule()">Eliminar cápsula</button>
+  </div>
+</div>
+
+<!-- ─── MODAL: Info del Objeto ─── -->
+<div class="modal-overlay" id="object-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('object-modal')">✕</button>
+    <div class="modal-title" id="modal-title">Objeto 3D</div>
+    <div class="modal-sub" id="modal-sub">Sin sensor vinculado</div>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<!-- ─── MODAL: Agregar Dispositivo ─── -->
+<div class="modal-overlay" id="add-device-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('add-device-modal')">✕</button>
+    <div class="modal-title">Agregar Dispositivo</div>
+    <div class="modal-sub">Nuevo nodo IoT en la plataforma</div>
+    <div class="field-group">
+      <label>ID del Dispositivo (clave en RTDB)</label>
+      <input type="text" id="new-dev-id" placeholder="device_01">
+    </div>
+    <div class="field-group">
+      <label>Nombre Mostrado</label>
+      <input type="text" id="new-dev-name" placeholder="ESP32-Sala">
+    </div>
+    <div class="field-group">
+      <label>Ubicación</label>
+      <input type="text" id="new-dev-loc" placeholder="Sala principal">
+    </div>
+    <button class="btn-sm accent" style="width:100%;margin-top:14px;" onclick="addDevice()">Agregar</button>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<!-- ─── SCRIPTS ─── -->
+<script>
+/* ══════════════════════════════════════════════════════
+   STATE
+══════════════════════════════════════════════════════ */
+const STATE = {
+  firebase: null,
+  db: null,
+  config: {},
+  devices: {},       // id -> {name, loc, sensors, motors}
+  liveData: {},      // id -> current sensor values
+  history: {},       // sensorKey -> [{ts, val}]
+  offlineQueue: [],  // [{ts, deviceId, data}]
+  selectedDevice: null,
+  selectedSensor: null,
+  timeRange: '1h',
+  simulating: false,
+  simInterval: null,
+  diagMachines: [],      // {id, label, machineType, modelObjectName, sensorKeys[], x, y}
+  diagConnections: [],   // {id, fromId, toId, connType, sensorKey}
+  diagPanels: [],        // {id, label, panelType, assemblyName, elements:[{id,sensorKey}], x, y}
+  diagCapsules: [],      // {id, label, assemblyName, childMachineIds[], x, y}
+  objectLinks: {},       // objectName -> {nodeId, sensorKey, deviceId}  (legacy 3D links)
+  model: null,
+  scene: null,
+  camera: null,
+  renderer: null,
+  controls: null,
+  raycaster: null,
+  mouse: null,
+  meshes: [],
+  selectedObject: null,
+  pendingLinkNode: null,
+  wireframe: false,
+  highlightSensors: true,
+  histChart: null,
+  rtCharts: {},
+};
+
+/* ══════════════════════════════════════════════════════
+   PERSISTENCE (localStorage)
+══════════════════════════════════════════════════════ */
+function saveLocal(key, val) {
+  try { localStorage.setItem('iot_' + key, JSON.stringify(val)); } catch(e) {}
+}
+function loadLocal(key, def) {
+  try {
+    const v = localStorage.getItem('iot_' + key);
+    return v ? JSON.parse(v) : def;
+  } catch(e) { return def; }
+}
+
+function persistAll() {
+  saveLocal('config', STATE.config);
+  saveLocal('devices', STATE.devices);
+  saveLocal('diagMachines', STATE.diagMachines);
+  saveLocal('diagConnections', STATE.diagConnections);
+  saveLocal('diagPanels', STATE.diagPanels);
+  saveLocal('diagCapsules', STATE.diagCapsules);
+  saveLocal('objectLinks', STATE.objectLinks);
+  saveLocal('offlineQueue', STATE.offlineQueue);
+}
+
+function loadPersisted() {
+  STATE.config = loadLocal('config', {});
+  STATE.devices = loadLocal('devices', {});
+  STATE.diagMachines = loadLocal('diagMachines', []);
+  STATE.diagConnections = loadLocal('diagConnections', []);
+  STATE.diagPanels = loadLocal('diagPanels', []);
+  STATE.diagCapsules = loadLocal('diagCapsules', []);
+  STATE.objectLinks = loadLocal('objectLinks', {});
+  STATE.offlineQueue = loadLocal('offlineQueue', []);
+}
+
+/* ══════════════════════════════════════════════════════
+   FIREBASE
+══════════════════════════════════════════════════════ */
+function saveFirebaseConfig() {
+  STATE.config.firebase = {
+    apiKey: document.getElementById('cfg-fb-apikey').value.trim(),
+    databaseURL: document.getElementById('cfg-fb-dburl').value.trim(),
+    authDomain: document.getElementById('cfg-fb-authdomain').value.trim(),
+    projectId: document.getElementById('cfg-fb-projectid').value.trim(),
+    basePath: document.getElementById('cfg-fb-path').value.trim() || '/dispositivos',
+  };
+  persistAll();
+  initFirebase();
+}
+
+function initFirebase() {
+  const cfg = STATE.config.firebase;
+  if (!cfg || !cfg.apiKey || !cfg.databaseURL) {
+    document.getElementById('fb-status').textContent = 'Faltan datos de configuración';
+    return;
+  }
+  try {
+    if (STATE.firebase) {
+      STATE.db = firebase.database();
+    } else {
+      STATE.firebase = firebase.initializeApp({
+        apiKey: cfg.apiKey,
+        authDomain: cfg.authDomain,
+        databaseURL: cfg.databaseURL,
+        projectId: cfg.projectId,
+      });
+      STATE.db = firebase.database();
+    }
+    subscribeRTDB();
+    document.getElementById('fb-status').textContent = 'Conectado ✓';
+    document.getElementById('fb-status').style.color = 'var(--ok)';
+    toast('Firebase conectado', 'ok');
+  } catch(e) {
+    document.getElementById('fb-status').textContent = 'Error: ' + e.message;
+    document.getElementById('fb-status').style.color = 'var(--err)';
+    toast('Error Firebase: ' + e.message, 'err');
+  }
+}
+
+function subscribeRTDB() {
+  if (!STATE.db) return;
+  const basePath = STATE.config.firebase.basePath || '/dispositivos';
+  STATE.db.ref(basePath).on('value', snap => {
+    const data = snap.val();
+    if (!data) return;
+    setOnline(true);
+    processRTDBData(data);
+  }, err => {
+    setOnline(false);
+    toast('RTDB error: ' + err.message, 'err');
+  });
+}
+
+function processRTDBData(data) {
+  Object.entries(data).forEach(([devId, devData]) => {
+    if (!STATE.devices[devId]) {
+      STATE.devices[devId] = {
+        name: devData.meta?.nombre || devId,
+        loc: devData.meta?.ubicacion || '',
+        sensors: {},
+        motors: {}
+      };
+    }
+    // Merge sensors
+    if (devData.sensores) {
+      Object.entries(devData.sensores).forEach(([sKey, sVal]) => {
+        const fullKey = devId + '/' + sKey;
+        STATE.liveData[fullKey] = sVal;
+        // Append to history
+        if (!STATE.history[fullKey]) STATE.history[fullKey] = [];
+        STATE.history[fullKey].push({ ts: sVal.ts || Date.now()/1000, val: sVal.valor });
+        // Keep last 500 points
+        if (STATE.history[fullKey].length > 500) STATE.history[fullKey].shift();
+      });
+    }
+    if (devData.motores) {
+      Object.entries(devData.motores).forEach(([mKey, mVal]) => {
+        const fullKey = devId + '/motores/' + mKey;
+        STATE.liveData[fullKey] = mVal;
+      });
+    }
+    // Process offline queue from device
+    if (devData.offline_queue) {
+      // Already handled by device; just display
+    }
+  });
+  persistAll();
+  renderDevices();
+  renderSensors();
+  updateRTPanel();
+  updateSensorIconValues();
+  if (document.getElementById('diagram-overlay').classList.contains('active')) {
+    renderDiagram();
+  }
+
+  const histView = document.getElementById('view-history');
+  if (histView && histView.style.display !== 'none' && STATE.selectedSensor) {
+    pushHistoryChartPoint(STATE.selectedSensor);
+  }
+
+  updateHighlights();
+  document.getElementById('last-update-bar').textContent = '← Última actualización: ' + new Date().toLocaleTimeString();
+}
+
+/* ══════════════════════════════════════════════════════
+   SIMULATE
+══════════════════════════════════════════════════════ */
+function toggleSimulate() {
+  STATE.simulating = !STATE.simulating;
+  if (STATE.simulating) {
+    // Create demo device if none
+    if (!STATE.devices['demo_esp32']) {
+      STATE.devices['demo_esp32'] = {
+        name: 'ESP32 Demo',
+        loc: 'Simulación',
+        sensors: { temp:'Temperatura', hum:'Humedad', pres:'Presión' },
+        motors: { motor1:'Motor Principal' }
+      };
+    }
+    STATE.simInterval = setInterval(simulateTick, 1500);
+    toast('Simulación activada', 'ok');
+  } else {
+    clearInterval(STATE.simInterval);
+    toast('Simulación detenida', 'warn');
+  }
+  renderDevices();
+}
+
+function simulateTick() {
+  const devId = 'demo_esp32';
+  const ts = Math.floor(Date.now()/1000);
+  const newData = {
+    temp: { valor: (22 + Math.sin(ts/60)*4 + Math.random()*0.5).toFixed(2)*1, unidad: '°C', ts },
+    hum:  { valor: (55 + Math.cos(ts/90)*10 + Math.random()*1).toFixed(1)*1, unidad: '%', ts },
+    pres: { valor: (1013 + Math.sin(ts/120)*5).toFixed(1)*1, unidad: 'hPa', ts },
+    motores_motor1: { estado: Math.random() > 0.1 ? 1 : 0, rpm: Math.floor(900 + Math.random()*400), ts },
+  };
+
+  ['temp','hum','pres'].forEach(k => {
+    const fk = devId + '/' + k;
+    STATE.liveData[fk] = newData[k];
+    if (!STATE.history[fk]) STATE.history[fk] = [];
+    STATE.history[fk].push({ ts, val: newData[k].valor });
+    if (STATE.history[fk].length > 300) STATE.history[fk].shift();
+  });
+  const mk = devId + '/motores/motor1';
+  STATE.liveData[mk] = newData.motores_motor1;
+
+  setOnline(true);
+  renderSensors();
+  updateRTPanel();
+  updateSensorIconValues();
+  if (document.getElementById('diagram-overlay').classList.contains('active')) renderDiagram();
+
+  // Push new point to history chart if that tab is currently visible
+  const histView = document.getElementById('view-history');
+  if (histView && histView.style.display !== 'none' && STATE.selectedSensor) {
+    pushHistoryChartPoint(STATE.selectedSensor);
+  }
+
+  updateHighlights();
+  document.getElementById('last-update-bar').textContent = '← Última actualización: ' + new Date().toLocaleTimeString();
+}
+
+/* ══════════════════════════════════════════════════════
+   RENDER SIDEBAR LEFT
+══════════════════════════════════════════════════════ */
+function renderDevices() {
+  const list = document.getElementById('devices-list');
+  list.innerHTML = '';
+  Object.entries(STATE.devices).forEach(([id, dev]) => {
+    const card = document.createElement('div');
+    card.className = 'device-card' + (STATE.selectedDevice === id ? ' active' : '');
+    const isOnline = STATE.simulating && id === 'demo_esp32' || (STATE.liveData && Object.keys(STATE.liveData).some(k => k.startsWith(id)));
+    card.innerHTML = `
+      <div class="device-name">
+        <span>${dev.name}</span>
+        <span class="device-status-dot ${isOnline ? 'dot-ok' : 'dot-err'}"></span>
+      </div>
+      <div class="device-id">${id} · ${dev.loc || '—'}</div>
+    `;
+    card.onclick = () => selectDevice(id);
+    list.appendChild(card);
+  });
+}
+
+function selectDevice(id) {
+  STATE.selectedDevice = id;
+  renderDevices();
+  renderSensors();
+  updateRTPanel();
+}
+
+function renderSensors() {
+  const list = document.getElementById('sensors-list');
+  list.innerHTML = '';
+  if (!STATE.selectedDevice) {
+    // Show all
+    Object.entries(STATE.liveData).slice(0, 12).forEach(([key, d]) => {
+      appendSensorRow(list, key, d);
+    });
+    return;
+  }
+  const prefix = STATE.selectedDevice + '/';
+  Object.entries(STATE.liveData).filter(([k]) => k.startsWith(prefix)).forEach(([key, d]) => {
+    appendSensorRow(list, key, d);
+  });
+}
+
+function appendSensorRow(container, key, d) {
+  const row = document.createElement('div');
+  const isLinked = Object.values(STATE.objectLinks).some(l => l.sensorKey === key);
+  row.className = 'sensor-row' + (isLinked ? ' linked' : '');
+  const label = key.split('/').pop();
+  const val = d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : (d.estado !== undefined ? (d.estado ? 'ON':'OFF') : '—'));
+  const unit = d.unidad || (d.rpm !== undefined ? 'rpm' : '');
+  row.innerHTML = `
+    <span class="sensor-name">${label}</span>
+    <span><span class="sensor-val">${val}</span><span class="sensor-unit">${unit}</span></span>
+  `;
+  row.onclick = () => openSensorDetail(key);
+  container.appendChild(row);
+}
+
+/* ══════════════════════════════════════════════════════
+   RT PANEL (Right Sidebar)
+══════════════════════════════════════════════════════ */
+
+function updateNodeCharts() {
+  if (!DIAG.nodeChartKeys.length) return;
+  const modal = document.getElementById('object-modal');
+  if (!modal || !modal.classList.contains('open')) return;
+  DIAG.nodeChartKeys.forEach((sk, i) => {
+    const d = STATE.liveData[sk] || {};
+    const val = d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : '—');
+    const el = document.getElementById('node-live-val-' + i);
+    if (el) el.textContent = val;
+    renderSensorChart(sk, 'node-chart-' + i);
+  });
+}
+
+// Called every tick — only mutates text nodes, never rebuilds DOM or chart
+function updateRTPanel() {
+  updateNodeCharts();
+  if (!STATE.selectedSensor) return;
+  const sKey = STATE.selectedSensor;
+  const d = STATE.liveData[sKey] || {};
+  const val = d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : (d.estado !== undefined ? (d.estado ? 'ON':'OFF') : '—'));
+  const ts = d.ts ? new Date(d.ts * 1000).toLocaleTimeString() : '—';
+
+  const valEl = document.getElementById('rt-live-val');
+  const tsEl  = document.getElementById('rt-live-ts');
+  if (valEl) valEl.textContent = val;
+  if (tsEl)  tsEl.textContent  = 'Actualizado: ' + ts;
+
+  // Update chart data in-place
+  renderSensorChart(sKey, 'rt-chart');
+
+  // If history tab is visible, push new point there too
+  const histView = document.getElementById('view-history');
+  if (histView && histView.style.display !== 'none' && STATE.selectedSensor) {
+    pushHistoryChartPoint(sKey);
+  }
+}
+
+// Build panel HTML only when switching sensors
+function openSensorDetail(sensorKey) {
+  const prevKey = STATE.selectedSensor;
+  STATE.selectedSensor = sensorKey;
+
+  const panel = document.getElementById('rt-sensor-panel');
+  const d = STATE.liveData[sensorKey] || {};
+  const label = sensorKey.split('/').pop();
+  const val = d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : (d.estado !== undefined ? (d.estado ? 'ON':'OFF') : '—'));
+  const unit = d.unidad || (d.rpm !== undefined ? 'rpm' : '');
+  const ts = d.ts ? new Date(d.ts * 1000).toLocaleTimeString() : '—';
+  const isLinked = Object.values(STATE.objectLinks).find(l => l.sensorKey === sensorKey);
+
+  panel.innerHTML = `
+    <div style="margin-bottom:12px;">
+      <div style="font-size:13px;color:var(--text);margin-bottom:2px;">${label}</div>
+      <div style="font-size:10px;color:var(--text3);">${sensorKey}</div>
+    </div>
+    <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:16px;">
+      <span id="rt-live-val" style="font-size:32px;color:var(--accent);font-weight:700;">${val}</span>
+      <span style="font-size:13px;color:var(--text2);">${unit}</span>
+    </div>
+    <div id="rt-live-ts" style="font-size:10px;color:var(--text3);margin-bottom:16px;">Actualizado: ${ts}</div>
+    ${isLinked ? `<div style="font-size:10px;color:var(--accent);margin-bottom:12px;">⬡ Vinculado a: ${isLinked.objectName || '—'}</div>` : ''}
+    <div class="chart-container">
+      <canvas id="rt-chart"></canvas>
+    </div>
+    <button class="btn-sm" style="width:100%;margin-top:8px;" onclick="openSensorModal('${sensorKey}')">Ver Detalles →</button>
+  `;
+  renderSensorChart(sensorKey, 'rt-chart');
+}
+
+function getChartPoints(sensorKey) {
+  const hist = STATE.history[sensorKey] || [];
+  const now = Date.now() / 1000;
+  const rangeMap = { '1h': 3600, '6h': 21600, '24h': 86400, '7d': 604800 };
+  const rangeS = rangeMap[STATE.timeRange] || 3600;
+  const filtered = hist.filter(p => (now - p.ts) <= rangeS);
+  const pts = filtered.length > 120 ? filtered.filter((_,i) => i % Math.ceil(filtered.length/120) === 0) : filtered;
+  return pts;
+}
+
+function renderSensorChart(sensorKey, canvasId) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const hist = STATE.history[sensorKey] || [];
+  if (hist.length < 2) return;
+
+  const pts = getChartPoints(sensorKey);
+  const labels = pts.map(p => {
+    const d = new Date(p.ts * 1000);
+    return STATE.timeRange === '7d' ? d.toLocaleDateString() : d.toLocaleTimeString();
+  });
+  const vals = pts.map(p => p.val);
+
+  const existing = STATE.rtCharts[canvasId];
+
+  // If chart exists for same sensor, update data in-place (no flicker)
+  if (existing && existing._sensorKey === sensorKey) {
+    existing.data.labels = labels;
+    existing.data.datasets[0].data = vals;
+    existing.update('none'); // 'none' = skip animation for live updates
+    return;
+  }
+
+  // Different sensor or first render — recreate
+  if (existing) existing.destroy();
+  const chart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        data: vals,
+        borderColor: '#00e5a0',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: true,
+        backgroundColor: 'rgba(0,229,160,0.06)',
+        tension: 0.4,
+      }]
+    },
+    options: {
+      animation: { duration: 300 },
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+      scales: {
+        x: { ticks: { color: '#545870', font: { size: 9 }, maxTicksLimit: 6 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { ticks: { color: '#545870', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+      }
+    }
+  });
+  chart._sensorKey = sensorKey;
+  STATE.rtCharts[canvasId] = chart;
+}
+
+/* ══════════════════════════════════════════════════════
+   THREE.JS 3D VIEWER
+══════════════════════════════════════════════════════ */
+function initThree() {
+  const canvas = document.getElementById('three-canvas');
+  const vp = document.getElementById('viewport');
+
+  STATE.scene = new THREE.Scene();
+  STATE.scene.background = null;
+
+  STATE.camera = new THREE.PerspectiveCamera(45, vp.clientWidth / vp.clientHeight, 0.01, 1000);
+  STATE.camera.position.set(0, 1.5, 4);
+
+  STATE.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  STATE.renderer.setPixelRatio(window.devicePixelRatio);
+  STATE.renderer.setSize(vp.clientWidth, vp.clientHeight);
+  STATE.renderer.outputEncoding = THREE.sRGBEncoding;
+  STATE.renderer.shadowMap.enabled = true;
+
+  // Lights
+  const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+  STATE.scene.add(ambient);
+  const dir = new THREE.DirectionalLight(0x00e5a0, 0.8);
+  dir.position.set(2, 4, 3);
+  STATE.scene.add(dir);
+  const dir2 = new THREE.DirectionalLight(0x00b4ff, 0.4);
+  dir2.position.set(-3, 2, -2);
+  STATE.scene.add(dir2);
+
+  // Controls
+  STATE.controls = new THREE.OrbitControls(STATE.camera, canvas);
+  STATE.controls.enableDamping = true;
+  STATE.controls.dampingFactor = 0.08;
+
+  // Raycaster
+  STATE.raycaster = new THREE.Raycaster();
+  STATE.mouse = new THREE.Vector2();
+
+  canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('click', onCanvasClick);
+
+  window.addEventListener('resize', onWindowResize);
+  animate();
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  if (STATE.controls) STATE.controls.update();
+  if (STATE.renderer && STATE.scene && STATE.camera) {
+    STATE.renderer.render(STATE.scene, STATE.camera);
+    updateSensorIconPositions();
+  }
+}
+
+/* ── SENSOR ICON OVERLAY SYSTEM ────────────────────── */
+
+// Find any named object anywhere in the scene hierarchy (not just leaf meshes)
+function findObjectByNameOrUUID(name) {
+  if (!STATE.scene) return null;
+  var found = null;
+  STATE.scene.traverse(function(obj) {
+    if (!found && (obj.name === name || obj.uuid === name)) found = obj;
+  });
+  // Also search in STATE.meshes as fallback
+  if (!found) {
+    found = (STATE.meshes || []).find(function(m) {
+      return m.name === name || m.uuid === name;
+    }) || null;
+  }
+  return found;
+}
+// Keep alias for backward compat
+function findObjectByName(name) { return findObjectByNameOrUUID(name); }
+
+// Compute the world-space top-center of an object's bounding box.
+// Cached per icon — recomputed only when updateSensorIcons() is called.
+function computeAnchorPoint(obj) {
+  var box = new THREE.Box3().setFromObject(obj);
+  if (box.isEmpty()) {
+    // Fallback: just use the object's world position
+    var wp = new THREE.Vector3();
+    obj.getWorldPosition(wp);
+    return wp;
+  }
+  return new THREE.Vector3(
+    (box.min.x + box.max.x) / 2,
+    box.max.y,
+    (box.min.z + box.max.z) / 2
+  );
+}
+
+function getDisplayVal(d) {
+  if (d.valor !== undefined) return d.valor;
+  if (d.rpm  !== undefined) return d.rpm;
+  if (d.estado !== undefined) return d.estado ? 'ON' : 'OFF';
+  return '\u2014';
+}
+
+// Reused vectors — allocated once, never inside the animation loop
+var _projVec = new THREE.Vector3();
+
+/* Build (or rebuild) all icon DOM elements and cache their anchor points */
+function updateSensorIcons() {
+  var layer = document.getElementById('sensor-icons-layer');
+  if (!layer) return;
+  layer.innerHTML = '';
+  STATE._iconEls = {};
+
+  var entries = Object.entries(STATE.objectLinks);
+  if (entries.length === 0) return;
+
+  entries.forEach(function(entry) {
+    var objName = entry[0];
+    var link    = entry[1];
+
+    // Try to find the anchor object — prefer meshUUID stored at link time
+    var obj = findAnchorObject(link);
+    if (!obj) return; // object not in scene yet
+
+    var sKey     = link.sensorKey || '';
+    var d        = STATE.liveData[sKey] || {};
+    var isMotor  = sKey.indexOf('motor') !== -1;
+    var label    = sKey.split('/').pop();
+    var val      = getDisplayVal(d);
+    var unit     = d.unidad || (d.rpm !== undefined ? 'rpm' : '');
+    var noData   = Object.keys(d).length === 0;
+    var typeClass = noData ? 'type-warn' : (isMotor ? 'type-motor' : 'type-sensor');
+    var typeLabel = isMotor ? 'MOTOR' : 'SENSOR';
+
+    var el = document.createElement('div');
+    el.className = 'sensor-icon entering ' + typeClass;
+    el.dataset.objName = objName;
+    el.innerHTML =
+      '<div class="sensor-icon-bubble">' +
+        '<div class="sensor-icon-type">' + typeLabel + '</div>' +
+        '<div class="sensor-icon-val">' +
+          val + (unit ? ' <span style="font-size:9px;opacity:.6;">' + unit + '</span>' : '') +
+        '</div>' +
+        '<div class="sensor-icon-name">' + label + '</div>' +
+      '</div>' +
+      '<div class="sensor-icon-stem"></div>' +
+      '<div class="sensor-icon-dot"></div>';
+
+    // Click opens modal
+    (function(capturedName) {
+      el.addEventListener('click', function() {
+        var o = findObjectByName(capturedName);
+        if (o) openObjectModal(getTopParent(o));
+      });
+    })(objName);
+
+    layer.appendChild(el);
+    setTimeout(function() { el.classList.remove('entering'); }, 350);
+
+    // Use findAnchorObject to prefer exact mesh by UUID (avoids top-parent bbox bug)
+    var anchorObj = findAnchorObject(link) || obj;
+    var anchor = computeAnchorPoint(anchorObj);
+
+    STATE._iconEls[objName] = { el: el, obj: anchorObj, anchor: anchor };
+  });
+}
+
+/* Called every animation frame — only does NDC projection + CSS move, no Box3 */
+function updateSensorIconPositions() {
+  if (!STATE._iconEls || !STATE.camera || !STATE.renderer) return;
+  var domEl = STATE.renderer.domElement;
+  var w = domEl.clientWidth;
+  var h = domEl.clientHeight;
+  if (w === 0 || h === 0) return;
+
+  var icons = STATE._iconEls;
+  for (var objName in icons) {
+    var info = icons[objName];
+    var el   = info.el;
+
+    // Copy cached anchor, project to NDC
+    _projVec.copy(info.anchor);
+    _projVec.project(STATE.camera);
+
+    // NDC → CSS pixel (top-left origin)
+    var x = ( _projVec.x *  0.5 + 0.5) * w;
+    var y = (-_projVec.y *  0.5 + 0.5) * h;
+
+    // Behind camera (z > 1) or way off-screen → hide
+    if (_projVec.z > 1 || x < -100 || x > w + 100 || y < -100 || y > h + 100) {
+      el.style.opacity = '0';
+      el.style.pointerEvents = 'none';
+    } else {
+      el.style.opacity = '1';
+      el.style.pointerEvents = 'auto';
+      el.style.left = x + 'px';
+      el.style.top  = y + 'px';
+    }
+  }
+}
+
+/* Refresh cached anchor points (call after camera/model transform changes) */
+function refreshSensorIconAnchors() {
+  if (!STATE._iconEls) return;
+  for (var n in STATE._iconEls) {
+    var info = STATE._iconEls[n];
+    var link = STATE.objectLinks[n];
+    var anchorObj = (link && findAnchorObject(link)) || info.obj;
+    if (anchorObj) {
+      info.obj = anchorObj;
+      info.anchor = computeAnchorPoint(anchorObj);
+    }
+  }
+}
+
+/* Called every data tick — only updates text + color class, no DOM rebuild */
+function updateSensorIconValues() {
+  if (!STATE._iconEls) return;
+  var icons = STATE._iconEls;
+  for (var objName in icons) {
+    var info = icons[objName];
+    var el   = info.el;
+    var link = STATE.objectLinks[objName];
+    if (!link) continue;
+
+    var d      = STATE.liveData[link.sensorKey] || {};
+    var val    = getDisplayVal(d);
+    var unit   = d.unidad || (d.rpm !== undefined ? 'rpm' : '');
+    var valEl  = el.querySelector('.sensor-icon-val');
+    if (valEl) {
+      valEl.innerHTML = val + (unit ? ' <span style="font-size:9px;opacity:.6;">' + unit + '</span>' : '');
+    }
+    var isMotor = link.sensorKey.indexOf('motor') !== -1;
+    var noData  = Object.keys(d).length === 0;
+    el.classList.remove('type-sensor', 'type-motor', 'type-warn');
+    el.classList.add(noData ? 'type-warn' : (isMotor ? 'type-motor' : 'type-sensor'));
+  }
+}
+
+function onWindowResize() {
+  const vp = document.getElementById('viewport');
+  if (!STATE.camera || !STATE.renderer) return;
+  STATE.camera.aspect = vp.clientWidth / vp.clientHeight;
+  STATE.camera.updateProjectionMatrix();
+  STATE.renderer.setSize(vp.clientWidth, vp.clientHeight);
+}
+
+function onMouseMove(e) {
+  const canvas = document.getElementById('three-canvas');
+  const rect = canvas.getBoundingClientRect();
+  STATE.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  STATE.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+  STATE.raycaster.setFromCamera(STATE.mouse, STATE.camera);
+  const hits = STATE.raycaster.intersectObjects(STATE.meshes, true);
+  const badge = document.getElementById('hover-badge');
+  const nameBadge = document.getElementById('hover-object-name');
+  if (hits.length > 0) {
+    const hitMesh = hits[0].object;
+    STATE._lastHitMesh = hitMesh;
+    // Prefer the mesh's own name; fallback to top parent's name
+    const displayName = hitMesh.name || getTopParent(hitMesh).name || 'Objeto';
+    badge.style.display = 'flex';
+    nameBadge.textContent = displayName;
+    canvas.style.cursor = 'pointer';
+  } else {
+    STATE._lastHitMesh = null;
+    badge.style.display = 'none';
+    canvas.style.cursor = 'grab';
+  }
+}
+
+function onCanvasClick(e) {
+  STATE.raycaster.setFromCamera(STATE.mouse, STATE.camera);
+  const hits = STATE.raycaster.intersectObjects(STATE.meshes, true);
+  if (hits.length === 0) return;
+
+  const hitMesh = hits[0].object;
+  STATE._lastHitMesh = hitMesh;
+
+  // Key = mesh's own name if it has one, else top parent's name, else uuid
+  const topParent = getTopParent(hitMesh);
+  const key = hitMesh.name || topParent.name || hitMesh.uuid;
+
+  if (STATE.pendingLinkNode) {
+    const node = STATE.pendingLinkNode;
+    STATE.objectLinks[key] = {
+      nodeId: node.id,
+      sensorKey: node.sensorKey,
+      deviceId: node.deviceId,
+      objectName: key,
+      // Store the exact mesh uuid for anchor lookup
+      meshUUID: hitMesh.uuid,
+    };
+    STATE.pendingLinkNode = null;
+    persistAll();
+    toast('Vinculado: ' + key + ' ↔ ' + node.label, 'ok');
+    renderDiagram();
+    updateHighlights();
+    updateSensorIcons();
+    return;
+  }
+
+  openObjectModal(hitMesh, key);
+}
+
+function getTopParent(obj) {
+  let cur = obj;
+  while (cur.parent && cur.parent !== STATE.scene) cur = cur.parent;
+  return cur;
+}
+
+// Find the best anchor object: prefer the exact mesh by UUID, fallback to name search
+function findAnchorObject(link) {
+  if (!STATE.scene) return null;
+  // If we stored meshUUID, find that exact mesh
+  if (link.meshUUID) {
+    var found = null;
+    STATE.scene.traverse(function(o) { if (!found && o.uuid === link.meshUUID) found = o; });
+    if (found) return found;
+  }
+  // Fallback: search by objectName
+  return findObjectByName(link.objectName);
+}
+
+function loadGLBFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const url = URL.createObjectURL(file);
+  loadGLB(url, file.name);
+}
+
+function loadGLB(url, name) {
+  document.getElementById('drop-zone').classList.add('hidden');
+  if (STATE.model) { STATE.scene.remove(STATE.model); STATE.meshes = []; }
+
+  const loader = new THREE.GLTFLoader();
+  const dracoLoader = new THREE.DRACOLoader();
+  dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/');
+  loader.setDRACOLoader(dracoLoader);
+
+  toast('Cargando modelo…', 'warn');
+  loader.load(url, gltf => {
+    STATE.model = gltf.scene;
+    STATE.scene.add(STATE.model);
+
+    // Collect meshes
+    STATE.meshes = [];
+    STATE.model.traverse(child => {
+      if (child.isMesh) {
+        STATE.meshes.push(child);
+        child.userData.originalMaterial = child.material.clone();
+      }
+    });
+
+    // Center & scale
+    const box = new THREE.Box3().setFromObject(STATE.model);
+    const center = box.getCenter(new THREE.Vector3());
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+    const scale = 3 / maxDim;
+    STATE.model.scale.multiplyScalar(scale);
+    STATE.model.position.sub(center.multiplyScalar(scale));
+    STATE.camera.position.set(0, size.y * scale * 0.5, maxDim * scale * 1.5);
+    STATE.controls.target.set(0, 0, 0);
+    STATE.controls.update();
+
+    document.getElementById('model-name-badge').textContent = name || 'Modelo';
+    toast('Modelo cargado · ' + STATE.meshes.length + ' objetos', 'ok');
+    updateHighlights();
+    // Delay one frame so matrixWorld is updated after first render
+    requestAnimationFrame(function() { updateSensorIcons(); });
+  }, xhr => {
+    // progress
+  }, err => {
+    toast('Error cargando GLB: ' + err.message, 'err');
+    document.getElementById('drop-zone').classList.remove('hidden');
+  });
+}
+
+function loadDemoScene() {
+  // Create procedural demo scene
+  document.getElementById('drop-zone').classList.add('hidden');
+  if (STATE.model) { STATE.scene.remove(STATE.model); STATE.meshes = []; }
+
+  const group = new THREE.Group();
+  group.name = 'demo_machine';
+
+  const parts = [
+    { name: 'Cuerpo_Principal', geo: new THREE.BoxGeometry(2, 1.2, 1), pos: [0,0,0], color: 0x223344 },
+    { name: 'Sensor_Temperatura', geo: new THREE.CylinderGeometry(0.12,0.12,0.4), pos: [-0.7,0.8,0.3], color: 0x00e5a0 },
+    { name: 'Sensor_Humedad', geo: new THREE.CylinderGeometry(0.12,0.12,0.4), pos: [0,0.8,0.3], color: 0x00b4ff },
+    { name: 'Motor_Principal', geo: new THREE.CylinderGeometry(0.3,0.3,0.6,16), pos: [0.8,0,0.3], color: 0xff6b35 },
+    { name: 'Sensor_Presion', geo: new THREE.SphereGeometry(0.15,12,12), pos: [0.7,0.8,0.3], color: 0xffb800 },
+    { name: 'Panel_Control', geo: new THREE.BoxGeometry(0.8,0.5,0.05), pos: [-0.5,-0.2,0.53], color: 0x334455 },
+  ];
+
+  parts.forEach(p => {
+    const mat = new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.4, metalness: 0.6 });
+    const mesh = new THREE.Mesh(p.geo, mat);
+    mesh.name = p.name;
+    mesh.position.set(...p.pos);
+    mesh.userData.originalMaterial = mat.clone();
+    group.add(mesh);
+    STATE.meshes.push(mesh);
+  });
+
+  STATE.scene.add(group);
+  STATE.model = group;
+  document.getElementById('model-name-badge').textContent = 'Escena Demo';
+  toast('Escena demo cargada · 6 objetos', 'ok');
+
+  // Auto-link sensors with demo device
+  if (STATE.simulating) {
+    STATE.objectLinks['Sensor_Temperatura'] = { nodeId: null, sensorKey: 'demo_esp32/temp', deviceId: 'demo_esp32', objectName: 'Sensor_Temperatura' };
+    STATE.objectLinks['Sensor_Humedad'] = { nodeId: null, sensorKey: 'demo_esp32/hum', deviceId: 'demo_esp32', objectName: 'Sensor_Humedad' };
+    STATE.objectLinks['Sensor_Presion'] = { nodeId: null, sensorKey: 'demo_esp32/pres', deviceId: 'demo_esp32', objectName: 'Sensor_Presion' };
+    STATE.objectLinks['Motor_Principal'] = { nodeId: null, sensorKey: 'demo_esp32/motores/motor1', deviceId: 'demo_esp32', objectName: 'Motor_Principal' };
+    persistAll();
+    updateSensorIcons();
+  }
+  updateHighlights();
+  updateSensorIcons();
+}
+
+function resetCamera() {
+  if (!STATE.controls) return;
+  STATE.camera.position.set(0, 1.5, 4);
+  STATE.controls.target.set(0, 0, 0);
+  STATE.controls.update();
+}
+
+function toggleWireframe() {
+  STATE.wireframe = !STATE.wireframe;
+  STATE.meshes.forEach(m => {
+    if (m.material) m.material.wireframe = STATE.wireframe;
+  });
+}
+
+function toggleHighlights() {
+  STATE.highlightSensors = !STATE.highlightSensors;
+  updateHighlights();
+}
+
+function updateHighlights() {
+  if (!STATE.meshes.length) return;
+  STATE.meshes.forEach(mesh => {
+    const name = mesh.name;
+    // Match by name OR by stored meshUUID
+    const link = STATE.objectLinks[name] ||
+      Object.values(STATE.objectLinks).find(function(l) { return l.meshUUID === mesh.uuid; });
+    if (link && STATE.highlightSensors) {
+      const d = STATE.liveData[link.sensorKey];
+      if (d) {
+        // Color by sensor type / status
+        const isMotor = link.sensorKey.includes('motor');
+        mesh.material.emissive = new THREE.Color(isMotor ? 0xff6b35 : 0x00e5a0);
+        mesh.material.emissiveIntensity = 0.3;
+      } else {
+        mesh.material.emissive = new THREE.Color(0xffb800);
+        mesh.material.emissiveIntensity = 0.15;
+      }
+    } else {
+      if (mesh.material.emissive) {
+        mesh.material.emissive = new THREE.Color(0x000000);
+        mesh.material.emissiveIntensity = 0;
+      }
+    }
+  });
+}
+
+function openObjectModal(hitMesh, key) {
+  // hitMesh: the exact Three.js object clicked; key: the name used in objectLinks
+  if (!key) key = hitMesh.name || getTopParent(hitMesh).name || hitMesh.uuid;
+  STATE.selectedObject = hitMesh;
+  const name = key;
+  const link = STATE.objectLinks[name];
+
+  document.getElementById('modal-title').textContent = hitMesh.name || name || 'Objeto 3D';
+
+  let content = '';
+
+  if (link) {
+    const sKey = link.sensorKey;
+    const d = STATE.liveData[sKey] || {};
+    const isMotor = sKey.includes('motor');
+    const val = d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : (d.estado !== undefined ? (d.estado ? 'ON':'OFF') : '—'));
+    const unit = d.unidad || (d.rpm !== undefined ? 'rpm' : '');
+
+    document.getElementById('modal-sub').textContent = sKey + (isMotor ? ' · Motor' : ' · Sensor');
+
+    content = `
+      <div class="metric-grid">
+        <div class="metric-box">
+          <div class="metric-box-label">Valor Actual</div>
+          <div class="metric-box-val">${val} <span class="metric-box-unit">${unit}</span></div>
+        </div>
+        <div class="metric-box">
+          <div class="metric-box-label">Estado</div>
+          <div class="metric-box-val" style="font-size:14px;color:${d.estado === 0 ? 'var(--err)' : 'var(--ok)'};">
+            ${d.estado !== undefined ? (d.estado ? 'ACTIVO' : 'INACTIVO') : 'N/A'}
+          </div>
+        </div>
+      </div>
+      <div class="modal-section-label">Historial</div>
+      <div style="position:relative;height:180px;margin-bottom:16px;">
+        <canvas id="modal-chart"></canvas>
+      </div>
+      <button class="btn-sm" style="width:100%;" onclick="openSensorDetail('${sKey}');closeModal('object-modal');">Ver en Panel →</button>
+    `;
+  } else {
+    document.getElementById('modal-sub').textContent = 'Sin sensor vinculado';
+    content = `
+      <div style="font-size:11px;color:var(--text3);margin-bottom:16px;">
+        Este objeto no está vinculado a ningún sensor. Puedes vincularlo desde el Diagrama de Sensores.
+      </div>
+      <div class="modal-section-label">Vincular Sensor</div>
+      <select id="modal-sensor-sel" style="margin-bottom:10px;">
+        <option value="">— Seleccionar sensor —</option>
+        ${Object.keys(STATE.liveData).map(k => `<option value="${k}">${k}</option>`).join('')}
+      </select>
+      <button class="btn-sm accent" style="width:100%;" onclick="linkObjectToSensor('${name}')">Vincular</button>
+    `;
+  }
+
+  document.getElementById('modal-content').innerHTML = content;
+  document.getElementById('object-modal').classList.add('open');
+
+  if (link) {
+    setTimeout(() => renderSensorChart(link.sensorKey, 'modal-chart'), 50);
+  }
+}
+
+function linkObjectToSensor(objName) {
+  const sel = document.getElementById('modal-sensor-sel');
+  if (!sel || !sel.value) return;
+  const sKey = sel.value;
+  const devId = sKey.split('/')[0];
+  const meshUUID = STATE._lastHitMesh ? STATE._lastHitMesh.uuid : null;
+  STATE.objectLinks[objName] = { nodeId: null, sensorKey: sKey, deviceId: devId, objectName: objName, meshUUID: meshUUID };
+  persistAll();
+  toast('Vinculado: ' + objName + ' ↔ ' + sKey, 'ok');
+  closeModal('object-modal');
+  updateHighlights();
+  updateSensorIcons();
+}
+
+/* ══════════════════════════════════════════════════════
+   DIAGRAM v2 — Machines + Typed Connections
+══════════════════════════════════════════════════════ */
+
+const CONN_TYPES = {
+  hydraulic:  { label: 'Hidráulica', color: '#00e5a0', dash: '',      width: 2.5 },
+  electrical: { label: 'Eléctrica',  color: '#00b4ff', dash: '6 3',   width: 1.5 },
+  steam:      { label: 'Vapor',      color: '#ff6b35', dash: '10 4',  width: 3   },
+  pneumatic:  { label: 'Neumática',  color: '#ffb800', dash: '4 4',   width: 2   },
+  signal:     { label: 'Señal',      color: '#a78bfa', dash: '2 4',   width: 1.5 },
+};
+
+const MACHINE_LABELS = {
+  pump:'Bomba', tank:'Tanque', motor:'Motor', valve:'Válvula', sensor:'Sensor', generic:'Equipo'
+};
+
+const MACHINE_ICONS = {
+  pump: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="11" stroke="currentColor" stroke-width="2"/><path d="M24 13V9M31 17l3-3M35 24h4M31 31l3 3M24 35v4M17 31l-3 3M13 24H9M17 17l-3-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="24" cy="24" r="4" fill="currentColor" opacity=".5"/></svg>`,
+  tank: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="13" y="9" width="22" height="26" rx="4" stroke="currentColor" stroke-width="2"/><ellipse cx="24" cy="9" rx="11" ry="3" stroke="currentColor" stroke-width="2"/><line x1="24" y1="35" x2="24" y2="42" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="17" y="19" width="14" height="7" rx="2" fill="currentColor" opacity=".25"/></svg>`,
+  motor: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="7" y="15" width="24" height="18" rx="3" stroke="currentColor" stroke-width="2"/><line x1="31" y1="24" x2="41" y2="24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/><circle cx="41" cy="24" r="2.5" fill="currentColor" opacity=".6"/><line x1="7" y1="19" x2="3" y2="19" stroke="currentColor" stroke-width="2"/><line x1="7" y1="29" x2="3" y2="29" stroke="currentColor" stroke-width="2"/><line x1="19" y1="15" x2="19" y2="9" stroke="currentColor" stroke-width="2"/></svg>`,
+  valve: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 24h10l8-9 8 9h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 24h10l8 9 8-9h10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><line x1="24" y1="15" x2="24" y2="8" stroke="currentColor" stroke-width="2"/><rect x="20" y="6" width="8" height="4" rx="1" stroke="currentColor" stroke-width="1.5"/></svg>`,
+  sensor: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="24" cy="24" r="5" stroke="currentColor" stroke-width="2"/><path d="M15 24a9 9 0 0 1 9-9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M33 24a9 9 0 0 1-9 9" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M10 24A14 14 0 0 1 24 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".4"/><path d="M38 24A14 14 0 0 1 24 38" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" opacity=".4"/><circle cx="24" cy="24" r="2" fill="currentColor"/></svg>`,
+  generic: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="10" y="10" width="28" height="28" rx="5" stroke="currentColor" stroke-width="2"/><line x1="18" y1="19" x2="30" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="18" y1="24" x2="30" y2="24" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="18" y1="29" x2="24" y2="29" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>`,
+};
+
+const PANEL_TYPES = {
+  cabinet:  { label: 'Gabinete',      color: '#546e7a' },
+  hmi:      { label: 'Panel HMI',     color: '#5c6bc0' },
+  junction: { label: 'Caja empalme',  color: '#78909c' },
+  rack:     { label: 'Rack',          color: '#455a64' },
+  generic:  { label: 'Panel',         color: '#607d8b' },
+};
+
+const PANEL_ICONS = {
+  cabinet: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="6" width="32" height="36" rx="3" stroke="currentColor" stroke-width="2"/><line x1="8" y1="16" x2="40" y2="16" stroke="currentColor" stroke-width="1.5"/><circle cx="24" cy="11" r="2" fill="currentColor" opacity=".5"/><rect x="14" y="20" width="20" height="3" rx="1" fill="currentColor" opacity=".3"/><rect x="14" y="26" width="20" height="3" rx="1" fill="currentColor" opacity=".3"/><rect x="14" y="32" width="20" height="3" rx="1" fill="currentColor" opacity=".3"/></svg>`,
+  hmi: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="8" width="36" height="26" rx="3" stroke="currentColor" stroke-width="2"/><rect x="10" y="12" width="28" height="18" rx="2" fill="currentColor" opacity=".08" stroke="currentColor" stroke-width="1"/><line x1="16" y1="38" x2="32" y2="38" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><circle cx="15" cy="17" r="2" fill="currentColor" opacity=".6"/><circle cx="15" cy="23" r="2" fill="currentColor" opacity=".6"/><rect x="20" y="16" width="14" height="4" rx="1" fill="currentColor" opacity=".3"/><rect x="20" y="22" width="14" height="4" rx="1" fill="currentColor" opacity=".3"/></svg>`,
+  junction: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="10" y="10" width="28" height="28" rx="3" stroke="currentColor" stroke-width="2"/><line x1="10" y1="24" x2="4" y2="24" stroke="currentColor" stroke-width="2"/><line x1="38" y1="24" x2="44" y2="24" stroke="currentColor" stroke-width="2"/><line x1="24" y1="10" x2="24" y2="4" stroke="currentColor" stroke-width="2"/><line x1="24" y1="38" x2="24" y2="44" stroke="currentColor" stroke-width="2"/><circle cx="24" cy="24" r="4" stroke="currentColor" stroke-width="1.5" fill="currentColor" opacity=".2"/></svg>`,
+  rack: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="7" y="6" width="34" height="36" rx="3" stroke="currentColor" stroke-width="2"/><rect x="11" y="10" width="26" height="4" rx="1" fill="currentColor" opacity=".3"/><rect x="11" y="17" width="26" height="4" rx="1" fill="currentColor" opacity=".3"/><rect x="11" y="24" width="26" height="4" rx="1" fill="currentColor" opacity=".3"/><rect x="11" y="31" width="26" height="4" rx="1" fill="currentColor" opacity=".3"/></svg>`,
+  generic: `<svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="8" y="8" width="32" height="32" rx="4" stroke="currentColor" stroke-width="2"/><rect x="14" y="14" width="20" height="20" rx="2" stroke="currentColor" stroke-width="1.5" fill="currentColor" opacity=".05"/><circle cx="19" cy="19" r="2" fill="currentColor" opacity=".5"/><circle cx="29" cy="19" r="2" fill="currentColor" opacity=".5"/><circle cx="19" cy="29" r="2" fill="currentColor" opacity=".5"/><circle cx="29" cy="29" r="2" fill="currentColor" opacity=".5"/></svg>`,
+};
+
+// Mutable diagram interaction state
+const DIAG = {
+  pendingConn: null,       // {fromId} when drawing connection
+  mouseX: 0, mouseY: 0,
+  selected: null,
+  selectedType: null,      // 'machine' | 'capsule' | 'connection'
+  newConnType: 'hydraulic',
+  editingMachineId: null,
+  editingPanelId: null,
+  editingCapsuleId: null,
+  openCapsuleId: null,     // when non-null, showing inside this capsule
+  nodeChartKeys: [],       // sensor keys currently shown in node charts modal
+};
+
+// 3D thumbnail renderers keyed by machineId or panelId
+const thumbRenderers = {};
+
+/* ── Node lookup helpers ── */
+function findDiagNode(id) {
+  return STATE.diagMachines.find(n => n.id === id)
+      || STATE.diagPanels.find(n => n.id === id)
+      || STATE.diagCapsules.find(n => n.id === id)
+      || null;
+}
+
+function getNodeCenter(node) {
+  if (STATE.diagPanels.some(p => p.id === node.id)) return [node.x + 100, node.y + 75];
+  if (STATE.diagCapsules.some(c => c.id === node.id)) return [node.x + 85, node.y + 70];
+  return [node.x + 80, node.y + 80];
+}
+
+/* ── Open / Close ── */
+function openDiagram() {
+  document.getElementById('diagram-overlay').classList.add('active');
+  renderLegend();
+  renderDiagram();
+  document.addEventListener('keydown', diagKeyHandler);
+}
+
+function closeDiagram() {
+  document.getElementById('diagram-overlay').classList.remove('active');
+  cancelConn();
+  document.removeEventListener('keydown', diagKeyHandler);
+}
+
+function diagKeyHandler(e) {
+  if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+  const tag = document.activeElement ? document.activeElement.tagName : '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (!DIAG.selected) return;
+  e.preventDefault();
+  if (DIAG.selectedType === 'connection') {
+    removeSelectedConn();
+  } else if (DIAG.selectedType === 'machine') {
+    DIAG.editingMachineId = DIAG.selected;
+    removeMachine();
+  } else if (DIAG.selectedType === 'panel') {
+    DIAG.editingPanelId = DIAG.selected;
+    removePanel();
+  } else if (DIAG.selectedType === 'capsule') {
+    DIAG.editingCapsuleId = DIAG.selected;
+    removeCapsule();
+  }
+  DIAG.selected = null;
+  DIAG.selectedType = null;
+}
+
+/* ── Legend ── */
+function renderLegend() {
+  const el = document.getElementById('conn-legend');
+  el.innerHTML = Object.entries(CONN_TYPES).map(([, ct]) => `
+    <div class="conn-legend-item">
+      <div class="cleg-line" style="border-color:${ct.color};border-bottom-style:${ct.dash ? 'dashed' : 'solid'};"></div>
+      ${ct.label}
+    </div>`).join('');
+}
+
+/* ── Add / Remove machines ── */
+function openAddMachineModal() {
+  populateModelSelect('new-mach-model');
+  document.getElementById('new-mach-name').value = '';
+  openModal('add-machine-modal');
+}
+
+function confirmAddMachine() {
+  const label = document.getElementById('new-mach-name').value.trim() || 'Nueva Máquina';
+  const machineType = document.getElementById('new-mach-type').value;
+  const modelObjectName = document.getElementById('new-mach-model').value;
+  const id = 'mach_' + Date.now();
+  STATE.diagMachines.push({
+    id, label, machineType, modelObjectName, sensorKeys: [],
+    x: 60 + Math.random() * 500,
+    y: 60 + Math.random() * 300,
+  });
+  // If we're inside a capsule view, assign the new machine to that capsule
+  if (DIAG.openCapsuleId) {
+    const cap = STATE.diagCapsules.find(c => c.id === DIAG.openCapsuleId);
+    if (cap) cap.childMachineIds.push(id);
+  }
+  persistAll();
+  closeModal('add-machine-modal');
+  renderDiagram();
+}
+
+function populateModelSelect(selectId) {
+  const sel = document.getElementById(selectId);
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Sin modelo — usar ícono</option>';
+  if (STATE.scene) {
+    const names = new Set();
+    STATE.scene.traverse(o => { if (o.name && (o.isMesh || o.isGroup)) names.add(o.name); });
+    names.forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n; opt.textContent = n;
+      if (n === current) opt.selected = true;
+      sel.appendChild(opt);
+    });
+  }
+}
+
+/* ── Assembly select (shows groups + meshes with type tags) ── */
+function populateAssemblySelect(selectId) {
+  const sel = document.getElementById(selectId);
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Sin ensamble — usar ícono</option>';
+  if (!STATE.scene) return;
+  const groups = [], meshes = [];
+  STATE.scene.traverse(o => {
+    if (!o.name) return;
+    if (o.isGroup || (o.children && o.children.length > 0 && !o.isMesh)) groups.push(o.name);
+    else if (o.isMesh) meshes.push(o.name);
+  });
+  const addOpts = (names, tag) => [...new Set(names)].forEach(n => {
+    const opt = document.createElement('option');
+    opt.value = n; opt.textContent = n + tag;
+    if (n === cur) opt.selected = true;
+    sel.appendChild(opt);
+  });
+  if (groups.length) {
+    const grp = document.createElement('optgroup'); grp.label = 'Ensambles (grupos)';
+    sel.appendChild(grp);
+    [...new Set(groups)].forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n; opt.textContent = n;
+      if (n === cur) opt.selected = true;
+      grp.appendChild(opt);
+    });
+  }
+  if (meshes.length) {
+    const grp = document.createElement('optgroup'); grp.label = 'Mallas individuales';
+    sel.appendChild(grp);
+    [...new Set(meshes)].forEach(n => {
+      const opt = document.createElement('option');
+      opt.value = n; opt.textContent = n;
+      if (n === cur) opt.selected = true;
+      grp.appendChild(opt);
+    });
+  }
+}
+
+/* ── Add / Remove panels ── */
+function openAddPanelModal() {
+  populateAssemblySelect('new-panel-assembly');
+  document.getElementById('new-panel-name').value = '';
+  document.getElementById('new-panel-type').value = 'cabinet';
+  openModal('add-panel-modal');
+}
+
+function confirmAddPanel() {
+  const label = document.getElementById('new-panel-name').value.trim() || 'Nuevo Panel';
+  const panelType = document.getElementById('new-panel-type').value;
+  const assemblyName = document.getElementById('new-panel-assembly').value;
+  const id = 'panel_' + Date.now();
+  STATE.diagPanels.push({
+    id, label, panelType, assemblyName, elements: [],
+    x: 80 + Math.random() * 500,
+    y: 80 + Math.random() * 300,
+  });
+  if (DIAG.openCapsuleId) {
+    const cap = STATE.diagCapsules.find(c => c.id === DIAG.openCapsuleId);
+    if (cap) {
+      if (!cap.childPanelIds) cap.childPanelIds = [];
+      cap.childPanelIds.push(id);
+    }
+  }
+  persistAll();
+  closeModal('add-panel-modal');
+  renderDiagram();
+}
+
+/* ── Panel detail modal ── */
+function openPanelDetail(panelId) {
+  DIAG.editingPanelId = panelId;
+  const p = STATE.diagPanels.find(x => x.id === panelId);
+  if (!p) return;
+
+  const pt = PANEL_TYPES[p.panelType] || PANEL_TYPES.generic;
+  document.getElementById('panel-modal-title').textContent = p.label;
+  document.getElementById('panel-modal-sub').textContent = pt.label;
+  document.getElementById('panel-edit-name').value = p.label;
+
+  populateAssemblySelect('panel-edit-assembly');
+  document.getElementById('panel-edit-assembly').value = p.assemblyName || '';
+
+  const list = document.getElementById('panel-modal-elements-list');
+  list.innerHTML = p.elements.length
+    ? p.elements.map(el => {
+        const d = STATE.liveData[el.sensorKey] || {};
+        const val = d.valor !== undefined ? d.valor + (d.unidad || '') : '—';
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border);font-size:11px;">
+          <span style="color:var(--text2);">${el.sensorKey.split('/').pop()}</span>
+          <span style="color:var(--accent);">${val}</span>
+          <button onclick="removePanelElement('${el.id}')" style="margin-left:8px;background:none;border:none;color:var(--err);cursor:pointer;font-size:11px;">✕</button>
+        </div>`;
+      }).join('')
+    : '<div style="font-size:11px;color:var(--text3);padding:6px 0;">Sin sensores asignados</div>';
+
+  const sel = document.getElementById('panel-add-sensor-select');
+  const usedKeys = p.elements.map(e => e.sensorKey);
+  sel.innerHTML = '<option value="">Seleccionar...</option>' +
+    Object.keys(STATE.liveData).filter(k => !usedKeys.includes(k))
+      .map(k => `<option value="${k}">${k}</option>`).join('');
+
+  openModal('panel-detail-modal');
+}
+
+function updatePanelLabel(val) {
+  const p = STATE.diagPanels.find(x => x.id === DIAG.editingPanelId);
+  if (p) { p.label = val; persistAll(); renderDiagram(); }
+}
+
+function updatePanelAssembly(val) {
+  const p = STATE.diagPanels.find(x => x.id === DIAG.editingPanelId);
+  if (!p) return;
+  if (p.assemblyName !== val) {
+    disposeThumb(p.id);
+    p.assemblyName = val;
+    persistAll();
+    renderDiagram();
+  }
+}
+
+function addSensorToPanel() {
+  const p = STATE.diagPanels.find(x => x.id === DIAG.editingPanelId);
+  const sk = document.getElementById('panel-add-sensor-select').value;
+  if (!p || !sk) return;
+  if (!p.elements.some(e => e.sensorKey === sk)) {
+    p.elements.push({ id: 'pelem_' + Date.now(), sensorKey: sk });
+    persistAll();
+  }
+  openPanelDetail(DIAG.editingPanelId);
+  renderDiagram();
+}
+
+function removePanelElement(elemId) {
+  const p = STATE.diagPanels.find(x => x.id === DIAG.editingPanelId);
+  if (!p) return;
+  p.elements = p.elements.filter(e => e.id !== elemId);
+  persistAll();
+  openPanelDetail(DIAG.editingPanelId);
+  renderDiagram();
+}
+
+function removePanel() {
+  const pid = DIAG.editingPanelId;
+  STATE.diagPanels = STATE.diagPanels.filter(p => p.id !== pid);
+  STATE.diagConnections = STATE.diagConnections.filter(c => c.fromId !== pid && c.toId !== pid);
+  STATE.diagCapsules.forEach(c => { if (c.childPanelIds) c.childPanelIds = c.childPanelIds.filter(id => id !== pid); });
+  disposeThumb(pid);
+  closeModal('panel-detail-modal');
+  persistAll();
+  renderDiagram();
+}
+
+function selectPanel(id) {
+  DIAG.selected = id; DIAG.selectedType = 'panel';
+  document.getElementById('conn-detail-panel').style.display = 'none';
+  renderDiagram();
+}
+
+/* ── Capsule helpers ── */
+function getCapsuleForMachine(machineId) {
+  return STATE.diagCapsules.find(c => c.childMachineIds.includes(machineId)) || null;
+}
+
+function populateCapsuleSelect(selectId, currentCapsuleId) {
+  const sel = document.getElementById(selectId);
+  sel.innerHTML = '<option value="">— Sin cápsula (diagrama principal) —</option>';
+  STATE.diagCapsules.forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id; opt.textContent = c.label;
+    if (c.id === currentCapsuleId) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+/* ── Capsule CRUD ── */
+function openAddCapsuleModal() {
+  populateAssemblySelect('new-cap-assembly');
+  document.getElementById('new-cap-name').value = '';
+  openModal('add-capsule-modal');
+}
+
+function confirmAddCapsule() {
+  const label = document.getElementById('new-cap-name').value.trim() || 'Nueva Cápsula';
+  const assemblyName = document.getElementById('new-cap-assembly').value;
+  const id = 'cap_' + Date.now();
+  STATE.diagCapsules.push({
+    id, label, assemblyName, childMachineIds: [], childPanelIds: [],
+    x: 80 + Math.random() * 500,
+    y: 80 + Math.random() * 300,
+  });
+  persistAll();
+  closeModal('add-capsule-modal');
+  renderDiagram();
+}
+
+function openCapsuleDetail(capsuleId) {
+  DIAG.editingCapsuleId = capsuleId;
+  const c = STATE.diagCapsules.find(x => x.id === capsuleId);
+  if (!c) return;
+  document.getElementById('cap-modal-title').textContent = c.label;
+  document.getElementById('cap-modal-sub').textContent = c.childMachineIds.length + ' máquinas en esta cápsula';
+  document.getElementById('cap-edit-name').value = c.label;
+  populateAssemblySelect('cap-edit-assembly');
+  document.getElementById('cap-edit-assembly').value = c.assemblyName || '';
+
+  const list = document.getElementById('cap-modal-machines-list');
+  const childMachines = STATE.diagMachines.filter(m => c.childMachineIds.includes(m.id));
+  list.innerHTML = childMachines.length
+    ? childMachines.map(m => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border);font-size:11px;">
+          <span style="color:var(--text2);">${m.label}</span>
+          <span style="font-size:9px;color:var(--text3);">${MACHINE_LABELS[m.machineType]||m.machineType}</span>
+          <button onclick="assignMachineToCapsule('${m.id}','')" style="margin-left:8px;background:none;border:none;color:var(--err);cursor:pointer;font-size:11px;" title="Quitar de la cápsula">✕</button>
+        </div>`).join('')
+    : '<div style="font-size:11px;color:var(--text3);padding:6px 0;">Sin máquinas — asigna máquinas desde su detalle</div>';
+
+  openModal('capsule-detail-modal');
+}
+
+function updateCapsuleLabel(val) {
+  const c = STATE.diagCapsules.find(x => x.id === DIAG.editingCapsuleId);
+  if (c) { c.label = val; persistAll(); renderDiagram(); }
+}
+
+function updateCapsuleAssembly(val) {
+  const c = STATE.diagCapsules.find(x => x.id === DIAG.editingCapsuleId);
+  if (!c) return;
+  if (c.assemblyName !== val) { disposeThumb(c.id); c.assemblyName = val; persistAll(); renderDiagram(); }
+}
+
+function assignMachineToCapsule(machineId, capsuleId) {
+  // Remove from all capsules first
+  STATE.diagCapsules.forEach(c => { c.childMachineIds = c.childMachineIds.filter(id => id !== machineId); });
+  // Add to new capsule (if any)
+  if (capsuleId) {
+    const cap = STATE.diagCapsules.find(c => c.id === capsuleId);
+    if (cap && !cap.childMachineIds.includes(machineId)) cap.childMachineIds.push(machineId);
+  }
+  persistAll();
+  renderDiagram();
+  // Refresh capsule detail if open
+  if (DIAG.editingCapsuleId) openCapsuleDetail(DIAG.editingCapsuleId);
+}
+
+function removeCapsule() {
+  const c = STATE.diagCapsules.find(x => x.id === DIAG.editingCapsuleId);
+  if (c) {
+    // Release all machines back to main diagram
+    c.childMachineIds = [];
+  }
+  STATE.diagCapsules = STATE.diagCapsules.filter(x => x.id !== DIAG.editingCapsuleId);
+  STATE.diagConnections = STATE.diagConnections.filter(
+    cn => cn.fromId !== DIAG.editingCapsuleId && cn.toId !== DIAG.editingCapsuleId);
+  disposeThumb(DIAG.editingCapsuleId);
+  closeModal('capsule-detail-modal');
+  persistAll();
+  renderDiagram();
+}
+
+function selectCapsule(id) {
+  DIAG.selected = id; DIAG.selectedType = 'capsule';
+  document.getElementById('conn-detail-panel').style.display = 'none';
+  renderDiagram();
+}
+
+/* ── Capsule view navigation ── */
+function openCapsuleView(capsuleId) {
+  DIAG.openCapsuleId = capsuleId;
+  DIAG.pendingConn = null;
+  const c = STATE.diagCapsules.find(x => x.id === capsuleId);
+  const bc = document.getElementById('capsule-breadcrumb');
+  if (bc) bc.style.display = 'flex';
+  const bn = document.getElementById('capsule-breadcrumb-name');
+  if (bn) bn.textContent = c ? c.label : '?';
+  // Only hide the capsule button (no nested capsules); keep panel button visible
+  const btnCap = document.getElementById('btn-add-capsule');
+  if (btnCap) btnCap.style.display = 'none';
+  closeModal('capsule-detail-modal');
+  renderDiagram();
+}
+
+function closeCapsuleView() {
+  DIAG.openCapsuleId = null;
+  DIAG.pendingConn = null;
+  const bc = document.getElementById('capsule-breadcrumb');
+  if (bc) bc.style.display = 'none';
+  const btnCap = document.getElementById('btn-add-capsule');
+  if (btnCap) btnCap.style.display = '';
+  renderDiagram();
+}
+
+function openCapsuleViewFromModal() {
+  const id = DIAG.editingCapsuleId;
+  if (id) openCapsuleView(id);
+}
+
+/* ── Render capsule node ── */
+function renderCapsuleNode(c, inner) {
+  const el = document.createElement('div');
+  el.className = 'capsule-node'
+    + (DIAG.selected === c.id && DIAG.selectedType === 'capsule' ? ' selected' : '')
+    + (DIAG.pendingConn ? ' conn-target' : '');
+  el.style.left = c.x + 'px';
+  el.style.top  = c.y + 'px';
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'capsule-header';
+  header.innerHTML = `
+    <div class="capsule-icon">⬡</div>
+    <div class="capsule-title-wrap">
+      <div class="capsule-title">${c.label}</div>
+      <div class="capsule-sub">cápsula</div>
+    </div>
+    <div class="capsule-badge">${c.childMachineIds.length + (c.childPanelIds || []).length}</div>`;
+  el.appendChild(header);
+
+  // 3D thumb (if assembly assigned)
+  if (c.assemblyName) {
+    const thumbDiv = document.createElement('div');
+    thumbDiv.className = 'capsule-thumb';
+    if (thumbRenderers[c.id]) {
+      thumbDiv.appendChild(thumbRenderers[c.id].canvas);
+    } else {
+      const canvas = createThumb(c.id, c.assemblyName);
+      if (canvas) thumbDiv.appendChild(canvas);
+      else thumbDiv.innerHTML = `<svg viewBox="0 0 48 48" fill="none"><rect x="10" y="10" width="28" height="28" rx="6" stroke="currentColor" stroke-width="2"/><path d="M24 17l4 7H20l4-7z" fill="currentColor" opacity=".4"/></svg>`;
+    }
+    el.appendChild(thumbDiv);
+  }
+
+  // Machine summary list
+  const body = document.createElement('div');
+  body.className = 'capsule-body';
+  const childMachines = STATE.diagMachines.filter(m => c.childMachineIds.includes(m.id));
+  if (childMachines.length) {
+    childMachines.slice(0, 4).forEach(m => {
+      const firstSk = m.sensorKeys && m.sensorKeys[0];
+      const val = firstSk && STATE.liveData[firstSk]
+        ? (STATE.liveData[firstSk].valor ?? '—') + (STATE.liveData[firstSk].unidad || '')
+        : '';
+      const row = document.createElement('div');
+      row.className = 'capsule-machine-row';
+      row.innerHTML = `<span class="cmr-name">${m.label}</span>${val ? `<span class="cmr-val">${val}</span>` : ''}`;
+      body.appendChild(row);
+    });
+    if (childMachines.length > 4) {
+      const more = document.createElement('div');
+      more.className = 'capsule-empty';
+      more.textContent = `+${childMachines.length - 4} más...`;
+      body.appendChild(more);
+    }
+  } else {
+    body.innerHTML = '<div class="capsule-empty">Sin máquinas asignadas</div>';
+  }
+  el.appendChild(body);
+
+  // Footer
+  const footer = document.createElement('div');
+  footer.className = 'capsule-footer';
+  footer.innerHTML = `
+    <button class="mach-btn" onclick="event.stopPropagation();openCapsuleDetail('${c.id}')">Editar</button>
+    <button class="capsule-open-btn" onclick="event.stopPropagation();openCapsuleView('${c.id}')">▶ Abrir</button>`;
+  el.appendChild(footer);
+
+  // Ports
+  ['right','left','top','bottom'].forEach(side => {
+    const dot = document.createElement('div');
+    dot.className = `port-dot port-${side}`;
+    dot.addEventListener('mousedown', e => { e.stopPropagation(); startConn(c.id); });
+    el.appendChild(dot);
+  });
+
+  el.addEventListener('click', e => {
+    if (DIAG.pendingConn && DIAG.pendingConn.fromId !== c.id) {
+      completeConn(c.id);
+    } else if (!DIAG.pendingConn) {
+      selectCapsule(c.id);
+    }
+  });
+
+  makeCapsuleDraggable(el, c);
+  inner.appendChild(el);
+}
+
+function makeCapsuleDraggable(el, c) {
+  let dragging = false, ox, oy;
+  el.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('port-dot') || e.target.tagName === 'BUTTON') return;
+    dragging = true; ox = e.clientX - c.x; oy = e.clientY - c.y; e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    c.x = Math.max(0, e.clientX - ox); c.y = Math.max(0, e.clientY - oy);
+    el.style.left = c.x + 'px'; el.style.top = c.y + 'px';
+    renderConnections();
+  });
+  document.addEventListener('mouseup', () => { if (dragging) { dragging = false; persistAll(); } });
+}
+
+/* ── Machine detail modal ── */
+function openMachineDetail(machineId) {
+  DIAG.editingMachineId = machineId;
+  const m = STATE.diagMachines.find(x => x.id === machineId);
+  if (!m) return;
+
+  document.getElementById('mach-modal-title').textContent = m.label;
+  document.getElementById('mach-modal-sub').textContent = MACHINE_LABELS[m.machineType] || m.machineType;
+  document.getElementById('mach-edit-name').value = m.label;
+
+  populateModelSelect('mach-edit-model');
+  document.getElementById('mach-edit-model').value = m.modelObjectName || '';
+
+  // Capsule assignment
+  const capSel = document.getElementById('mach-capsule-select');
+  if (capSel) {
+    populateCapsuleSelect('mach-capsule-select', getCapsuleForMachine(machineId)?.id || '');
+  }
+
+  const list = document.getElementById('mach-modal-sensors-list');
+  list.innerHTML = m.sensorKeys.length
+    ? m.sensorKeys.map(sk => {
+        const d = STATE.liveData[sk] || {};
+        const val = d.valor !== undefined ? d.valor + (d.unidad || '') : '—';
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border);font-size:11px;">
+          <span style="color:var(--text2);">${sk.split('/').pop()}</span>
+          <span style="color:var(--accent);">${val}</span>
+          <button onclick="removeSensorFromMachine('${sk}')" style="margin-left:8px;background:none;border:none;color:var(--err);cursor:pointer;font-size:11px;">✕</button>
+        </div>`;
+      }).join('')
+    : '<div style="font-size:11px;color:var(--text3);padding:6px 0;">Sin sensores asignados</div>';
+
+  const sel = document.getElementById('mach-add-sensor-select');
+  sel.innerHTML = '<option value="">Seleccionar...</option>' +
+    Object.keys(STATE.liveData).filter(k => !m.sensorKeys.includes(k))
+      .map(k => `<option value="${k}">${k}</option>`).join('');
+
+  openModal('machine-detail-modal');
+}
+
+function updateMachineLabel(val) {
+  const m = STATE.diagMachines.find(x => x.id === DIAG.editingMachineId);
+  if (m) { m.label = val; persistAll(); renderDiagram(); }
+}
+
+function updateMachineModel(val) {
+  const m = STATE.diagMachines.find(x => x.id === DIAG.editingMachineId);
+  if (!m) return;
+  if (m.modelObjectName !== val) {
+    disposeThumb(m.id);
+    m.modelObjectName = val;
+    persistAll();
+    renderDiagram();
+  }
+}
+
+function addSensorToMachine() {
+  const m = STATE.diagMachines.find(x => x.id === DIAG.editingMachineId);
+  const sk = document.getElementById('mach-add-sensor-select').value;
+  if (!m || !sk) return;
+  if (!m.sensorKeys.includes(sk)) { m.sensorKeys.push(sk); persistAll(); }
+  openMachineDetail(DIAG.editingMachineId);
+  renderDiagram();
+}
+
+function removeSensorFromMachine(sk) {
+  const m = STATE.diagMachines.find(x => x.id === DIAG.editingMachineId);
+  if (!m) return;
+  m.sensorKeys = m.sensorKeys.filter(k => k !== sk);
+  persistAll();
+  openMachineDetail(DIAG.editingMachineId);
+  renderDiagram();
+}
+
+function removeMachine() {
+  const mid = DIAG.editingMachineId;
+  STATE.diagMachines = STATE.diagMachines.filter(m => m.id !== mid);
+  STATE.diagConnections = STATE.diagConnections.filter(c => c.fromId !== mid && c.toId !== mid);
+  STATE.diagCapsules.forEach(c => { c.childMachineIds = c.childMachineIds.filter(id => id !== mid); });
+  disposeThumb(mid);
+  closeModal('machine-detail-modal');
+  persistAll();
+  renderDiagram();
+}
+
+/* ── Render ── */
+function renderDiagram() {
+  const inner = document.getElementById('diag-canvas-inner');
+  if (!inner) return;
+  inner.querySelectorAll('.mach-node, .panel-node, .capsule-node').forEach(n => n.remove());
+
+  if (DIAG.openCapsuleId) {
+    // ── Capsule view: show machines + panels belonging to this capsule ──
+    const cap = STATE.diagCapsules.find(c => c.id === DIAG.openCapsuleId);
+    if (cap) {
+      STATE.diagMachines
+        .filter(m => cap.childMachineIds.includes(m.id))
+        .forEach(m => renderMachineNode(m, inner));
+      STATE.diagPanels
+        .filter(p => (cap.childPanelIds || []).includes(p.id))
+        .forEach(p => renderPanelNode(p, inner));
+    }
+  } else {
+    // ── Main view: capsules + non-encapsulated panels + non-encapsulated machines ──
+    const encapsulatedMachIds  = new Set(STATE.diagCapsules.flatMap(c => c.childMachineIds));
+    const encapsulatedPanelIds = new Set(STATE.diagCapsules.flatMap(c => c.childPanelIds || []));
+    STATE.diagCapsules.forEach(c => renderCapsuleNode(c, inner));
+    STATE.diagPanels.filter(p => !encapsulatedPanelIds.has(p.id)).forEach(p => renderPanelNode(p, inner));
+    STATE.diagMachines.filter(m => !encapsulatedMachIds.has(m.id)).forEach(m => renderMachineNode(m, inner));
+  }
+  renderConnections();
+}
+
+function renderMachineNode(m, inner) {
+  const el = document.createElement('div');
+  el.className = 'mach-node' + (DIAG.selected === m.id && DIAG.selectedType === 'machine' ? ' selected' : '')
+    + (DIAG.pendingConn ? ' conn-target' : '');
+  el.style.left = m.x + 'px';
+  el.style.top  = m.y + 'px';
+
+  // Thumb
+  const thumbDiv = document.createElement('div');
+  thumbDiv.className = 'mach-thumb';
+  if (m.modelObjectName) {
+    if (thumbRenderers[m.id]) {
+      thumbDiv.appendChild(thumbRenderers[m.id].canvas);
+    } else {
+      const canvas = createThumb(m.id, m.modelObjectName);
+      thumbDiv.appendChild(canvas || createIconEl(m.machineType));
+    }
+  } else {
+    thumbDiv.appendChild(createIconEl(m.machineType));
+  }
+  el.appendChild(thumbDiv);
+
+  // Body
+  const body = document.createElement('div');
+  body.className = 'mach-body';
+  const sensorRows = m.sensorKeys.map(sk => {
+    const d = STATE.liveData[sk] || {};
+    const val = d.valor !== undefined ? d.valor + (d.unidad || '') : '—';
+    return `<div class="mach-sensor-row"><span class="sk">${sk.split('/').pop()}</span><span class="sv">${val}</span></div>`;
+  }).join('');
+  body.innerHTML = `<div class="mach-title">${m.label}</div>
+    <div class="mach-type-label">${MACHINE_LABELS[m.machineType] || m.machineType}</div>
+    ${sensorRows}`;
+  el.appendChild(body);
+
+  // Footer
+  const footer = document.createElement('div');
+  footer.className = 'mach-footer';
+  footer.innerHTML = `<button class="mach-btn" onclick="event.stopPropagation();openMachineDetail('${m.id}')">Editar</button>`
+    + (m.sensorKeys.length ? `<button class="mach-btn" onclick="event.stopPropagation();openNodeCharts('${m.id}','machine')" style="color:var(--accent2);border-color:rgba(0,180,255,0.3);">Gráficas</button>` : '');
+  el.appendChild(footer);
+
+  // Ports
+  ['right','left','top','bottom'].forEach(side => {
+    const dot = document.createElement('div');
+    dot.className = `port-dot port-${side}`;
+    dot.addEventListener('mousedown', e => { e.stopPropagation(); startConn(m.id); });
+    el.appendChild(dot);
+  });
+
+  // Click → complete connection or select
+  el.addEventListener('click', e => {
+    if (DIAG.pendingConn && DIAG.pendingConn.fromId !== m.id) {
+      completeConn(m.id);
+    } else if (!DIAG.pendingConn) {
+      selectMachine(m.id);
+    }
+  });
+
+  makeMachineDraggable(el, m);
+  inner.appendChild(el);
+}
+
+function createIconEl(type) {
+  const wrap = document.createElement('div');
+  wrap.innerHTML = MACHINE_ICONS[type] || MACHINE_ICONS.generic;
+  return wrap.firstElementChild;
+}
+
+function renderPanelNode(p, inner) {
+  const pt = PANEL_TYPES[p.panelType] || PANEL_TYPES.generic;
+  const el = document.createElement('div');
+  el.className = 'panel-node'
+    + (DIAG.selected === p.id && DIAG.selectedType === 'panel' ? ' selected' : '')
+    + (DIAG.pendingConn ? ' conn-target' : '');
+  el.style.left = p.x + 'px';
+  el.style.top  = p.y + 'px';
+  el.style.borderColor = pt.color + '88';
+
+  // Header
+  const header = document.createElement('div');
+  header.className = 'panel-header';
+  const accent = document.createElement('div');
+  accent.className = 'panel-header-accent';
+  accent.style.background = pt.color;
+  const txt = document.createElement('div');
+  txt.className = 'panel-header-text';
+  txt.innerHTML = `<div class="panel-title">${p.label}</div><div class="panel-type-lbl">${pt.label}</div>`;
+  header.appendChild(accent);
+  header.appendChild(txt);
+  el.appendChild(header);
+
+  // Thumb (3D or icon)
+  const thumbDiv = document.createElement('div');
+  thumbDiv.className = 'panel-thumb';
+  if (p.assemblyName) {
+    if (thumbRenderers[p.id]) {
+      thumbDiv.appendChild(thumbRenderers[p.id].canvas);
+    } else {
+      const canvas = createThumb(p.id, p.assemblyName);
+      const wrap = document.createElement('div');
+      wrap.innerHTML = PANEL_ICONS[p.panelType] || PANEL_ICONS.generic;
+      thumbDiv.appendChild(canvas || wrap.firstElementChild);
+    }
+  } else {
+    const wrap = document.createElement('div');
+    wrap.innerHTML = PANEL_ICONS[p.panelType] || PANEL_ICONS.generic;
+    thumbDiv.appendChild(wrap.firstElementChild);
+  }
+  el.appendChild(thumbDiv);
+
+  // Element chips
+  const area = document.createElement('div');
+  area.className = 'panel-elements-area';
+  if (p.elements.length) {
+    p.elements.forEach(elem => {
+      const d = STATE.liveData[elem.sensorKey] || {};
+      const val = d.valor !== undefined ? d.valor + (d.unidad || '') : '—';
+      const chip = document.createElement('div');
+      chip.className = 'panel-elem-chip';
+      chip.innerHTML = `<span class="pec-label">${elem.sensorKey.split('/').pop()}</span><span class="pec-val">${val}</span>`;
+      area.appendChild(chip);
+    });
+  } else {
+    area.innerHTML = '<span style="font-size:9px;color:var(--text3);align-self:center;margin:auto;">Sin elementos</span>';
+  }
+  el.appendChild(area);
+
+  // Footer
+  const footer = document.createElement('div');
+  footer.className = 'panel-footer';
+  footer.innerHTML = `<button class="mach-btn" onclick="event.stopPropagation();openPanelDetail('${p.id}')">Editar</button>`
+    + (p.elements.length ? `<button class="mach-btn" onclick="event.stopPropagation();openNodeCharts('${p.id}','panel')" style="color:var(--accent2);border-color:rgba(0,180,255,0.3);">Gráficas</button>` : '');
+  el.appendChild(footer);
+
+  // Ports
+  ['right','left','top','bottom'].forEach(side => {
+    const dot = document.createElement('div');
+    dot.className = `port-dot port-${side}`;
+    dot.addEventListener('mousedown', e => { e.stopPropagation(); startConn(p.id); });
+    el.appendChild(dot);
+  });
+
+  // Click → complete connection or select
+  el.addEventListener('click', e => {
+    if (DIAG.pendingConn && DIAG.pendingConn.fromId !== p.id) {
+      completeConn(p.id);
+    } else if (!DIAG.pendingConn) {
+      selectPanel(p.id);
+    }
+  });
+
+  makePanelDraggable(el, p);
+  inner.appendChild(el);
+}
+
+function makePanelDraggable(el, p) {
+  let dragging = false, ox, oy;
+  el.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('port-dot') || e.target.tagName === 'BUTTON') return;
+    dragging = true;
+    ox = e.clientX - p.x;
+    oy = e.clientY - p.y;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    p.x = Math.max(0, e.clientX - ox);
+    p.y = Math.max(0, e.clientY - oy);
+    el.style.left = p.x + 'px';
+    el.style.top  = p.y + 'px';
+    renderConnections();
+  });
+  document.addEventListener('mouseup', () => {
+    if (dragging) { dragging = false; persistAll(); }
+  });
+}
+
+function makeMachineDraggable(el, m) {
+  let dragging = false, ox, oy;
+  el.addEventListener('mousedown', e => {
+    if (e.target.classList.contains('port-dot') || e.target.tagName === 'BUTTON') return;
+    dragging = true;
+    ox = e.clientX - m.x;
+    oy = e.clientY - m.y;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    m.x = Math.max(0, e.clientX - ox);
+    m.y = Math.max(0, e.clientY - oy);
+    el.style.left = m.x + 'px';
+    el.style.top  = m.y + 'px';
+    renderConnections();
+  });
+  document.addEventListener('mouseup', () => {
+    if (dragging) { dragging = false; persistAll(); }
+  });
+}
+
+/* ── Connections ── */
+function renderConnections() {
+  const svg = document.getElementById('diag-svg');
+  if (!svg) return;
+  svg.innerHTML = '';
+
+  // Build machine/panel→capsule maps for main-view rerouting
+  const machToCap  = {};
+  const panelToCap = {};
+  STATE.diagCapsules.forEach(c => {
+    c.childMachineIds.forEach(mid => { machToCap[mid]  = c.id; });
+    (c.childPanelIds || []).forEach(pid => { panelToCap[pid] = c.id; });
+  });
+
+  STATE.diagConnections.forEach(conn => {
+    let effFromId = conn.fromId;
+    let effToId   = conn.toId;
+
+    if (DIAG.openCapsuleId) {
+      // Capsule view: only show connections where both endpoints are in this capsule
+      const cap = STATE.diagCapsules.find(c => c.id === DIAG.openCapsuleId);
+      if (!cap) return;
+      const cpids = cap.childPanelIds || [];
+      const fromIn = cap.childMachineIds.includes(conn.fromId) || cpids.includes(conn.fromId);
+      const toIn   = cap.childMachineIds.includes(conn.toId)   || cpids.includes(conn.toId);
+      if (!fromIn || !toIn) return;
+    } else {
+      // Main view: reroute encapsulated machines/panels to their capsule node
+      if (machToCap[conn.fromId])  effFromId = machToCap[conn.fromId];
+      else if (panelToCap[conn.fromId]) effFromId = panelToCap[conn.fromId];
+      if (machToCap[conn.toId])    effToId   = machToCap[conn.toId];
+      else if (panelToCap[conn.toId])   effToId   = panelToCap[conn.toId];
+      if (effFromId === effToId) return;
+    }
+
+    const a = findDiagNode(effFromId);
+    const b = findDiagNode(effToId);
+    if (!a || !b) return;
+    const ct = CONN_TYPES[conn.connType] || CONN_TYPES.hydraulic;
+
+    const [x1, y1] = getNodeCenter(a);
+    const [x2, y2] = getNodeCenter(b);
+    const mx = (x1+x2)/2, my = (y1+y2)/2;
+    const dx = x2-x1, dy = y2-y1;
+    const len = Math.sqrt(dx*dx+dy*dy) || 1;
+    const curve = len * 0.25;
+    const nx = (-dy/len)*curve, ny = (dx/len)*curve;
+    const cpx = mx+nx, cpy = my+ny;
+    const pathD = `M${x1},${y1} Q${cpx},${cpy} ${x2},${y2}`;
+
+    // Invisible wide hit target
+    const hit = document.createElementNS('http://www.w3.org/2000/svg','path');
+    hit.setAttribute('d', pathD);
+    hit.setAttribute('class','conn-hit');
+    hit.dataset.connId = conn.id;
+    hit.addEventListener('click', e => { e.stopPropagation(); selectConnection(conn.id); });
+    svg.appendChild(hit);
+
+    // Visible line
+    const line = document.createElementNS('http://www.w3.org/2000/svg','path');
+    line.setAttribute('d', pathD);
+    line.setAttribute('class','conn-visual');
+    line.setAttribute('stroke', ct.color);
+    line.setAttribute('stroke-width', ct.width);
+    if (ct.dash) line.setAttribute('stroke-dasharray', ct.dash);
+    if (DIAG.selected === conn.id) line.setAttribute('filter','url(#glow)');
+    svg.appendChild(line);
+
+    // Arrow at end
+    const t = 0.85;
+    const ax = (1-t)*(1-t)*x1 + 2*(1-t)*t*cpx + t*t*x2;
+    const ay = (1-t)*(1-t)*y1 + 2*(1-t)*t*cpy + t*t*y2;
+    const tang = Math.atan2(y2-ay, x2-ax);
+    const as = 7;
+    const arr = document.createElementNS('http://www.w3.org/2000/svg','polygon');
+    arr.setAttribute('points',`0,0 -${as},-${as/2} -${as},${as/2}`);
+    arr.setAttribute('fill', ct.color);
+    arr.setAttribute('transform',`translate(${x2},${y2}) rotate(${tang*180/Math.PI})`);
+    arr.setAttribute('class','conn-arrow');
+    svg.appendChild(arr);
+
+    // Sensor label at midpoint
+    if (conn.sensorKey && STATE.liveData[conn.sensorKey]) {
+      const d = STATE.liveData[conn.sensorKey];
+      const val = d.valor !== undefined ? String(d.valor) + (d.unidad||'') : '';
+      if (val) {
+        const lx = mx + nx*0.4, ly = my + ny*0.4;
+        const bg = document.createElementNS('http://www.w3.org/2000/svg','rect');
+        bg.setAttribute('x', lx-26); bg.setAttribute('y', ly-10);
+        bg.setAttribute('width',52); bg.setAttribute('height',20);
+        bg.setAttribute('rx',4); bg.setAttribute('fill','var(--panel)');
+        bg.setAttribute('stroke', ct.color); bg.setAttribute('stroke-width','1');
+        svg.appendChild(bg);
+        const txt = document.createElementNS('http://www.w3.org/2000/svg','text');
+        txt.setAttribute('x', lx); txt.setAttribute('y', ly);
+        txt.setAttribute('class','conn-label-text');
+        txt.setAttribute('fill', ct.color);
+        txt.textContent = val;
+        svg.appendChild(txt);
+      }
+    }
+  });
+
+  // Pending connection preview
+  if (DIAG.pendingConn) {
+    const rawFrom = DIAG.pendingConn.fromId;
+    const effFrom = !DIAG.openCapsuleId
+      ? (machToCap[rawFrom] || panelToCap[rawFrom] || rawFrom)
+      : rawFrom;
+    const a = findDiagNode(effFrom);
+    if (a) {
+      const ct = CONN_TYPES[DIAG.newConnType];
+      const line = document.createElementNS('http://www.w3.org/2000/svg','line');
+      const [px1, py1] = getNodeCenter(a);
+      line.setAttribute('x1', px1); line.setAttribute('y1', py1);
+      line.setAttribute('x2', DIAG.mouseX); line.setAttribute('y2', DIAG.mouseY);
+      line.setAttribute('stroke', ct.color); line.setAttribute('stroke-width','1.5');
+      line.setAttribute('stroke-dasharray','6 3'); line.setAttribute('opacity','0.6');
+      line.setAttribute('class','conn-pending');
+      svg.appendChild(line);
+    }
+  }
+}
+
+function startConn(fromId) {
+  DIAG.pendingConn = { fromId };
+  document.getElementById('btn-cancel-conn').style.display = '';
+  toast('Haz clic en otra máquina o panel para conectar', 'warn');
+
+  const wrap = document.getElementById('diag-canvas-wrap');
+  wrap._connMouseMove = e => {
+    const rect = document.getElementById('diag-canvas-inner').getBoundingClientRect();
+    DIAG.mouseX = e.clientX - rect.left;
+    DIAG.mouseY = e.clientY - rect.top;
+    renderConnections();
+  };
+  wrap.addEventListener('mousemove', wrap._connMouseMove);
+}
+
+function completeConn(toId) {
+  const wrap = document.getElementById('diag-canvas-wrap');
+  if (wrap._connMouseMove) { wrap.removeEventListener('mousemove', wrap._connMouseMove); delete wrap._connMouseMove; }
+  if (!DIAG.pendingConn) return;
+  STATE.diagConnections.push({
+    id: 'conn_' + Date.now(),
+    fromId: DIAG.pendingConn.fromId,
+    toId,
+    connType: DIAG.newConnType,
+    sensorKey: '',
+  });
+  DIAG.pendingConn = null;
+  document.getElementById('btn-cancel-conn').style.display = 'none';
+  persistAll();
+  renderDiagram();
+}
+
+function cancelConn() {
+  const wrap = document.getElementById('diag-canvas-wrap');
+  if (wrap && wrap._connMouseMove) { wrap.removeEventListener('mousemove', wrap._connMouseMove); delete wrap._connMouseMove; }
+  DIAG.pendingConn = null;
+  const btn = document.getElementById('btn-cancel-conn');
+  if (btn) btn.style.display = 'none';
+  renderConnections();
+}
+
+function selectMachine(id) {
+  DIAG.selected = id; DIAG.selectedType = 'machine';
+  document.getElementById('conn-detail-panel').style.display = 'none';
+  renderDiagram();
+}
+
+function selectConnection(connId) {
+  DIAG.selected = connId; DIAG.selectedType = 'connection';
+  const conn = STATE.diagConnections.find(c => c.id === connId);
+  if (!conn) return;
+  const ct = CONN_TYPES[conn.connType];
+  const panel = document.getElementById('conn-detail-panel');
+  panel.style.display = '';
+  const typeEl = document.getElementById('conn-detail-type');
+  typeEl.textContent = ct.label;
+  typeEl.style.color = ct.color;
+  const sel = document.getElementById('conn-sensor-select');
+  sel.innerHTML = '<option value="">Sin sensor</option>' +
+    Object.keys(STATE.liveData).map(k =>
+      `<option value="${k}" ${conn.sensorKey===k?'selected':''}>${k}</option>`).join('');
+  refreshConnSensorVal(conn);
+  renderConnections();
+}
+
+function assignConnSensor(sKey) {
+  const conn = STATE.diagConnections.find(c => c.id === DIAG.selected);
+  if (!conn) return;
+  conn.sensorKey = sKey;
+  persistAll();
+  refreshConnSensorVal(conn);
+  renderConnections();
+}
+
+function refreshConnSensorVal(conn) {
+  const d = conn.sensorKey ? STATE.liveData[conn.sensorKey] : null;
+  document.getElementById('conn-sensor-val').textContent =
+    d ? (d.valor !== undefined ? d.valor + (d.unidad||'') : '—') : '';
+}
+
+function removeSelectedConn() {
+  STATE.diagConnections = STATE.diagConnections.filter(c => c.id !== DIAG.selected);
+  DIAG.selected = null;
+  document.getElementById('conn-detail-panel').style.display = 'none';
+  persistAll();
+  renderDiagram();
+}
+
+/* ── 3D Thumbnails ── */
+function createThumb(machineId, objectName) {
+  if (!STATE.scene) return null;
+  let src = null;
+  STATE.scene.traverse(o => { if (!src && o.name === objectName) src = o; });
+  if (!src) return null;
+  try {
+    const cloned = src.clone(true);
+    const mini = new THREE.Scene();
+    mini.add(new THREE.AmbientLight(0xffffff, 0.8));
+    const dLight = new THREE.DirectionalLight(0xffffff, 1.0);
+    dLight.position.set(2,3,2); mini.add(dLight);
+    mini.add(cloned);
+
+    const box = new THREE.Box3().setFromObject(cloned);
+    const center = box.getCenter(new THREE.Vector3());
+    const size   = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z) || 1;
+
+    const cam = new THREE.PerspectiveCamera(40, 160/80, 0.001, 100000);
+    cam.position.set(center.x + maxDim*1.6, center.y + maxDim*0.7, center.z + maxDim*1.6);
+    cam.lookAt(center);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 160; canvas.height = 80;
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setSize(160, 80); renderer.setPixelRatio(1);
+    renderer.setClearColor(0x000000, 0);
+
+    const rec = { renderer, scene: mini, camera: cam, canvas, animId: null, rot: 0 };
+    const tick = () => {
+      rec.rot += 0.008;
+      cloned.rotation.y = rec.rot;
+      renderer.render(mini, cam);
+      rec.animId = requestAnimationFrame(tick);
+    };
+    thumbRenderers[machineId] = rec;
+    tick();
+    return canvas;
+  } catch(e) { return null; }
+}
+
+function disposeThumb(machineId) {
+  const t = thumbRenderers[machineId];
+  if (!t) return;
+  cancelAnimationFrame(t.animId);
+  t.renderer.dispose();
+  delete thumbRenderers[machineId];
+}
+
+/* ══════════════════════════════════════════════════════
+   MODAL: Node Charts (from diagram 2D)
+══════════════════════════════════════════════════════ */
+function openNodeCharts(nodeId, nodeType) {
+  let label, sensorKeys;
+  if (nodeType === 'machine') {
+    const m = STATE.diagMachines.find(x => x.id === nodeId);
+    if (!m) return;
+    label = m.label;
+    sensorKeys = m.sensorKeys;
+  } else {
+    const p = STATE.diagPanels.find(x => x.id === nodeId);
+    if (!p) return;
+    label = p.label;
+    sensorKeys = p.elements.map(e => e.sensorKey);
+  }
+
+  document.getElementById('modal-title').textContent = label;
+  document.getElementById('modal-sub').textContent = sensorKeys.length + ' sensor' + (sensorKeys.length !== 1 ? 'es' : '');
+
+  document.getElementById('modal-content').innerHTML = sensorKeys.map((sk, i) => {
+    const d = STATE.liveData[sk] || {};
+    const val = d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : '—');
+    const unit = d.unidad || (d.rpm !== undefined ? 'rpm' : '');
+    const hist = STATE.history[sk] || [];
+    const minVal = hist.length ? Math.min(...hist.map(p => p.val)).toFixed(2) : '—';
+    const maxVal = hist.length ? Math.max(...hist.map(p => p.val)).toFixed(2) : '—';
+    const avgVal = hist.length ? (hist.reduce((a, b) => a + b.val, 0) / hist.length).toFixed(2) : '—';
+    return `
+      <div style="margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid var(--border);">
+        <div class="modal-section-label" style="margin-bottom:8px;">${sk.split('/').pop()}</div>
+        <div class="metric-grid" style="margin-bottom:10px;">
+          <div class="metric-box"><div class="metric-box-label">Actual</div><div class="metric-box-val"><span id="node-live-val-${i}">${val}</span><span class="metric-box-unit">${unit}</span></div></div>
+          <div class="metric-box"><div class="metric-box-label">Mínimo</div><div class="metric-box-val" style="color:var(--accent2);font-size:16px;">${minVal}</div></div>
+          <div class="metric-box"><div class="metric-box-label">Máximo</div><div class="metric-box-val" style="color:var(--accent3);font-size:16px;">${maxVal}</div></div>
+          <div class="metric-box"><div class="metric-box-label">Promedio</div><div class="metric-box-val" style="color:var(--warn);font-size:16px;">${avgVal}</div></div>
+        </div>
+        <div style="position:relative;height:160px;">
+          <canvas id="node-chart-${i}"></canvas>
+        </div>
+      </div>`;
+  }).join('');
+
+  DIAG.nodeChartKeys = sensorKeys;
+  document.getElementById('object-modal').classList.add('open');
+  sensorKeys.forEach((sk, i) => setTimeout(() => renderSensorChart(sk, 'node-chart-' + i), 50));
+}
+
+/* ══════════════════════════════════════════════════════
+   MODAL: Sensor Detail (from anywhere)
+══════════════════════════════════════════════════════ */
+function openSensorModal(sensorKey) {
+  const d = STATE.liveData[sensorKey] || {};
+  const label = sensorKey.split('/').pop();
+  const val = d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : '—');
+  const unit = d.unidad || (d.rpm !== undefined ? 'rpm' : '');
+
+  document.getElementById('modal-title').textContent = label;
+  document.getElementById('modal-sub').textContent = sensorKey;
+
+  const hist = STATE.history[sensorKey] || [];
+  const lastN = hist.slice(-1)[0] || {};
+  const minVal = hist.length ? Math.min(...hist.map(p=>p.val)).toFixed(2) : '—';
+  const maxVal = hist.length ? Math.max(...hist.map(p=>p.val)).toFixed(2) : '—';
+  const avgVal = hist.length ? (hist.reduce((a,b)=>a+b.val,0)/hist.length).toFixed(2) : '—';
+
+  document.getElementById('modal-content').innerHTML = `
+    <div class="metric-grid">
+      <div class="metric-box"><div class="metric-box-label">Actual</div><div class="metric-box-val">${val}<span class="metric-box-unit">${unit}</span></div></div>
+      <div class="metric-box"><div class="metric-box-label">Mínimo</div><div class="metric-box-val" style="color:var(--accent2);">${minVal}</div></div>
+      <div class="metric-box"><div class="metric-box-label">Máximo</div><div class="metric-box-val" style="color:var(--accent3);">${maxVal}</div></div>
+      <div class="metric-box"><div class="metric-box-label">Promedio</div><div class="metric-box-val" style="color:var(--warn);">${avgVal}</div></div>
+    </div>
+    <div class="modal-section-label">Historial · ${STATE.timeRange}</div>
+    <div style="position:relative;height:200px;margin-bottom:16px;">
+      <canvas id="modal-chart"></canvas>
+    </div>
+    <button class="btn-sm" style="width:100%;" onclick="exportSensorCSV('${sensorKey}')">↓ Exportar Sensor CSV</button>
+  `;
+
+  document.getElementById('object-modal').classList.add('open');
+  setTimeout(() => renderSensorChart(sensorKey, 'modal-chart'), 50);
+}
+
+/* ══════════════════════════════════════════════════════
+   HISTORY VIEW
+══════════════════════════════════════════════════════ */
+function renderHistoryView() {
+  const sel = document.getElementById('history-sensor-select');
+  if (!sel) return;
+  sel.innerHTML = '';
+  Object.keys(STATE.liveData).forEach(k => {
+    const btn = document.createElement('button');
+    btn.className = 'ts-btn' + (STATE.selectedSensor === k ? ' active' : '');
+    btn.textContent = k.split('/').pop();
+    btn.onclick = () => {
+      STATE.selectedSensor = k;
+      renderHistoryView();
+    };
+    sel.appendChild(btn);
+  });
+  if (STATE.selectedSensor && STATE.history[STATE.selectedSensor]) {
+    setTimeout(() => renderHistoryChartFull(), 50);
+  }
+}
+
+function renderHistoryChartFull() {
+  const canvas = document.getElementById('history-chart');
+  if (!canvas || !STATE.selectedSensor) return;
+  const hist = STATE.history[STATE.selectedSensor] || [];
+  if (hist.length < 2) return;
+  const labels = hist.map(p => new Date(p.ts * 1000).toLocaleString());
+  const vals = hist.map(p => p.val);
+
+  // Destroy only if sensor changed
+  if (STATE.histChart && STATE.histChart._sensorKey !== STATE.selectedSensor) {
+    STATE.histChart.destroy();
+    STATE.histChart = null;
+  }
+
+  if (STATE.histChart) {
+    STATE.histChart.data.labels = labels;
+    STATE.histChart.data.datasets[0].data = vals;
+    STATE.histChart.update('none');
+    return;
+  }
+
+  STATE.histChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: STATE.selectedSensor,
+        data: vals,
+        borderColor: '#00b4ff',
+        borderWidth: 1.5,
+        pointRadius: 0,
+        fill: true,
+        backgroundColor: 'rgba(0,180,255,0.06)',
+        tension: 0.3,
+      }]
+    },
+    options: {
+      animation: { duration: 300 },
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#545870', font: { size: 9 }, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { ticks: { color: '#545870', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+      }
+    }
+  });
+  STATE.histChart._sensorKey = STATE.selectedSensor;
+}
+
+// Called every tick when history tab is visible — push one point without full rebuild
+function pushHistoryChartPoint(sKey) {
+  if (!STATE.histChart || STATE.histChart._sensorKey !== sKey) {
+    renderHistoryChartFull();
+    return;
+  }
+  const hist = STATE.history[sKey] || [];
+  if (hist.length === 0) return;
+  const last = hist[hist.length - 1];
+  const label = new Date(last.ts * 1000).toLocaleString();
+  STATE.histChart.data.labels.push(label);
+  STATE.histChart.data.datasets[0].data.push(last.val);
+  // Keep at most 500 visible points
+  if (STATE.histChart.data.labels.length > 500) {
+    STATE.histChart.data.labels.shift();
+    STATE.histChart.data.datasets[0].data.shift();
+  }
+  STATE.histChart.update('none');
+}
+
+/* ══════════════════════════════════════════════════════
+   OFFLINE QUEUE
+══════════════════════════════════════════════════════ */
+function renderOfflineView() {
+  const list = document.getElementById('queue-list');
+  const count = document.getElementById('queue-count');
+  if (!list) return;
+  count.textContent = STATE.offlineQueue.length + ' entradas pendientes';
+  list.innerHTML = '';
+  if (STATE.offlineQueue.length === 0) {
+    list.innerHTML = '<div style="font-size:11px;color:var(--text3);text-align:center;padding:20px 0;">Cola vacía ✓</div>';
+    return;
+  }
+  STATE.offlineQueue.slice(-20).reverse().forEach((item, i) => {
+    const el = document.createElement('div');
+    el.className = 'queue-item';
+    el.innerHTML = `
+      <div>
+        <div style="font-size:11px;color:var(--text);">${item.deviceId}</div>
+        <div class="queue-item-time">${new Date(item.ts).toLocaleString()}</div>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="queue-item-count">${Object.keys(item.data||{}).length} campos</span>
+        <button class="btn-sm" onclick="retrySingle(${STATE.offlineQueue.length - 1 - i})">↑</button>
+      </div>
+    `;
+    list.appendChild(el);
+  });
+}
+
+function retryQueue() {
+  if (!STATE.db || STATE.offlineQueue.length === 0) {
+    toast('Sin conexión o cola vacía', 'warn');
+    return;
+  }
+  const pending = [...STATE.offlineQueue];
+  STATE.offlineQueue = [];
+  let success = 0;
+  pending.forEach(item => {
+    const path = (STATE.config.firebase?.basePath || '/dispositivos') + '/' + item.deviceId + '/offline_restored';
+    STATE.db.ref(path).push(item.data).then(() => {
+      success++;
+      if (success === pending.length) {
+        toast(success + ' entradas sincronizadas', 'ok');
+        persistAll();
+        renderOfflineView();
+      }
+    }).catch(() => {
+      STATE.offlineQueue.push(item);
+    });
+  });
+}
+
+function retrySingle(index) {
+  if (!STATE.db) { toast('Sin conexión a Firebase', 'err'); return; }
+  const item = STATE.offlineQueue[index];
+  STATE.db.ref((STATE.config.firebase?.basePath || '/dispositivos') + '/' + item.deviceId + '/offline_restored').push(item.data)
+    .then(() => {
+      STATE.offlineQueue.splice(index, 1);
+      persistAll();
+      renderOfflineView();
+      toast('Entrada sincronizada', 'ok');
+    })
+    .catch(e => toast('Error: ' + e.message, 'err'));
+}
+
+function clearQueue() {
+  if (confirm('¿Eliminar toda la cola offline? Los datos se perderán.')) {
+    STATE.offlineQueue = [];
+    persistAll();
+    renderOfflineView();
+    toast('Cola limpiada', 'warn');
+  }
+}
+
+function manualUpload() {
+  const input = document.getElementById('manual-upload-input');
+  const log = document.getElementById('upload-log');
+  if (!input.files[0]) { toast('Selecciona un archivo', 'warn'); return; }
+  const file = input.files[0];
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      let data;
+      if (file.name.endsWith('.json')) {
+        data = JSON.parse(e.target.result);
+      } else {
+        // CSV parse simple
+        const lines = e.target.result.trim().split('\n');
+        const headers = lines[0].split(',');
+        data = lines.slice(1).map(l => {
+          const vals = l.split(',');
+          const row = {};
+          headers.forEach((h, i) => row[h.trim()] = vals[i]?.trim());
+          return row;
+        });
+      }
+      const item = { ts: Date.now(), deviceId: STATE.selectedDevice || 'manual', data };
+      if (STATE.db) {
+        STATE.db.ref((STATE.config.firebase?.basePath || '/dispositivos') + '/manual_upload').push(item)
+          .then(() => { toast('Subido a Firebase ✓', 'ok'); log.textContent = '✓ ' + (Array.isArray(data) ? data.length : 1) + ' registros subidos'; })
+          .catch(e => { toast('Error Firebase', 'err'); log.textContent = '✗ ' + e.message; });
+      } else {
+        STATE.offlineQueue.push(item);
+        persistAll();
+        toast('Sin conexión — Agregado a cola offline', 'warn');
+        log.textContent = 'En cola offline: ' + (Array.isArray(data) ? data.length : 1) + ' registros';
+        renderOfflineView();
+      }
+    } catch(ex) {
+      log.textContent = '✗ Error: ' + ex.message;
+      toast('Error al procesar archivo', 'err');
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* ══════════════════════════════════════════════════════
+   DRIVE / APPSCRIPT EXPORT
+══════════════════════════════════════════════════════ */
+function saveDriveConfig() {
+  STATE.config.drive = {
+    gasUrl: document.getElementById('cfg-gas-url').value.trim(),
+    folderId: document.getElementById('cfg-drive-folder').value.trim(),
+    exportTime: document.getElementById('cfg-export-time').value,
+  };
+  persistAll();
+  scheduleAutoExport();
+  toast('Configuración Drive guardada', 'ok');
+}
+
+function scheduleAutoExport() {
+  const cfg = STATE.config.drive;
+  if (!cfg || !cfg.exportTime) return;
+  const [h, m] = cfg.exportTime.split(':').map(Number);
+  const now = new Date();
+  let next = new Date();
+  next.setHours(h, m, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1);
+  const ms = next - now;
+  setTimeout(() => {
+    exportTodayCSV();
+    scheduleAutoExport();
+  }, ms);
+}
+
+function exportTodayCSV() {
+  const rows = [['timestamp', 'device', 'sensor', 'valor', 'unidad']];
+  Object.entries(STATE.history).forEach(([key, hist]) => {
+    const [devId, ...sensorParts] = key.split('/');
+    const sensorLabel = sensorParts.join('/');
+    hist.forEach(p => {
+      const d = STATE.liveData[key] || {};
+      rows.push([new Date(p.ts * 1000).toISOString(), devId, sensorLabel, p.val, d.unidad || '']);
+    });
+  });
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const today = new Date().toISOString().split('T')[0];
+  downloadCSV(csv, 'iot-export-' + today + '.csv');
+
+  // Also send to AppScript if configured
+  const cfg = STATE.config.drive;
+  if (cfg && cfg.gasUrl) {
+    fetch(cfg.gasUrl, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'export_csv', date: today, data: csv, folderId: cfg.folderId }),
+      headers: { 'Content-Type': 'text/plain' },
+    }).then(() => toast('Exportado a Google Drive ✓', 'ok'))
+      .catch(() => toast('Error exportando a Drive', 'err'));
+  }
+}
+
+function exportSensorCSV(sKey) {
+  const hist = STATE.history[sKey] || [];
+  const rows = [['timestamp_iso', 'unix_ts', 'valor']];
+  hist.forEach(p => rows.push([new Date(p.ts*1000).toISOString(), p.ts, p.val]));
+  downloadCSV(rows.map(r=>r.join(',')).join('\n'), sKey.replace(/\//g,'_') + '.csv');
+}
+
+function downloadCSV(csv, filename) {
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = filename;
+  a.click();
+  toast('CSV descargado: ' + filename, 'ok');
+}
+
+function loadDriveCSV() {
+  const cfg = STATE.config.drive;
+  const date = document.getElementById('hist-date').value;
+  if (!cfg || !cfg.gasUrl) { toast('Configura AppScript primero', 'warn'); return; }
+  fetch(cfg.gasUrl + '?action=get_csv&date=' + date + '&folderId=' + cfg.folderId)
+    .then(r => r.text())
+    .then(csv => {
+      toast('CSV cargado desde Drive ✓', 'ok');
+      document.getElementById('drive-files-list').textContent = 'Cargado: ' + csv.split('\n').length + ' filas';
+    })
+    .catch(e => toast('Error cargando desde Drive: ' + e.message, 'err'));
+}
+
+function triggerDriveExport() {
+  exportTodayCSV();
+}
+
+/* ══════════════════════════════════════════════════════
+   UI HELPERS
+══════════════════════════════════════════════════════ */
+function switchTab(view, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  ['realtime','history','offline','settings'].forEach(v => {
+    const panel = document.getElementById('view-' + v);
+    if (panel) panel.style.display = v === view ? 'flex' : 'none';
+  });
+  if (view === 'history') renderHistoryView();
+  if (view === 'offline') renderOfflineView();
+  if (view === 'settings') populateSettings();
+  if (view === 'diagram') openDiagram();
+  else closeDiagram();
+}
+
+function populateSettings() {
+  const fb = STATE.config.firebase || {};
+  const dr = STATE.config.drive || {};
+  setValue('cfg-fb-apikey', fb.apiKey);
+  setValue('cfg-fb-dburl', fb.databaseURL);
+  setValue('cfg-fb-authdomain', fb.authDomain);
+  setValue('cfg-fb-projectid', fb.projectId);
+  setValue('cfg-fb-path', fb.basePath);
+  setValue('cfg-gas-url', dr.gasUrl);
+  setValue('cfg-drive-folder', dr.folderId);
+  setValue('cfg-export-time', dr.exportTime || '00:00');
+}
+function setValue(id, val) {
+  const el = document.getElementById(id);
+  if (el && val !== undefined) el.value = val;
+}
+
+function setOnline(online) {
+  const badge = document.getElementById('conn-badge');
+  badge.className = 'status-badge ' + (online ? 'online' : 'offline');
+  badge.textContent = online ? 'EN LÍNEA' : 'SIN CONEXIÓN';
+}
+
+function setTimeRange(range, el) {
+  document.querySelectorAll('.ts-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  STATE.timeRange = range;
+  if (STATE.selectedSensor) openSensorDetail(STATE.selectedSensor);
+}
+
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  if (id === 'object-modal') DIAG.nodeChartKeys = [];
+  if (STATE.rtCharts['modal-chart']) { STATE.rtCharts['modal-chart'].destroy(); delete STATE.rtCharts['modal-chart']; }
+  Object.keys(STATE.rtCharts).filter(k => k.startsWith('node-chart-')).forEach(k => {
+    STATE.rtCharts[k].destroy(); delete STATE.rtCharts[k];
+  });
+}
+
+function openAddDevice() { document.getElementById('add-device-modal').classList.add('open'); }
+function addDevice() {
+  const id = document.getElementById('new-dev-id').value.trim();
+  const name = document.getElementById('new-dev-name').value.trim();
+  const loc = document.getElementById('new-dev-loc').value.trim();
+  if (!id) { toast('ID requerido', 'err'); return; }
+  STATE.devices[id] = { name: name || id, loc, sensors: {}, motors: {} };
+  persistAll();
+  renderDevices();
+  closeModal('add-device-modal');
+  toast('Dispositivo ' + id + ' agregado', 'ok');
+}
+
+function toast(msg, type = 'ok', duration = 3000) {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), duration);
+}
+
+/* ══════════════════════════════════════════════════════
+   CONNECTIVITY DETECTION
+══════════════════════════════════════════════════════ */
+window.addEventListener('online', () => {
+  setOnline(true);
+  toast('Conexión restaurada — reintentando cola offline', 'ok');
+  if (STATE.offlineQueue.length > 0) retryQueue();
+});
+window.addEventListener('offline', () => {
+  setOnline(false);
+  toast('Sin conexión — modo offline activado', 'warn');
+});
+
+/* ══════════════════════════════════════════════════════
+   INIT
+══════════════════════════════════════════════════════ */
+document.addEventListener('DOMContentLoaded', () => {
+  loadPersisted();
+  initThree();
+  renderDevices();
+  renderSensors();
+
+  // Load saved config into form
+  if (STATE.config.firebase) {
+    populateSettings();
+    initFirebase();
+  }
+  if (STATE.config.drive?.exportTime) scheduleAutoExport();
+
+  // Drag-drop GLB on viewport
+  const vp = document.getElementById('viewport');
+  vp.addEventListener('dragover', e => { e.preventDefault(); e.stopPropagation(); });
+  vp.addEventListener('drop', e => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    if (file && (file.name.endsWith('.glb') || file.name.endsWith('.gltf'))) {
+      loadGLB(URL.createObjectURL(file), file.name);
+    } else {
+      toast('Archivo no soportado. Usa .glb o .gltf', 'err');
+    }
+  });
+
+  // Click outside modal closes it
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', e => {
+      if (e.target === overlay) overlay.classList.remove('open');
+    });
+  });
+
+  // Demo hint
+  if (Object.keys(STATE.devices).length === 0) {
+    setTimeout(() => toast('Activa "Simular Datos" y luego "Cargar Escena Demo" para un preview rápido', 'warn', 5000), 1000);
+  } else {
+    toast('Datos locales restaurados ✓', 'ok');
+  }
+
+  // Check online status
+  setOnline(navigator.onLine);
+});
+</script>
+</body>
+</html>
