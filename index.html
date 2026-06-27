@@ -9,11 +9,35 @@
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
-<!-- Three.js + Draco -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/DRACOLoader.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<!-- Three.js 0.162 (módulos) + Draco — expuesto como global THREE para compatibilidad -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+  import * as THREE from 'three';
+  import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+  import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+  import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
+  import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+  // El namespace de un módulo ES es de solo lectura (no extensible): no se le pueden
+  // agregar propiedades. Hacemos una copia mutable y sobre ESA exponemos los loaders.
+  const THREE_GLOBAL = Object.assign({}, THREE);
+  THREE_GLOBAL.GLTFLoader = GLTFLoader;
+  THREE_GLOBAL.DRACOLoader = DRACOLoader;
+  THREE_GLOBAL.KTX2Loader = KTX2Loader;
+  THREE_GLOBAL.MeshoptDecoder = MeshoptDecoder;
+  THREE_GLOBAL.OrbitControls = OrbitControls;
+  window.THREE = THREE_GLOBAL;
+  window.__THREE_READY__ = true;
+  window.dispatchEvent(new Event('three-ready'));
+</script>
 
 <!-- Chart.js -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
@@ -1951,7 +1975,10 @@ function initThree() {
   STATE.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
   STATE.renderer.setPixelRatio(window.devicePixelRatio);
   STATE.renderer.setSize(vp.clientWidth, vp.clientHeight);
-  STATE.renderer.outputEncoding = THREE.sRGBEncoding;
+  // three 0.162: outputEncoding/sRGBEncoding fueron reemplazados por outputColorSpace.
+  if ('outputColorSpace' in STATE.renderer) STATE.renderer.outputColorSpace = THREE.SRGBColorSpace;
+  // Mantener el modelo de iluminación clásico para conservar el brillo original de la escena.
+  if ('useLegacyLights' in STATE.renderer) STATE.renderer.useLegacyLights = true;
   STATE.renderer.shadowMap.enabled = true;
 
   // Lights
@@ -2033,8 +2060,9 @@ function getDisplayVal(d) {
   return '\u2014';
 }
 
-// Reused vectors — allocated once, never inside the animation loop
-var _projVec = new THREE.Vector3();
+// Reused vectors — allocated once, never inside the animation loop.
+// Lazy: THREE se carga como módulo (diferido), así que no se instancia en tiempo de parseo.
+var _projVec = null;
 
 /* Build (or rebuild) all icon DOM elements and cache their anchor points */
 function updateSensorIcons() {
@@ -2106,6 +2134,7 @@ function updateSensorIconPositions() {
   if (w === 0 || h === 0) return;
 
   var icons = STATE._iconEls;
+  if (!_projVec) _projVec = new THREE.Vector3();
   for (var objName in icons) {
     var info = icons[objName];
     var el   = info.el;
@@ -2267,9 +2296,22 @@ function loadGLB(url, name) {
   if (STATE.model) { STATE.scene.remove(STATE.model); STATE.meshes = []; }
 
   const loader = new THREE.GLTFLoader();
+
+  // Draco (geometría comprimida)
   const dracoLoader = new THREE.DRACOLoader();
-  dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/libs/draco/');
+  dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
   loader.setDRACOLoader(dracoLoader);
+
+  // KTX2 / Basis (texturas comprimidas — KHR_texture_basisu)
+  try {
+    const ktx2Loader = new THREE.KTX2Loader()
+      .setTranscoderPath('https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/libs/basis/')
+      .detectSupport(STATE.renderer);
+    loader.setKTX2Loader(ktx2Loader);
+  } catch (e) { console.warn('KTX2Loader no disponible:', e); }
+
+  // Meshopt (EXT_meshopt_compression — modelos optimizados con gltfpack)
+  if (THREE.MeshoptDecoder) loader.setMeshoptDecoder(THREE.MeshoptDecoder);
 
   toast('Cargando modelo…', 'warn');
   loader.load(url, gltf => {
@@ -2281,7 +2323,10 @@ function loadGLB(url, name) {
     STATE.model.traverse(child => {
       if (child.isMesh) {
         STATE.meshes.push(child);
-        child.userData.originalMaterial = child.material.clone();
+        // SolidWorks puede exportar mallas con varios materiales (array): clonar de forma segura.
+        child.userData.originalMaterial = Array.isArray(child.material)
+          ? child.material.map(m => m.clone())
+          : child.material.clone();
       }
     });
 
@@ -2290,7 +2335,11 @@ function loadGLB(url, name) {
     const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
-    const scale = 3 / maxDim;
+    if (!isFinite(maxDim) || maxDim <= 0) {
+      console.warn('[loadGLB] El modelo no tiene geometría con dimensiones válidas. ¿Solo cámaras/luces o vacío?', gltf);
+      toast('El GLB cargó pero no tiene geometría visible', 'warn');
+    }
+    const scale = (isFinite(maxDim) && maxDim > 0) ? (3 / maxDim) : 1;
     STATE.model.scale.multiplyScalar(scale);
     STATE.model.position.sub(center.multiplyScalar(scale));
     STATE.camera.position.set(0, size.y * scale * 0.5, maxDim * scale * 1.5);
@@ -2305,7 +2354,15 @@ function loadGLB(url, name) {
   }, xhr => {
     // progress
   }, err => {
-    toast('Error cargando GLB: ' + err.message, 'err');
+    // Mensaje de error más útil: identifica la causa típica (compresión/extensión sin decodificador)
+    const msg = (err && (err.message || String(err))) || 'desconocido';
+    console.error('[loadGLB] Falló la carga del GLB:', err);
+    let hint = '';
+    if (/Meshopt/i.test(msg)) hint = ' — el GLB usa compresión Meshopt y falta el decodificador';
+    else if (/KTX2|basis/i.test(msg)) hint = ' — el GLB usa texturas KTX2/Basis y falta el transcodificador';
+    else if (/DRACO/i.test(msg)) hint = ' — el GLB usa compresión Draco y falló el decodificador';
+    else if (/Unexpected token|JSON|Unsupported|version/i.test(msg)) hint = ' — archivo corrupto o formato/versión no soportada';
+    toast('Error cargando GLB: ' + msg + hint, 'err', 7000);
     document.getElementById('drop-zone').classList.remove('hidden');
   });
 }
@@ -2365,7 +2422,9 @@ function resetCamera() {
 function toggleWireframe() {
   STATE.wireframe = !STATE.wireframe;
   STATE.meshes.forEach(m => {
-    if (m.material) m.material.wireframe = STATE.wireframe;
+    if (!m.material) return;
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    mats.forEach(mat => { mat.wireframe = STATE.wireframe; });
   });
 }
 
@@ -2381,22 +2440,23 @@ function updateHighlights() {
     // Match by name OR by stored meshUUID
     const link = STATE.objectLinks[name] ||
       Object.values(STATE.objectLinks).find(function(l) { return l.meshUUID === mesh.uuid; });
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     if (link && STATE.highlightSensors) {
       const d = STATE.liveData[link.sensorKey];
-      if (d) {
-        // Color by sensor type / status
-        const isMotor = link.sensorKey.includes('motor');
-        mesh.material.emissive = new THREE.Color(isMotor ? 0xff6b35 : 0x00e5a0);
-        mesh.material.emissiveIntensity = 0.3;
-      } else {
-        mesh.material.emissive = new THREE.Color(0xffb800);
-        mesh.material.emissiveIntensity = 0.15;
-      }
+      const isMotor = link.sensorKey.includes('motor');
+      const color = d ? new THREE.Color(isMotor ? 0xff6b35 : 0x00e5a0) : new THREE.Color(0xffb800);
+      const inten = d ? 0.3 : 0.15;
+      mats.forEach(mat => {
+        if (!mat || !mat.emissive) return;
+        mat.emissive = color.clone();
+        mat.emissiveIntensity = inten;
+      });
     } else {
-      if (mesh.material.emissive) {
-        mesh.material.emissive = new THREE.Color(0x000000);
-        mesh.material.emissiveIntensity = 0;
-      }
+      mats.forEach(mat => {
+        if (!mat || !mat.emissive) return;
+        mat.emissive = new THREE.Color(0x000000);
+        mat.emissiveIntensity = 0;
+      });
     }
   });
 }
@@ -4092,7 +4152,13 @@ window.addEventListener('offline', () => {
 ══════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
   loadPersisted();
-  initThree();
+  // Three.js se carga como módulo (diferido). Normalmente ya está listo aquí,
+  // pero si el CDN aún no respondió, esperamos el evento 'three-ready'.
+  if (window.__THREE_READY__ && window.THREE) {
+    initThree();
+  } else {
+    window.addEventListener('three-ready', initThree, { once: true });
+  }
   renderDevices();
   renderSensors();
 
