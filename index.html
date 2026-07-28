@@ -1052,6 +1052,8 @@
     <div class="sidebar-section" style="flex:1">
       <div class="sidebar-label">Sensores Activos</div>
       <div id="sensors-list"></div>
+      <button class="btn-sm accent" style="width:100%;margin-top:8px;" onclick="openChannelConfig()">⚙ Configurar Canales / Sensores</button>
+      <button class="btn-sm" style="width:100%;margin-top:6px;" onclick="openActionsPanel()">🎛 Enviar Comandos</button>
     </div>
   </aside>
 
@@ -1300,6 +1302,35 @@
 </div><!-- /diagram-overlay -->
 
 <!-- ─── MODAL: Agregar Máquina ─── -->
+<!-- ─── MODAL: Enviar Comandos ─── -->
+<div class="modal-overlay" id="actions-modal">
+  <div class="modal" style="max-width:840px;width:94vw;max-height:88vh;overflow-y:auto;">
+    <button class="modal-close" onclick="closeModal('actions-modal')">✕</button>
+    <div class="modal-title">Enviar Comandos al Dispositivo</div>
+    <div class="modal-sub">Cada comando se escribe en <code>pending_action</code>; el equipo lo ejecuta y responde en <code>last_action_result</code> (se muestra abajo).</div>
+    <div id="actions-device-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;"></div>
+    <div id="actions-list"></div>
+    <div style="margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);">
+      <div style="font-size:10px;color:var(--text3);margin-bottom:4px;">Último resultado del equipo</div>
+      <div id="actions-result" style="font-size:12px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── MODAL: Configuración de Canales / Sensores ─── -->
+<div class="modal-overlay" id="channel-config-modal">
+  <div class="modal" style="max-width:860px;width:94vw;max-height:88vh;overflow-y:auto;">
+    <button class="modal-close" onclick="closeModal('channel-config-modal')">✕</button>
+    <div class="modal-title">Configurar Canales / Sensores</div>
+    <div class="modal-sub">El dispositivo envía sólo la corriente 4-20 mA cruda por canal. Aquí asignás a cada canal su tipo de sensor y la fórmula que convierte esos mA en unidades físicas. Se guarda en Firebase (<code>sensorDefs/</code>) y el equipo lo ignora.</div>
+    <div id="chcfg-device-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;"></div>
+    <div id="chcfg-list"></div>
+    <div id="chcfg-footer" style="display:none;margin-top:14px;text-align:right;">
+      <button class="btn-sm accent" onclick="saveAllChannelDefs()">Guardar todos</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="add-machine-modal">
   <div class="modal">
     <button class="modal-close" onclick="closeModal('add-machine-modal')">✕</button>
@@ -1531,6 +1562,10 @@ const STATE = {
   devices: {},       // id -> {name, loc, sensors, motors}
   liveData: {},      // id -> current sensor values
   history: {},       // sensorKey -> [{ts, val}]
+  sensorDefs: {},    // 'devId/chanKey' -> {name,type,unit,rangeMin,rangeMax,formula,presetId}
+  channels: {},      // devId -> mapa de hardware {chanKey:{index,tcaAddr,tcaChannel,adsAddr,adsChannel}}
+  chcfgDevice: null, // dispositivo seleccionado en el panel de configuración de canales
+  actionsDevice: null, // dispositivo seleccionado en el panel de comandos
   offlineQueue: [],  // [{ts, deviceId, data}]
   selectedDevice: null,
   selectedSensor: null,
@@ -1580,6 +1615,8 @@ function persistAll() {
   saveLocal('diagCapsules', STATE.diagCapsules);
   saveLocal('objectLinks', STATE.objectLinks);
   saveLocal('offlineQueue', STATE.offlineQueue);
+  saveLocal('sensorDefs', STATE.sensorDefs);
+  saveLocal('channels', STATE.channels);
 }
 
 function loadPersisted() {
@@ -1591,6 +1628,8 @@ function loadPersisted() {
   STATE.diagCapsules = loadLocal('diagCapsules', []);
   STATE.objectLinks = loadLocal('objectLinks', {});
   STATE.offlineQueue = loadLocal('offlineQueue', []);
+  STATE.sensorDefs = loadLocal('sensorDefs', {});
+  STATE.channels = loadLocal('channels', {});
 }
 
 /* ══════════════════════════════════════════════════════
@@ -1661,6 +1700,27 @@ function processRTDBData(data) {
         motors: {}
       };
     }
+    // Frescura: si el ts más reciente del equipo avanzó, marcamos "ahora"
+    // (reloj del navegador) como última recepción → base para online/offline.
+    const _ft = deviceFreshTs(devData);
+    if (_ft > (STATE.devices[devId]._freshTs || 0)) {
+      STATE.devices[devId]._freshTs = _ft;
+      STATE.devices[devId].lastUpdate = Date.now();
+    } else if (!STATE.devices[devId].lastUpdate) {
+      STATE.devices[devId].lastUpdate = Date.now();
+    }
+    // Meta, resultado de la última acción y archivos SD (para el panel de comandos)
+    if (devData.meta) {
+      STATE.devices[devId].meta = devData.meta;
+      STATE.devices[devId].name = devData.meta.nombre || STATE.devices[devId].name;
+      STATE.devices[devId].loc = devData.meta.ubicacion || STATE.devices[devId].loc;
+    }
+    if (devData.sdFiles) STATE.devices[devId].sdFiles = devData.sdFiles;
+    if (devData.last_action_result) {
+      STATE.devices[devId].lastResult = devData.last_action_result;
+      const am = document.getElementById('actions-modal');
+      if (am && am.classList.contains('open')) updateActionResult();
+    }
     // Merge sensors
     if (devData.sensores) {
       Object.entries(devData.sensores).forEach(([sKey, sVal]) => {
@@ -1679,6 +1739,45 @@ function processRTDBData(data) {
         STATE.liveData[fullKey] = mVal;
       });
     }
+
+    // ── Mapa de hardware descubierto por el firmware ────────────────
+    if (devData.hardware) {
+      STATE.channels[devId] = devData.hardware;
+    }
+    // ── Definiciones de sensor (Firebase es la fuente de verdad) ────
+    if (devData.sensorDefs) {
+      Object.entries(devData.sensorDefs).forEach(([chanKey, def]) => {
+        STATE.sensorDefs[devId + '/' + chanKey] = def;
+      });
+    }
+    // ── Canales con datos CRUDOS 4-20 mA → convertir aquí ───────────
+    if (devData.canales) {
+      Object.entries(devData.canales).forEach(([chanKey, c]) => {
+        const fullKey = devId + '/' + chanKey;
+        const def = STATE.sensorDefs[fullKey];
+        const mA = (typeof c.mA === 'number') ? c.mA : Number(c.mA);
+        const falla = !!c.falla;
+        let valor, unidad;
+        if (falla) {
+          valor = NaN;
+          unidad = def ? (def.unit || '') : '';
+        } else {
+          valor = convertReading(def, mA, c.raw);
+          if (typeof valor === 'number' && isFinite(valor)) valor = Math.round(valor * 1000) / 1000;
+          unidad = def ? (def.unit || '') : 'mA';
+        }
+        STATE.liveData[fullKey] = {
+          valor, unidad, mA, raw: c.raw, falla,
+          ts: c.ts || Date.now() / 1000,
+          name: (def && def.name) || chanKey
+        };
+        if (!falla && typeof valor === 'number' && isFinite(valor)) {
+          if (!STATE.history[fullKey]) STATE.history[fullKey] = [];
+          STATE.history[fullKey].push({ ts: c.ts || Date.now() / 1000, val: valor });
+          if (STATE.history[fullKey].length > 500) STATE.history[fullKey].shift();
+        }
+      });
+    }
     // Process offline queue from device
     if (devData.offline_queue) {
       // Already handled by device; just display
@@ -1689,6 +1788,10 @@ function processRTDBData(data) {
   renderSensors();
   updateRTPanel();
   updateSensorIconValues();
+  if (document.getElementById('channel-config-modal') &&
+      document.getElementById('channel-config-modal').classList.contains('open')) {
+    updateChannelConfigLive();
+  }
   if (document.getElementById('diagram-overlay').classList.contains('active')) {
     renderDiagram();
   }
@@ -1765,19 +1868,49 @@ function simulateTick() {
 /* ══════════════════════════════════════════════════════
    RENDER SIDEBAR LEFT
 ══════════════════════════════════════════════════════ */
+// Timestamp más reciente que reporta el dispositivo (heartbeat o canales)
+function deviceFreshTs(devData) {
+  let t = 0;
+  if (devData.meta && typeof devData.meta.ts === 'number') t = devData.meta.ts;
+  if (devData.canales) {
+    for (const k in devData.canales) {
+      const c = devData.canales[k];
+      if (c && typeof c.ts === 'number' && c.ts > t) t = c.ts;
+    }
+  }
+  return t;
+}
+
+// Un dispositivo está online si recibimos una actualización suya hace poco.
+// El umbral se deriva del intervalo de publicación (piso de 90 s). Si el
+// firmware usa onDisconnect y pone meta.online=false, se respeta al instante.
+function isDeviceOnline(devId) {
+  const dev = STATE.devices[devId];
+  if (!dev || !dev.lastUpdate) return false;
+  const m = dev.meta || {};
+  if (m.online === false) return false;
+  const threshold = Math.max((Number(m.publishMs) || 15000) * 3, 90000);
+  return (Date.now() - dev.lastUpdate) < threshold;
+}
+
 function renderDevices() {
   const list = document.getElementById('devices-list');
   list.innerHTML = '';
   Object.entries(STATE.devices).forEach(([id, dev]) => {
     const card = document.createElement('div');
     card.className = 'device-card' + (STATE.selectedDevice === id ? ' active' : '');
-    const isOnline = STATE.simulating && id === 'demo_esp32' || (STATE.liveData && Object.keys(STATE.liveData).some(k => k.startsWith(id)));
+    const isOnline = (STATE.simulating && id === 'demo_esp32') || isDeviceOnline(id);
+    let seen = '';
+    if (!isOnline && dev.lastUpdate) {
+      const mins = Math.floor((Date.now() - dev.lastUpdate) / 60000);
+      seen = ' · visto hace ' + (mins < 1 ? '<1' : mins) + ' min';
+    }
     card.innerHTML = `
       <div class="device-name">
         <span>${dev.name}</span>
         <span class="device-status-dot ${isOnline ? 'dot-ok' : 'dot-err'}"></span>
       </div>
-      <div class="device-id">${id} · ${dev.loc || '—'}</div>
+      <div class="device-id">${id} · ${dev.loc || '—'}${seen}</div>
     `;
     card.onclick = () => selectDevice(id);
     list.appendChild(card);
@@ -1811,9 +1944,15 @@ function appendSensorRow(container, key, d) {
   const row = document.createElement('div');
   const isLinked = Object.values(STATE.objectLinks).some(l => l.sensorKey === key);
   row.className = 'sensor-row' + (isLinked ? ' linked' : '');
-  const label = key.split('/').pop();
-  const val = d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : (d.estado !== undefined ? (d.estado ? 'ON':'OFF') : '—'));
-  const unit = d.unidad || (d.rpm !== undefined ? 'rpm' : '');
+  const def = STATE.sensorDefs[key];
+  const label = (def && def.name) || d.name || key.split('/').pop();
+  let val, unit;
+  if (d.falla) {
+    val = 'FALLA'; unit = '';
+  } else {
+    val = d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : (d.estado !== undefined ? (d.estado ? 'ON':'OFF') : '—'));
+    unit = d.unidad || (d.rpm !== undefined ? 'rpm' : '');
+  }
   row.innerHTML = `
     <span class="sensor-name">${label}</span>
     <span><span class="sensor-val">${val}</span><span class="sensor-unit">${unit}</span></span>
@@ -1905,6 +2044,50 @@ function getChartPoints(sensorKey) {
   return pts;
 }
 
+// Devuelve {min,max} de alarma para un sensor, o null si no hay ninguno.
+function sensorLimits(sensorKey) {
+  const def = STATE.sensorDefs[sensorKey];
+  if (!def) return null;
+  const min = (typeof def.limitMin === 'number' && isFinite(def.limitMin)) ? def.limitMin : null;
+  const max = (typeof def.limitMax === 'number' && isFinite(def.limitMax)) ? def.limitMax : null;
+  if (min == null && max == null) return null;
+  return { min, max };
+}
+
+// Plugin Chart.js: líneas horizontales punteadas en los límites de alarma.
+const limitLinesPlugin = {
+  id: 'limitLines',
+  afterDatasetsDraw(chart) {
+    const lim = chart.$limits;
+    if (!lim) return;
+    const y = chart.scales.y, area = chart.chartArea, ctx = chart.ctx;
+    if (!y || !area) return;
+    const drawLine = (val, label) => {
+      if (val == null) return;
+      const py = y.getPixelForValue(val);
+      if (py < area.top - 0.5 || py > area.bottom + 0.5) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.setLineDash([5, 4]);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(239,68,68,0.85)';
+      ctx.moveTo(area.left, py);
+      ctx.lineTo(area.right, py);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(239,68,68,0.95)';
+      ctx.font = '9px sans-serif';
+      ctx.textAlign = 'right';
+      const above = py > area.top + 10;
+      ctx.textBaseline = above ? 'bottom' : 'top';
+      ctx.fillText(label, area.right - 3, py + (above ? -2 : 2));
+      ctx.restore();
+    };
+    drawLine(lim.max, 'Máx ' + lim.max);
+    drawLine(lim.min, 'Mín ' + lim.min);
+  }
+};
+
 function renderSensorChart(sensorKey, canvasId) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
@@ -1917,6 +2100,9 @@ function renderSensorChart(sensorKey, canvasId) {
     return STATE.timeRange === '7d' ? d.toLocaleDateString() : d.toLocaleTimeString();
   });
   const vals = pts.map(p => p.val);
+  const limits = sensorLimits(sensorKey);
+  const sMin = limits && limits.min != null ? limits.min : undefined;
+  const sMax = limits && limits.max != null ? limits.max : undefined;
 
   const existing = STATE.rtCharts[canvasId];
 
@@ -1924,6 +2110,11 @@ function renderSensorChart(sensorKey, canvasId) {
   if (existing && existing._sensorKey === sensorKey) {
     existing.data.labels = labels;
     existing.data.datasets[0].data = vals;
+    existing.$limits = limits;
+    if (existing.options.scales && existing.options.scales.y) {
+      existing.options.scales.y.suggestedMin = sMin;
+      existing.options.scales.y.suggestedMax = sMax;
+    }
     existing.update('none'); // 'none' = skip animation for live updates
     return;
   }
@@ -1932,6 +2123,7 @@ function renderSensorChart(sensorKey, canvasId) {
   if (existing) existing.destroy();
   const chart = new Chart(canvas, {
     type: 'line',
+    plugins: [limitLinesPlugin],
     data: {
       labels,
       datasets: [{
@@ -1951,11 +2143,12 @@ function renderSensorChart(sensorKey, canvasId) {
       plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
       scales: {
         x: { ticks: { color: '#545870', font: { size: 9 }, maxTicksLimit: 6 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-        y: { ticks: { color: '#545870', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+        y: { suggestedMin: sMin, suggestedMax: sMax, ticks: { color: '#545870', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
       }
     }
   });
   chart._sensorKey = sensorKey;
+  chart.$limits = limits;
   STATE.rtCharts[canvasId] = chart;
 }
 
@@ -3788,6 +3981,9 @@ function renderHistoryChartFull() {
   if (hist.length < 2) return;
   const labels = hist.map(p => new Date(p.ts * 1000).toLocaleString());
   const vals = hist.map(p => p.val);
+  const limits = sensorLimits(STATE.selectedSensor);
+  const sMin = limits && limits.min != null ? limits.min : undefined;
+  const sMax = limits && limits.max != null ? limits.max : undefined;
 
   // Destroy only if sensor changed
   if (STATE.histChart && STATE.histChart._sensorKey !== STATE.selectedSensor) {
@@ -3798,12 +3994,18 @@ function renderHistoryChartFull() {
   if (STATE.histChart) {
     STATE.histChart.data.labels = labels;
     STATE.histChart.data.datasets[0].data = vals;
+    STATE.histChart.$limits = limits;
+    if (STATE.histChart.options.scales && STATE.histChart.options.scales.y) {
+      STATE.histChart.options.scales.y.suggestedMin = sMin;
+      STATE.histChart.options.scales.y.suggestedMax = sMax;
+    }
     STATE.histChart.update('none');
     return;
   }
 
   STATE.histChart = new Chart(canvas, {
     type: 'line',
+    plugins: [limitLinesPlugin],
     data: {
       labels,
       datasets: [{
@@ -3824,11 +4026,12 @@ function renderHistoryChartFull() {
       plugins: { legend: { display: false } },
       scales: {
         x: { ticks: { color: '#545870', font: { size: 9 }, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-        y: { ticks: { color: '#545870', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+        y: { suggestedMin: sMin, suggestedMax: sMax, ticks: { color: '#545870', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
       }
     }
   });
   STATE.histChart._sensorKey = STATE.selectedSensor;
+  STATE.histChart.$limits = limits;
 }
 
 // Called every tick when history tab is visible — push one point without full rebuild
@@ -4150,6 +4353,430 @@ window.addEventListener('offline', () => {
 /* ══════════════════════════════════════════════════════
    INIT
 ══════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════
+   CANALES 4-20 mA → CONVERSIÓN A UNIDADES FÍSICAS
+   El dispositivo sube mA crudo; la conversión ocurre aquí.
+══════════════════════════════════════════════════════ */
+
+// Presets: cada uno define un tipo y valores por defecto.
+// type 'linear' → valor = min + (mA-4)/16*(max-min)
+// type 'raw_ma' → valor = mA
+// type 'custom' → fórmula JS en función de mA (y raw)
+const SENSOR_PRESETS = [
+  { id:'raw_ma',     label:'Directo (mA crudo)',       type:'raw_ma', unit:'mA',   min:4, max:20 },
+  { id:'lin_generic',label:'Lineal 4-20 mA (0-100)',   type:'linear', unit:'%',    min:0, max:100 },
+  { id:'pres_10',    label:'Presión 0-10 bar',         type:'linear', unit:'bar',  min:0, max:10 },
+  { id:'pres_16',    label:'Presión 0-16 bar',         type:'linear', unit:'bar',  min:0, max:16 },
+  { id:'pres_25',    label:'Presión 0-25 bar',         type:'linear', unit:'bar',  min:0, max:25 },
+  { id:'nivel_100',  label:'Nivel 0-100 %',            type:'linear', unit:'%',    min:0, max:100 },
+  { id:'temp_100',   label:'Temperatura 0-100 °C',     type:'linear', unit:'°C',   min:0, max:100 },
+  { id:'temp_150',   label:'Temperatura 0-150 °C',     type:'linear', unit:'°C',   min:0, max:150 },
+  { id:'caudal_100', label:'Caudal 0-100 m³/h',        type:'linear', unit:'m³/h', min:0, max:100 },
+  { id:'corr_100',   label:'Corriente 0-100 A',        type:'linear', unit:'A',    min:0, max:100 },
+  { id:'volt_500',   label:'Voltaje 0-500 V',          type:'linear', unit:'V',    min:0, max:500 },
+  { id:'custom',     label:'Fórmula personalizada',    type:'custom', unit:'',     min:0, max:100, formula:'(mA - 4) / 16 * 100' },
+];
+const DEFAULT_DEF = { name:'', type:'raw_ma', unit:'mA', rangeMin:4, rangeMax:20, formula:'', presetId:'raw_ma' };
+
+// Evaluador seguro-ish de fórmula personalizada. Expone mA, raw y las
+// funciones matemáticas comunes sin necesidad de prefijo Math.
+// (Plataforma de un solo usuario/admin; no es entrada de terceros.)
+function evalFormula(expr, mA, raw) {
+  if (!expr) return NaN;
+  try {
+    const f = new Function('mA','raw','sin','cos','tan','sqrt','pow','log','log10','exp','abs','min','max','round','floor','ceil','PI','E',
+      'return (' + expr + ');');
+    const v = f(mA, raw, Math.sin,Math.cos,Math.tan,Math.sqrt,Math.pow,Math.log,Math.log10,Math.exp,Math.abs,Math.min,Math.max,Math.round,Math.floor,Math.ceil,Math.PI,Math.E);
+    return (typeof v === 'number' && isFinite(v)) ? v : NaN;
+  } catch(e) { return NaN; }
+}
+
+function convertReading(def, mA, raw) {
+  if (typeof mA !== 'number' || !isFinite(mA)) return NaN;
+  if (!def) return mA;                       // sin definición → mostrar mA
+  if (def.type === 'raw_ma') return mA;
+  if (def.type === 'custom') return evalFormula(def.formula, mA, raw);
+  // linear (por defecto)
+  const lo = Number(def.rangeMin != null ? def.rangeMin : 0);
+  const hi = Number(def.rangeMax != null ? def.rangeMax : 100);
+  return lo + (mA - 4) / (20 - 4) * (hi - lo);
+}
+
+/* ── Panel de configuración ─────────────────────────────── */
+let CHCFG_ROWS = {};   // safeId -> {devId, chanKey, fullKey}
+
+function chEsc(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+function chSafeId(fullKey) { return ('chc_' + fullKey).replace(/[^\w]/g,'_'); }
+
+function devicesWithChannels() {
+  const set = new Set();
+  Object.keys(STATE.channels).forEach(d => set.add(d));
+  Object.keys(STATE.liveData).forEach(fk => {
+    const ld = STATE.liveData[fk];
+    if (ld && ld.mA !== undefined) set.add(fk.split('/')[0]);
+  });
+  return Array.from(set).sort();
+}
+
+function deviceChannelKeys(devId) {
+  const set = new Set();
+  const hw = STATE.channels[devId];
+  if (hw) Object.keys(hw).forEach(k => set.add(k));
+  Object.keys(STATE.liveData).forEach(fk => {
+    const ld = STATE.liveData[fk];
+    if (fk.startsWith(devId + '/') && ld && ld.mA !== undefined) {
+      set.add(fk.slice(devId.length + 1));
+    }
+  });
+  return Array.from(set).sort();
+}
+
+function openChannelConfig() {
+  const devs = devicesWithChannels();
+  STATE.chcfgDevice = (STATE.chcfgDevice && devs.includes(STATE.chcfgDevice))
+    ? STATE.chcfgDevice
+    : (STATE.selectedDevice && devs.includes(STATE.selectedDevice) ? STATE.selectedDevice : devs[0] || null);
+  renderChannelConfigBar();
+  renderChannelConfigList();
+  openModal('channel-config-modal');
+}
+
+function renderChannelConfigBar() {
+  const bar = document.getElementById('chcfg-device-bar');
+  const devs = devicesWithChannels();
+  if (devs.length <= 1) { bar.innerHTML = ''; return; }
+  bar.innerHTML = devs.map(d => {
+    const name = (STATE.devices[d] && STATE.devices[d].name) || d;
+    const active = d === STATE.chcfgDevice;
+    return `<button class="btn-sm${active ? ' accent' : ''}" onclick="STATE.chcfgDevice='${chEsc(d)}';renderChannelConfigBar();renderChannelConfigList();">${chEsc(name)}</button>`;
+  }).join('');
+}
+
+function renderChannelConfigList() {
+  const cont = document.getElementById('chcfg-list');
+  const footer = document.getElementById('chcfg-footer');
+  CHCFG_ROWS = {};
+  const devId = STATE.chcfgDevice;
+  if (!devId) {
+    cont.innerHTML = `<div style="color:var(--text3);padding:20px;text-align:center;font-size:12px;">No hay canales. Verificá que el dispositivo esté publicando <code>hardware/</code> y <code>canales/</code> en Firebase.</div>`;
+    footer.style.display = 'none';
+    return;
+  }
+  const keys = deviceChannelKeys(devId);
+  if (!keys.length) {
+    cont.innerHTML = `<div style="color:var(--text3);padding:20px;text-align:center;font-size:12px;">El dispositivo <b>${chEsc(devId)}</b> aún no reporta canales.</div>`;
+    footer.style.display = 'none';
+    return;
+  }
+
+  const inputStyle = 'padding:5px 7px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);font-size:11px;width:100%;';
+  const presetOptions = (sel) => SENSOR_PRESETS.map(p =>
+    `<option value="${p.id}"${p.id === sel ? ' selected' : ''}>${chEsc(p.label)}</option>`).join('');
+
+  cont.innerHTML = keys.map(chanKey => {
+    const fullKey = devId + '/' + chanKey;
+    const safe = chSafeId(fullKey);
+    CHCFG_ROWS[safe] = { devId, chanKey, fullKey };
+
+    const def = STATE.sensorDefs[fullKey] || Object.assign({}, DEFAULT_DEF);
+    const live = STATE.liveData[fullKey] || {};
+    const hw = (STATE.channels[devId] && STATE.channels[devId][chanKey]) || {};
+    const hasPin = typeof hw.pin === 'number' && hw.pin > 0;
+    const pinBadge = hasPin
+      ? `<span style="display:inline-block;background:var(--accent,#3b82f6);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;margin-right:6px;">Pin ${hw.pin}</span>`
+      : '';
+    const addr = hw.adsAddr
+      ? (hw.tcaChannel === -1 || hw.tcaChannel == null
+          ? `Bus directo · ADS ${hw.adsAddr} ch${hw.adsChannel}`
+          : `TCA ${hw.tcaAddr} ch${hw.tcaChannel} · ADS ${hw.adsAddr} ch${hw.adsChannel}`)
+      : 'sin mapa de HW';
+    const liveTxt = live.falla ? '⚠ FALLA'
+      : (typeof live.mA === 'number' ? live.mA.toFixed(2) + ' mA' : '— mA');
+
+    return `
+    <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--bg2);">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px;">
+        <div style="font-size:12px;color:var(--text);font-weight:600;">${pinBadge}${chEsc(def.name || chanKey)}</div>
+        <div style="font-size:10px;color:var(--text3);">${chEsc(chanKey)} · ${chEsc(addr)}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.4fr 1.4fr 0.8fr;gap:8px;align-items:end;">
+        <div class="field-group" style="margin:0;">
+          <label style="font-size:10px;">Nombre</label>
+          <input id="${safe}_name" type="text" style="${inputStyle}" value="${chEsc(def.name)}" placeholder="Presión línea A">
+        </div>
+        <div class="field-group" style="margin:0;">
+          <label style="font-size:10px;">Tipo de sensor / preset</label>
+          <select id="${safe}_preset" style="${inputStyle}" onchange="chcfgApplyPreset('${safe}')">${presetOptions(def.presetId || 'raw_ma')}</select>
+        </div>
+        <div class="field-group" style="margin:0;">
+          <label style="font-size:10px;">Unidad</label>
+          <input id="${safe}_unit" type="text" style="${inputStyle}" value="${chEsc(def.unit)}" placeholder="bar">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:0.8fr 0.8fr 2.2fr;gap:8px;align-items:end;margin-top:8px;">
+        <div class="field-group" style="margin:0;">
+          <label style="font-size:10px;">Valor a 4 mA (mín)</label>
+          <input id="${safe}_min" type="number" step="any" style="${inputStyle}" value="${chEsc(def.rangeMin)}">
+        </div>
+        <div class="field-group" style="margin:0;">
+          <label style="font-size:10px;">Valor a 20 mA (máx)</label>
+          <input id="${safe}_max" type="number" step="any" style="${inputStyle}" value="${chEsc(def.rangeMax)}">
+        </div>
+        <div class="field-group" style="margin:0;">
+          <label style="font-size:10px;">Fórmula personalizada (usa <code>mA</code>, <code>raw</code>)</label>
+          <input id="${safe}_formula" type="text" style="${inputStyle}" value="${chEsc(def.formula)}" placeholder="(mA - 4) / 16 * 100">
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:0.8fr 0.8fr 2.2fr;gap:8px;align-items:end;margin-top:8px;">
+        <div class="field-group" style="margin:0;">
+          <label style="font-size:10px;">Límite inferior (alarma)</label>
+          <input id="${safe}_lmin" type="number" step="any" style="${inputStyle}" value="${def.limitMin != null ? chEsc(def.limitMin) : ''}" placeholder="opcional">
+        </div>
+        <div class="field-group" style="margin:0;">
+          <label style="font-size:10px;">Límite superior (alarma)</label>
+          <input id="${safe}_lmax" type="number" step="any" style="${inputStyle}" value="${def.limitMax != null ? chEsc(def.limitMax) : ''}" placeholder="opcional">
+        </div>
+        <div class="field-group" style="margin:0;">
+          <label style="font-size:10px;color:var(--text3);">Se dibujan como líneas punteadas en el gráfico. Dejá vacío si no aplica.</label>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+        <span style="font-size:11px;color:var(--text2);">En vivo: <b id="${safe}_live">${chEsc(liveTxt)}</b></span>
+        <button class="btn-sm accent" onclick="saveChannelDef('${safe}')">Guardar</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  footer.style.display = keys.length > 1 ? 'block' : 'none';
+}
+
+// Al elegir un preset, rellena unidad/min/max/fórmula con sus defaults
+function chcfgApplyPreset(safe) {
+  const presetId = document.getElementById(safe + '_preset').value;
+  const p = SENSOR_PRESETS.find(x => x.id === presetId);
+  if (!p) return;
+  document.getElementById(safe + '_unit').value = p.unit;
+  document.getElementById(safe + '_min').value = p.min;
+  document.getElementById(safe + '_max').value = p.max;
+  if (p.type === 'custom') {
+    const ff = document.getElementById(safe + '_formula');
+    if (!ff.value.trim()) ff.value = p.formula || '';
+  }
+}
+
+function readCardDef(safe) {
+  const presetId = document.getElementById(safe + '_preset').value;
+  const p = SENSOR_PRESETS.find(x => x.id === presetId) || DEFAULT_DEF;
+  const numOrNull = (id) => {
+    const raw = document.getElementById(id).value.trim();
+    if (raw === '') return null;
+    const v = parseFloat(raw);
+    return isFinite(v) ? v : null;
+  };
+  return {
+    name:      document.getElementById(safe + '_name').value.trim(),
+    presetId:  presetId,
+    type:      p.type,
+    unit:      document.getElementById(safe + '_unit').value.trim(),
+    rangeMin:  parseFloat(document.getElementById(safe + '_min').value),
+    rangeMax:  parseFloat(document.getElementById(safe + '_max').value),
+    formula:   document.getElementById(safe + '_formula').value.trim(),
+    limitMin:  numOrNull(safe + '_lmin'),   // línea punteada inferior (o null)
+    limitMax:  numOrNull(safe + '_lmax')    // línea punteada superior (o null)
+  };
+}
+
+function persistChannelDef(devId, chanKey, fullKey, def) {
+  // Sanear NaN de min/max para no romper Firebase
+  if (!isFinite(def.rangeMin)) def.rangeMin = 0;
+  if (!isFinite(def.rangeMax)) def.rangeMax = 100;
+  STATE.sensorDefs[fullKey] = def;
+  saveLocal('sensorDefs', STATE.sensorDefs);
+
+  // Recalcular el valor mostrado inmediatamente con la nueva definición
+  const live = STATE.liveData[fullKey];
+  if (live && !live.falla && typeof live.mA === 'number') {
+    let v = convertReading(def, live.mA, live.raw);
+    if (typeof v === 'number' && isFinite(v)) v = Math.round(v * 1000) / 1000;
+    live.valor = v;
+    live.unidad = def.unit || '';
+    live.name = def.name || chanKey;
+  }
+
+  if (STATE.db) {
+    const basePath = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
+    return STATE.db.ref(basePath + '/' + devId + '/sensorDefs/' + chanKey).set(def);
+  }
+  return Promise.resolve();
+}
+
+function saveChannelDef(safe) {
+  const row = CHCFG_ROWS[safe];
+  if (!row) return;
+  const def = readCardDef(safe);
+  persistChannelDef(row.devId, row.chanKey, row.fullKey, def)
+    .then(() => toast('Canal "' + (def.name || row.chanKey) + '" guardado', 'ok'))
+    .catch(e => toast('Error al guardar: ' + e.message, 'err'));
+  renderSensors();
+}
+
+function saveAllChannelDefs() {
+  const proms = [];
+  Object.keys(CHCFG_ROWS).forEach(safe => {
+    const row = CHCFG_ROWS[safe];
+    const def = readCardDef(safe);
+    proms.push(persistChannelDef(row.devId, row.chanKey, row.fullKey, def));
+  });
+  Promise.all(proms)
+    .then(() => toast('Todos los canales guardados (' + proms.length + ')', 'ok'))
+    .catch(e => toast('Error al guardar: ' + e.message, 'err'));
+  renderSensors();
+}
+
+// Refresca sólo los valores en vivo mientras el modal está abierto
+function updateChannelConfigLive() {
+  Object.keys(CHCFG_ROWS).forEach(safe => {
+    const row = CHCFG_ROWS[safe];
+    const live = STATE.liveData[row.fullKey];
+    const el = document.getElementById(safe + '_live');
+    if (el && live) {
+      el.textContent = live.falla ? '⚠ FALLA'
+        : (typeof live.mA === 'number' ? live.mA.toFixed(2) + ' mA' : '— mA');
+    }
+  });
+}
+
+/* ══════════════════════════════════════════════════════
+   PANEL DE COMANDOS (escribe en pending_action)
+══════════════════════════════════════════════════════ */
+function genActionId() {
+  return 'act_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+}
+function actVal(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
+function actNum(id) { const v = parseFloat(actVal(id)); return isFinite(v) ? v : null; }
+
+function sendAction(type, params, confirmMsg) {
+  const devId = STATE.actionsDevice;
+  if (!devId) { toast('Elegí un dispositivo', 'err'); return; }
+  if (!STATE.db) { toast('Sin conexión a Firebase', 'err'); return; }
+  if (confirmMsg && !confirm(confirmMsg)) return;
+  const basePath = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
+  const payload = Object.assign({ id: genActionId(), type }, params || {});
+  STATE.db.ref(basePath + '/' + devId + '/pending_action').set(payload)
+    .then(() => toast('Comando "' + type + '" enviado', 'ok'))
+    .catch(e => toast('Error: ' + e.message, 'err'));
+}
+
+function devicesForActions() { return Object.keys(STATE.devices).sort(); }
+
+function openActionsPanel() {
+  const devs = devicesForActions();
+  STATE.actionsDevice = (STATE.actionsDevice && devs.includes(STATE.actionsDevice))
+    ? STATE.actionsDevice
+    : (STATE.selectedDevice && devs.includes(STATE.selectedDevice) ? STATE.selectedDevice : devs[0] || null);
+  renderActionsBar();
+  renderActionsPanel();
+  openModal('actions-modal');
+}
+
+function renderActionsBar() {
+  const bar = document.getElementById('actions-device-bar');
+  const devs = devicesForActions();
+  if (devs.length <= 1) { bar.innerHTML = ''; return; }
+  bar.innerHTML = devs.map(d => {
+    const name = (STATE.devices[d] && STATE.devices[d].name) || d;
+    const active = d === STATE.actionsDevice;
+    return `<button class="btn-sm${active ? ' accent' : ''}" onclick="STATE.actionsDevice='${chEsc(d)}';renderActionsBar();renderActionsPanel();">${chEsc(name)}</button>`;
+  }).join('');
+}
+
+function renderActionsPanel() {
+  const cont = document.getElementById('actions-list');
+  const devId = STATE.actionsDevice;
+  if (!devId) {
+    cont.innerHTML = `<div style="color:var(--text3);padding:20px;text-align:center;font-size:12px;">No hay dispositivos conectados.</div>`;
+    return;
+  }
+  const m = (STATE.devices[devId] && STATE.devices[devId].meta) || {};
+  const IS = 'padding:5px 7px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);font-size:11px;';
+  const btn = (label, onclick, cls) => `<button class="btn-sm ${cls === undefined ? 'accent' : cls}" onclick="${onclick}">${label}</button>`;
+  const fld = (label, inputHtml) => `<div class="field-group" style="margin:0;"><label style="font-size:10px;">${label}</label>${inputHtml}</div>`;
+  const card = (title, inner) => `<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:10px;background:var(--bg2);"><div style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:8px;">${title}</div><div style="display:flex;flex-wrap:wrap;gap:8px;align-items:end;">${inner}</div></div>`;
+
+  const filterOpts = ['Ninguno', 'Media móvil', 'Mediana', 'EMA']
+    .map((n, i) => `<option value="${i}"${(m.filterType || 0) == i ? ' selected' : ''}>${n}</option>`).join('');
+
+  const sdf = (STATE.devices[devId] && STATE.devices[devId].sdFiles) || {};
+  const files = Object.values(sdf).map(f => f && f.name).filter(Boolean);
+  const fileOpts = files.length
+    ? files.map(f => `<option value="${chEsc(f)}">${chEsc(f)}</option>`).join('')
+    : '<option value="">(usá "Listar archivos" primero)</option>';
+
+  cont.innerHTML = [
+    `<div style="font-size:10px;color:var(--text3);margin-bottom:8px;">ID del equipo (chip): <code>${chEsc(devId)}</code></div>`,
+    card('Nombre del dispositivo',
+      fld('Nombre', `<input id="act_nom" type="text" style="${IS}width:230px;" value="${chEsc(m.nombre || '')}" placeholder="Ej: Tablero Principal">`) +
+      btn('Guardar nombre', `sendAction('setMeta',{nombre:actVal('act_nom')})`)
+    ),
+    card('Intervalos',
+      fld('Muestreo (ms)', `<input id="act_samp" type="number" style="${IS}width:110px;" value="${m.sampleMs || 5000}">`) +
+      btn('Aplicar', `sendAction('setSampleRate',{intervalMs:actNum('act_samp')})`) +
+      fld('Publicación (ms)', `<input id="act_pub" type="number" style="${IS}width:110px;" value="${m.publishMs || 15000}">`) +
+      btn('Aplicar', `sendAction('setPublishRate',{intervalMs:actNum('act_pub')})`)
+    ),
+    card('Filtro (global)',
+      fld('Tipo', `<select id="act_filt_t" style="${IS}">${filterOpts}</select>`) +
+      fld('Ventana (2-16)', `<input id="act_filt_w" type="number" min="2" max="16" style="${IS}width:80px;" value="${m.filterWindow || 8}">`) +
+      btn('Aplicar', `sendAction('setFilter',{type:parseInt(actVal('act_filt_t')),window:actNum('act_filt_w')})`)
+    ),
+    card('Salida digital',
+      fld('Pin', `<input id="act_pin" type="number" style="${IS}width:70px;">`) +
+      fld('Estado', `<select id="act_pin_st" style="${IS}"><option value="1">ON</option><option value="0">OFF</option></select>`) +
+      btn('Aplicar', `sendAction('setOutput',{pin:actNum('act_pin'),state:parseInt(actVal('act_pin_st'))})`)
+    ),
+    card('Motor',
+      fld('Estado', `<select id="act_mot_st" style="${IS}"><option value="1">ON</option><option value="0">OFF</option></select>`) +
+      fld('RPM', `<input id="act_mot_rpm" type="number" style="${IS}width:90px;" value="0">`) +
+      btn('Aplicar', `sendAction('setMotor',{estado:parseInt(actVal('act_mot_st')),rpm:actNum('act_mot_rpm')})`)
+    ),
+    card('Ubicación',
+      fld('Ubicación', `<input id="act_ubi" type="text" style="${IS}width:230px;" value="${chEsc(m.ubicacion || '')}" placeholder="Ej: Subestación Colorado">`) +
+      btn('Aplicar', `sendAction('setMeta',{ubicacion:actVal('act_ubi')})`)
+    ),
+    card('WiFi (¡cambia la red del equipo!)',
+      fld('SSID', `<input id="act_ssid" type="text" style="${IS}width:150px;">`) +
+      fld('Password', `<input id="act_pass" type="text" style="${IS}width:150px;">`) +
+      btn('Aplicar', `sendAction('setWifi',{ssid:actVal('act_ssid'),password:actVal('act_pass')},'Cambiar el WiFi del equipo? Si los datos son erroneos quedara sin conexion hasta reconfigurarlo.')`)
+    ),
+    card('Archivos de la SD',
+      btn('Listar archivos', `sendAction('listSdFiles',{})`, '') +
+      fld('Archivo', `<select id="act_sdfile" style="${IS}">${fileOpts}</select>`) +
+      btn('Subir a la nube', `sendAction('uploadSdFile',{filename:actVal('act_sdfile')})`)
+    ),
+    card('Sistema',
+      btn('Sincronizar config', `sendAction('syncConfig',{})`, '') +
+      btn('Re-escanear hardware', `sendAction('rescan',{})`, '') +
+      btn('Reiniciar equipo', `sendAction('reboot',{},'Reiniciar el dispositivo?')`, '')
+    )
+  ].join('');
+
+  updateActionResult();
+}
+
+function updateActionResult() {
+  const el = document.getElementById('actions-result');
+  if (!el) return;
+  const dev = STATE.devices[STATE.actionsDevice];
+  const r = dev && dev.lastResult;
+  if (!r) { el.innerHTML = '<span style="color:var(--text3);">Sin resultados todavía.</span>'; return; }
+  const ok = !!r.success;
+  let when = '';
+  if (r.ts) { const d = new Date(r.ts * 1000); when = ' · ' + d.toLocaleTimeString(); }
+  el.innerHTML = `<span style="color:${ok ? '#22c55e' : '#ef4444'};font-weight:600;">${ok ? '✓' : '✗'} ${chEsc(r.type || '')}</span> <span style="color:var(--text2);">${chEsc(r.message || '')}</span><span style="color:var(--text3);font-size:10px;">${chEsc(when)}</span>`;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   loadPersisted();
   // Three.js se carga como módulo (diferido). Normalmente ya está listo aquí,
@@ -4198,6 +4825,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Check online status
   setOnline(navigator.onLine);
+
+  // Presencia: reevaluar online/offline periódicamente aunque NO llegue dato
+  // (la inactividad es lo que detecta el offline; no hace falta preguntarle
+  // al equipo). Solo re-renderiza la lista si algún estado cambió.
+  STATE._onlineSnapshot = {};
+  setInterval(() => {
+    let changed = false;
+    Object.keys(STATE.devices).forEach(id => {
+      const on = isDeviceOnline(id);
+      if (STATE._onlineSnapshot[id] !== on) { STATE._onlineSnapshot[id] = on; changed = true; }
+    });
+    if (changed) renderDevices();
+  }, 10000);
 });
 </script>
 </body>
