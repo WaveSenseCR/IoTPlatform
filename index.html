@@ -216,6 +216,19 @@
   .device-status-dot {
     width: 7px; height: 7px; border-radius: 50%;
   }
+  .device-del-btn {
+    width: 18px; height: 18px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 4px;
+    color: var(--text3);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .device-del-btn:hover { color: var(--err); background: rgba(255,80,80,0.12); }
   .dot-ok { background: var(--ok); }
   .dot-warn { background: var(--warn); }
   .dot-err { background: var(--err); }
@@ -1913,13 +1926,56 @@ function renderDevices() {
     card.innerHTML = `
       <div class="device-name">
         <span>${dev.name}</span>
-        <span class="device-status-dot ${isOnline ? 'dot-ok' : 'dot-err'}"></span>
+        <span style="display:flex;align-items:center;gap:6px;">
+          <span class="device-status-dot ${isOnline ? 'dot-ok' : 'dot-err'}"></span>
+          <button class="device-del-btn" title="Eliminar dispositivo" data-dev-id="${id}">✕</button>
+        </span>
       </div>
       <div class="device-id">${id} · ${dev.loc || '—'}${seen}</div>
     `;
     card.onclick = () => selectDevice(id);
+    card.querySelector('.device-del-btn').onclick = (ev) => {
+      ev.stopPropagation();
+      deleteDevice(id);
+    };
     list.appendChild(card);
   });
+}
+
+function deleteDevice(id) {
+  const dev = STATE.devices[id];
+  if (!dev) return;
+  const ok = confirm('¿Eliminar el dispositivo "' + (dev.name || id) + '" (' + id + ')? Esta acción también borra sus datos en vivo, historial y vínculos con objetos 3D.');
+  if (!ok) return;
+
+  delete STATE.devices[id];
+
+  // Detener simulación si el dispositivo eliminado era el nodo simulado
+  if (id === 'demo_node' && STATE.simulating) {
+    STATE.simulating = false;
+    clearInterval(STATE.simInterval);
+  }
+
+  // Limpiar datos en vivo / historial asociados a este dispositivo
+  const prefix = id + '/';
+  Object.keys(STATE.liveData).forEach(k => { if (k.startsWith(prefix)) delete STATE.liveData[k]; });
+  Object.keys(STATE.history).forEach(k => { if (k.startsWith(prefix)) delete STATE.history[k]; });
+  Object.keys(STATE.sensorDefs).forEach(k => { if (k.startsWith(prefix)) delete STATE.sensorDefs[k]; });
+
+  // Quitar vínculos de objetos 3D que apuntaban a este dispositivo
+  Object.keys(STATE.objectLinks).forEach(k => {
+    if (STATE.objectLinks[k] && STATE.objectLinks[k].deviceId === id) delete STATE.objectLinks[k];
+  });
+
+  if (STATE.selectedDevice === id) STATE.selectedDevice = null;
+
+  persistAll();
+  renderDevices();
+  renderSensors();
+  updateRTPanel();
+  updateSensorIcons();
+  if (document.getElementById('diagram-overlay').classList.contains('active')) renderDiagram();
+  toast('Dispositivo ' + id + ' eliminado', 'warn');
 }
 
 function selectDevice(id) {
@@ -2685,10 +2741,14 @@ function loadGLB(url, name) {
 }
 
 function loadDemoScene() {
-  // Primero intenta la escena demo definida en el servidor (demo.json);
-  // si no existe, cae a la escena procedural incorporada.
+  // Primero intenta la escena demo definida en el servidor (demo.json, con
+  // su modelo GLB embebido); si no existe, cae a la escena procedural
+  // incorporada. En ambos casos arranca la simulación de datos al terminar.
   toast('Cargando escena demo…', 'ok', 1200);
-  tryLoadServerDemo().then(ok => { if (!ok) loadProceduralDemo(); });
+  tryLoadServerDemo().then(ok => {
+    if (!ok) loadProceduralDemo();
+    if (!STATE.simulating) toggleSimulate();
+  });
 }
 
 function loadProceduralDemo() {
