@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>IoT Platform</title>
 
-<!-- Firebase -->
+<!-- Cloud SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 
@@ -1038,6 +1038,9 @@
     <div class="header-right">
       <div class="status-badge online" id="conn-badge">EN LÍNEA</div>
       <button class="btn-sm" onclick="toggleSimulate()">Simular Datos</button>
+      <input type="file" id="scene-import-input" accept=".json" style="display:none" onchange="importSceneFile(event)">
+      <button class="btn-sm" onclick="exportScene()" title="Exportar escena (modelo 3D + diagramas + config) a demo.json">⬇ Escena</button>
+      <button class="btn-sm" onclick="document.getElementById('scene-import-input').click()" title="Importar escena desde un archivo JSON">⬆ Escena</button>
       <button class="btn-sm accent" onclick="exportTodayCSV()">↓ Exportar CSV</button>
     </div>
   </header>
@@ -1110,7 +1113,7 @@
     <!-- HISTORY VIEW -->
     <div id="view-history">
       <div style="font-size:14px;color:var(--text);margin-bottom:4px;">Datos Históricos</div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:20px;">Almacenados en Google Drive · Exportados automáticamente cada 24h</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:20px;">Almacenados de forma segura · Exportados automáticamente cada 24h</div>
 
       <div class="history-chart-wrap">
         <div class="history-title">Historial por Sensor</div>
@@ -1154,7 +1157,7 @@
         <div class="history-title" style="margin-bottom:12px;">Subida Manual</div>
         <div style="font-size:11px;color:var(--text3);margin-bottom:12px;">Sube un archivo JSON o CSV con datos históricos del dispositivo</div>
         <input type="file" id="manual-upload-input" accept=".json,.csv" style="margin-bottom:10px;">
-        <button class="btn-sm accent" onclick="manualUpload()" style="width:100%;">Procesar y Subir a Firebase</button>
+        <button class="btn-sm accent" onclick="manualUpload()" style="width:100%;">Procesar y Subir a la Nube</button>
         <div id="upload-log" style="margin-top:10px;font-size:11px;color:var(--text3);"></div>
       </div>
     </div>
@@ -1162,28 +1165,28 @@
     <!-- SETTINGS VIEW -->
     <div id="view-settings">
       <div style="font-size:14px;color:var(--text);margin-bottom:4px;">Configuración</div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:20px;">Conexiones a Firebase, Google Drive y AppScript</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:20px;">Conexiones del servidor y servicios</div>
 
       <div class="settings-section">
-        <div class="settings-title">Firebase Realtime Database</div>
+        <div class="settings-title">Servidor de Datos en Tiempo Real</div>
         <div class="field-group">
-          <label>API Key</label>
-          <input type="text" id="cfg-fb-apikey" placeholder="AIzaSy...">
+          <label>Clave de API</label>
+          <input type="text" id="cfg-fb-apikey" placeholder="clave...">
         </div>
         <div class="field-group">
-          <label>Database URL</label>
-          <input type="text" id="cfg-fb-dburl" placeholder="https://proyecto.firebaseio.com">
+          <label>URL del Servidor</label>
+          <input type="text" id="cfg-fb-dburl" placeholder="https://servidor.ejemplo.com">
         </div>
         <div class="field-group">
-          <label>Auth Domain</label>
-          <input type="text" id="cfg-fb-authdomain" placeholder="proyecto.firebaseapp.com">
+          <label>Dominio de Autenticación</label>
+          <input type="text" id="cfg-fb-authdomain" placeholder="servidor.ejemplo.com">
         </div>
         <div class="field-group">
-          <label>Project ID</label>
+          <label>ID del Proyecto</label>
           <input type="text" id="cfg-fb-projectid" placeholder="mi-proyecto-iot">
         </div>
         <div class="field-group">
-          <label>Ruta Base en RTDB (ej: /dispositivos)</label>
+          <label>Ruta Base (ej: /dispositivos)</label>
           <input type="text" id="cfg-fb-path" placeholder="/dispositivos">
         </div>
         <button class="btn-sm accent" style="margin-top:12px;" onclick="saveFirebaseConfig()">Guardar y Conectar</button>
@@ -1208,11 +1211,11 @@
       </div>
 
       <div class="settings-section">
-        <div class="settings-title">Esquema RTDB Esperado</div>
+        <div class="settings-title">Esquema de Datos Esperado</div>
         <pre style="font-size:10px;color:var(--text2);line-height:1.7;overflow-x:auto;">{
   "dispositivos": {
     "device_01": {
-      "meta": { "nombre": "ESP32-A", "ubicacion": "Sala" },
+      "meta": { "nombre": "Nodo-A", "ubicacion": "Sala" },
       "sensores": {
         "temp": { "valor": 25.3, "unidad": "°C", "ts": 1700000000 },
         "hum":  { "valor": 62.1, "unidad": "%",  "ts": 1700000000 }
@@ -1307,7 +1310,7 @@
   <div class="modal" style="max-width:840px;width:94vw;max-height:88vh;overflow-y:auto;">
     <button class="modal-close" onclick="closeModal('actions-modal')">✕</button>
     <div class="modal-title">Enviar Comandos al Dispositivo</div>
-    <div class="modal-sub">Cada comando se escribe en <code>pending_action</code>; el equipo lo ejecuta y responde en <code>last_action_result</code> (se muestra abajo).</div>
+    <div class="modal-sub">El equipo ejecuta el comando y responde con el resultado (se muestra abajo).</div>
     <div id="actions-device-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;"></div>
     <div id="actions-list"></div>
     <div style="margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);">
@@ -1322,7 +1325,7 @@
   <div class="modal" style="max-width:860px;width:94vw;max-height:88vh;overflow-y:auto;">
     <button class="modal-close" onclick="closeModal('channel-config-modal')">✕</button>
     <div class="modal-title">Configurar Canales / Sensores</div>
-    <div class="modal-sub">El dispositivo envía sólo la corriente 4-20 mA cruda por canal. Aquí asignás a cada canal su tipo de sensor y la fórmula que convierte esos mA en unidades físicas. Se guarda en Firebase (<code>sensorDefs/</code>) y el equipo lo ignora.</div>
+    <div class="modal-sub">El dispositivo envía sólo la corriente 4-20 mA cruda por canal. Aquí asignás a cada canal su tipo de sensor y la fórmula que convierte esos mA en unidades físicas. Se guarda en la nube y el equipo lo ignora.</div>
     <div id="chcfg-device-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;"></div>
     <div id="chcfg-list"></div>
     <div id="chcfg-footer" style="display:none;margin-top:14px;text-align:right;">
@@ -1532,12 +1535,12 @@
     <div class="modal-title">Agregar Dispositivo</div>
     <div class="modal-sub">Nuevo nodo IoT en la plataforma</div>
     <div class="field-group">
-      <label>ID del Dispositivo (clave en RTDB)</label>
+      <label>ID del Dispositivo</label>
       <input type="text" id="new-dev-id" placeholder="device_01">
     </div>
     <div class="field-group">
       <label>Nombre Mostrado</label>
-      <input type="text" id="new-dev-name" placeholder="ESP32-Sala">
+      <input type="text" id="new-dev-name" placeholder="Nodo-Sala">
     </div>
     <div class="field-group">
       <label>Ubicación</label>
@@ -1578,6 +1581,7 @@ const STATE = {
   diagCapsules: [],      // {id, label, assemblyName, childMachineIds[], x, y}
   objectLinks: {},       // objectName -> {nodeId, sensorKey, deviceId}  (legacy 3D links)
   model: null,
+  glbData: null,     // { name, data(base64) } del GLB cargado (para export/import)
   scene: null,
   camera: null,
   renderer: null,
@@ -1630,6 +1634,7 @@ function loadPersisted() {
   STATE.offlineQueue = loadLocal('offlineQueue', []);
   STATE.sensorDefs = loadLocal('sensorDefs', {});
   STATE.channels = loadLocal('channels', {});
+  STATE.glbData = loadLocal('glbData', null);
 }
 
 /* ══════════════════════════════════════════════════════
@@ -1668,11 +1673,11 @@ function initFirebase() {
     subscribeRTDB();
     document.getElementById('fb-status').textContent = 'Conectado ✓';
     document.getElementById('fb-status').style.color = 'var(--ok)';
-    toast('Firebase conectado', 'ok');
+    toast('Conectado al servidor', 'ok');
   } catch(e) {
     document.getElementById('fb-status').textContent = 'Error: ' + e.message;
     document.getElementById('fb-status').style.color = 'var(--err)';
-    toast('Error Firebase: ' + e.message, 'err');
+    toast('Error de conexión: ' + e.message, 'err');
   }
 }
 
@@ -1686,7 +1691,7 @@ function subscribeRTDB() {
     processRTDBData(data);
   }, err => {
     setOnline(false);
-    toast('RTDB error: ' + err.message, 'err');
+    toast('Error del servidor: ' + err.message, 'err');
   });
 }
 
@@ -1812,9 +1817,9 @@ function toggleSimulate() {
   STATE.simulating = !STATE.simulating;
   if (STATE.simulating) {
     // Create demo device if none
-    if (!STATE.devices['demo_esp32']) {
-      STATE.devices['demo_esp32'] = {
-        name: 'ESP32 Demo',
+    if (!STATE.devices['demo_node']) {
+      STATE.devices['demo_node'] = {
+        name: 'Dispositivo Demo',
         loc: 'Simulación',
         sensors: { temp:'Temperatura', hum:'Humedad', pres:'Presión' },
         motors: { motor1:'Motor Principal' }
@@ -1830,7 +1835,7 @@ function toggleSimulate() {
 }
 
 function simulateTick() {
-  const devId = 'demo_esp32';
+  const devId = 'demo_node';
   const ts = Math.floor(Date.now()/1000);
   const newData = {
     temp: { valor: (22 + Math.sin(ts/60)*4 + Math.random()*0.5).toFixed(2)*1, unidad: '°C', ts },
@@ -1899,7 +1904,7 @@ function renderDevices() {
   Object.entries(STATE.devices).forEach(([id, dev]) => {
     const card = document.createElement('div');
     card.className = 'device-card' + (STATE.selectedDevice === id ? ' active' : '');
-    const isOnline = (STATE.simulating && id === 'demo_esp32') || isDeviceOnline(id);
+    const isOnline = (STATE.simulating && id === 'demo_node') || isDeviceOnline(id);
     let seen = '';
     if (!isOnline && dev.lastUpdate) {
       const mins = Math.floor((Date.now() - dev.lastUpdate) / 60000);
@@ -2194,6 +2199,7 @@ function initThree() {
   STATE.mouse = new THREE.Vector2();
 
   canvas.addEventListener('mousemove', onMouseMove);
+  canvas.addEventListener('pointerdown', e => { STATE._downX = e.clientX; STATE._downY = e.clientY; });
   canvas.addEventListener('click', onCanvasClick);
 
   window.addEventListener('resize', onWindowResize);
@@ -2425,6 +2431,12 @@ function onMouseMove(e) {
 }
 
 function onCanvasClick(e) {
+  // Si el puntero se movió (arrastre para rotar/desplazar la cámara), no es
+  // un clic de selección → ignorar. Umbral de 6 px distingue clic de arrastre.
+  if (STATE._downX != null) {
+    const dx = e.clientX - STATE._downX, dy = e.clientY - STATE._downY;
+    if (Math.hypot(dx, dy) > 6) return;
+  }
   STATE.raycaster.setFromCamera(STATE.mouse, STATE.camera);
   const hits = STATE.raycaster.intersectObjects(STATE.meshes, true);
   if (hits.length === 0) return;
@@ -2481,7 +2493,119 @@ function loadGLBFile(event) {
   const file = event.target.files[0];
   if (!file) return;
   const url = URL.createObjectURL(file);
+  fileToBase64(file).then(b64 => { STATE.glbData = { name: file.name, data: b64 }; persistGlb(); }).catch(() => {});
   loadGLB(url, file.name);
+}
+
+// ── Escena: export / import a JSON (modelo GLB + diagramas + todo) ──────
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+function base64ToBlobUrl(b64, mime) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return URL.createObjectURL(new Blob([bytes], { type: mime || 'model/gltf-binary' }));
+}
+// Persistir el GLB solo si es chico (localStorage ~5 MB); si no, queda en memoria
+function persistGlb() {
+  try {
+    if (STATE.glbData && STATE.glbData.data && STATE.glbData.data.length < 3000000) {
+      saveLocal('glbData', STATE.glbData);
+    }
+  } catch (e) {}
+}
+
+function exportScene() {
+  const scene = {
+    type: 'iot-platform-scene',
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    glb: STATE.glbData || null,
+    diagMachines: STATE.diagMachines,
+    diagConnections: STATE.diagConnections,
+    diagPanels: STATE.diagPanels,
+    diagCapsules: STATE.diagCapsules,
+    objectLinks: STATE.objectLinks,
+    sensorDefs: STATE.sensorDefs,
+    channels: STATE.channels,
+    devices: STATE.devices,
+    liveData: STATE.liveData   // instantánea de valores para que el demo se vea "vivo"
+  };
+  const blob = new Blob([JSON.stringify(scene)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'demo.json';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast('Escena exportada (demo.json)', 'ok');
+}
+
+function importSceneObj(obj, opts) {
+  opts = opts || {};
+  if (!obj || obj.type !== 'iot-platform-scene') {
+    if (!opts.silent) toast('El JSON no es una escena válida', 'err');
+    return false;
+  }
+  STATE.diagMachines = obj.diagMachines || [];
+  STATE.diagConnections = obj.diagConnections || [];
+  STATE.diagPanels = obj.diagPanels || [];
+  STATE.diagCapsules = obj.diagCapsules || [];
+  STATE.objectLinks = obj.objectLinks || {};
+  STATE.sensorDefs = obj.sensorDefs || {};
+  STATE.channels = obj.channels || {};
+  if (obj.devices) {
+    STATE.devices = obj.devices;
+    Object.values(STATE.devices).forEach(d => { d.lastUpdate = Date.now(); }); // que se vean online en el demo
+  }
+  if (obj.liveData) STATE.liveData = obj.liveData;
+  STATE.glbData = obj.glb || null;
+  if (!opts.noPersist) { persistAll(); persistGlb(); }
+
+  if (STATE.glbData && STATE.glbData.data) {
+    loadGLB(base64ToBlobUrl(STATE.glbData.data), STATE.glbData.name || 'modelo.glb');
+  }
+  renderDevices();
+  renderSensors();
+  updateRTPanel();
+  if (document.getElementById('diagram-overlay').classList.contains('active')) renderDiagram();
+  if (!opts.silent) toast('Escena cargada ✓', 'ok');
+  return true;
+}
+
+function importSceneFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = () => { try { importSceneObj(JSON.parse(r.result)); } catch (e) { toast('JSON inválido', 'err'); } };
+  r.readAsText(file);
+  event.target.value = '';
+}
+
+// Intenta cargar demo.json del servidor (misma carpeta que el HTML)
+function tryLoadServerDemo(opts) {
+  return fetch('./demo.json', { cache: 'no-store' })
+    .then(r => r.ok ? r.json() : Promise.reject())
+    .then(obj => importSceneObj(obj, opts))
+    .catch(() => false);
+}
+
+// Al arrancar: restaura el GLB local si lo hay; si no hay NADA guardado,
+// carga la escena demo del servidor (para visitantes / modo demo).
+function bootScene() {
+  if (STATE.glbData && STATE.glbData.data) {
+    loadGLB(base64ToBlobUrl(STATE.glbData.data), STATE.glbData.name || 'modelo.glb');
+    return;
+  }
+  const hasLocalScene = (STATE.diagMachines && STATE.diagMachines.length) ||
+                        Object.keys(STATE.sensorDefs || {}).length ||
+                        Object.keys(STATE.channels || {}).length;
+  if (!hasLocalScene) tryLoadServerDemo({ silent: true, noPersist: true });
 }
 
 function loadGLB(url, name) {
@@ -2561,6 +2685,13 @@ function loadGLB(url, name) {
 }
 
 function loadDemoScene() {
+  // Primero intenta la escena demo definida en el servidor (demo.json);
+  // si no existe, cae a la escena procedural incorporada.
+  toast('Cargando escena demo…', 'ok', 1200);
+  tryLoadServerDemo().then(ok => { if (!ok) loadProceduralDemo(); });
+}
+
+function loadProceduralDemo() {
   // Create procedural demo scene
   document.getElementById('drop-zone').classList.add('hidden');
   if (STATE.model) { STATE.scene.remove(STATE.model); STATE.meshes = []; }
@@ -2594,10 +2725,10 @@ function loadDemoScene() {
 
   // Auto-link sensors with demo device
   if (STATE.simulating) {
-    STATE.objectLinks['Sensor_Temperatura'] = { nodeId: null, sensorKey: 'demo_esp32/temp', deviceId: 'demo_esp32', objectName: 'Sensor_Temperatura' };
-    STATE.objectLinks['Sensor_Humedad'] = { nodeId: null, sensorKey: 'demo_esp32/hum', deviceId: 'demo_esp32', objectName: 'Sensor_Humedad' };
-    STATE.objectLinks['Sensor_Presion'] = { nodeId: null, sensorKey: 'demo_esp32/pres', deviceId: 'demo_esp32', objectName: 'Sensor_Presion' };
-    STATE.objectLinks['Motor_Principal'] = { nodeId: null, sensorKey: 'demo_esp32/motores/motor1', deviceId: 'demo_esp32', objectName: 'Motor_Principal' };
+    STATE.objectLinks['Sensor_Temperatura'] = { nodeId: null, sensorKey: 'demo_node/temp', deviceId: 'demo_node', objectName: 'Sensor_Temperatura' };
+    STATE.objectLinks['Sensor_Humedad'] = { nodeId: null, sensorKey: 'demo_node/hum', deviceId: 'demo_node', objectName: 'Sensor_Humedad' };
+    STATE.objectLinks['Sensor_Presion'] = { nodeId: null, sensorKey: 'demo_node/pres', deviceId: 'demo_node', objectName: 'Sensor_Presion' };
+    STATE.objectLinks['Motor_Principal'] = { nodeId: null, sensorKey: 'demo_node/motores/motor1', deviceId: 'demo_node', objectName: 'Motor_Principal' };
     persistAll();
     updateSensorIcons();
   }
@@ -4108,7 +4239,7 @@ function retryQueue() {
 }
 
 function retrySingle(index) {
-  if (!STATE.db) { toast('Sin conexión a Firebase', 'err'); return; }
+  if (!STATE.db) { toast('Sin conexión al servidor', 'err'); return; }
   const item = STATE.offlineQueue[index];
   STATE.db.ref((STATE.config.firebase?.basePath || '/dispositivos') + '/' + item.deviceId + '/offline_restored').push(item.data)
     .then(() => {
@@ -4154,8 +4285,8 @@ function manualUpload() {
       const item = { ts: Date.now(), deviceId: STATE.selectedDevice || 'manual', data };
       if (STATE.db) {
         STATE.db.ref((STATE.config.firebase?.basePath || '/dispositivos') + '/manual_upload').push(item)
-          .then(() => { toast('Subido a Firebase ✓', 'ok'); log.textContent = '✓ ' + (Array.isArray(data) ? data.length : 1) + ' registros subidos'; })
-          .catch(e => { toast('Error Firebase', 'err'); log.textContent = '✗ ' + e.message; });
+          .then(() => { toast('Subido a la nube ✓', 'ok'); log.textContent = '✓ ' + (Array.isArray(data) ? data.length : 1) + ' registros subidos'; })
+          .catch(e => { toast('Error de conexión', 'err'); log.textContent = '✗ ' + e.message; });
       } else {
         STATE.offlineQueue.push(item);
         persistAll();
@@ -4460,7 +4591,7 @@ function renderChannelConfigList() {
   CHCFG_ROWS = {};
   const devId = STATE.chcfgDevice;
   if (!devId) {
-    cont.innerHTML = `<div style="color:var(--text3);padding:20px;text-align:center;font-size:12px;">No hay canales. Verificá que el dispositivo esté publicando <code>hardware/</code> y <code>canales/</code> en Firebase.</div>`;
+    cont.innerHTML = `<div style="color:var(--text3);padding:20px;text-align:center;font-size:12px;">No hay canales. Verificá que el dispositivo esté publicando datos en la nube.</div>`;
     footer.style.display = 'none';
     return;
   }
@@ -4660,7 +4791,7 @@ function actNum(id) { const v = parseFloat(actVal(id)); return isFinite(v) ? v :
 function sendAction(type, params, confirmMsg) {
   const devId = STATE.actionsDevice;
   if (!devId) { toast('Elegí un dispositivo', 'err'); return; }
-  if (!STATE.db) { toast('Sin conexión a Firebase', 'err'); return; }
+  if (!STATE.db) { toast('Sin conexión al servidor', 'err'); return; }
   if (confirmMsg && !confirm(confirmMsg)) return;
   const basePath = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
   const payload = Object.assign({ id: genActionId(), type }, params || {});
@@ -4783,8 +4914,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // pero si el CDN aún no respondió, esperamos el evento 'three-ready'.
   if (window.__THREE_READY__ && window.THREE) {
     initThree();
+    bootScene();
   } else {
-    window.addEventListener('three-ready', initThree, { once: true });
+    window.addEventListener('three-ready', () => { initThree(); bootScene(); }, { once: true });
   }
   renderDevices();
   renderSensors();
@@ -4803,6 +4935,7 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (file && (file.name.endsWith('.glb') || file.name.endsWith('.gltf'))) {
+      fileToBase64(file).then(b64 => { STATE.glbData = { name: file.name, data: b64 }; persistGlb(); }).catch(() => {});
       loadGLB(URL.createObjectURL(file), file.name);
     } else {
       toast('Archivo no soportado. Usa .glb o .gltf', 'err');
