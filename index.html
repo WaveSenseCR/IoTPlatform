@@ -1251,6 +1251,7 @@
     <div id="rt-panel" style="display:flex;flex-direction:column;height:100%;">
       <div class="panel-header">
         <span class="panel-title">Panel de Sensores</span>
+        <span style="font-size:9px;color:var(--text3);">clic: destacar · doble clic: detalle</span>
       </div>
       <div class="panel-body" id="rt-sensor-panel">
         <div style="font-size:11px;color:var(--text3);text-align:center;margin-top:40px;">
@@ -2040,59 +2041,126 @@ function updateNodeCharts() {
 }
 
 // Called every tick — only mutates text nodes, never rebuilds DOM or chart
+/* ══════════════════════════════════════════════════════
+   PANEL DERECHO — todos los gráficos, seleccionado arriba
+══════════════════════════════════════════════════════ */
+// Claves de sensor graficables (excluye motores sin valor numérico)
+function panelSensorKeys() {
+  const keys = Object.keys(STATE.liveData).filter(k => {
+    const d = STATE.liveData[k];
+    return d && (typeof d.valor === 'number' || typeof d.rpm === 'number');
+  });
+  // El seleccionado primero; el resto en orden alfabético
+  keys.sort((a, b) => {
+    if (a === STATE.selectedSensor) return -1;
+    if (b === STATE.selectedSensor) return 1;
+    return a.localeCompare(b);
+  });
+  return keys;
+}
+
+function sensorDisplayName(key) {
+  const def = STATE.sensorDefs[key];
+  const live = STATE.liveData[key] || {};
+  return (def && def.name) || live.name || key.split('/').pop();
+}
+
+// Reconstruye las tarjetas del panel (solo cuando cambia la lista o la selección)
+function buildRTPanel() {
+  const panel = document.getElementById('rt-sensor-panel');
+  if (!panel) return;
+  const keys = panelSensorKeys();
+
+  // Al reemplazar el innerHTML los <canvas> anteriores se destruyen. Hay que
+  // destruir también sus objetos Chart: si no, quedan atados a un canvas
+  // huérfano y los nuevos se ven EN BLANCO.
+  Object.keys(STATE.rtCharts).filter(id => id.startsWith('pc_')).forEach(id => {
+    try { STATE.rtCharts[id].destroy(); } catch (e) {}
+    delete STATE.rtCharts[id];
+  });
+
+  if (!keys.length) {
+    panel.innerHTML = `<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:40px;">
+      Selecciona un sensor o presiona un objeto del modelo 3D</div>`;
+    STATE._panelKeys = '';
+    return;
+  }
+
+  panel.innerHTML = keys.map(k => {
+    const sel = (k === STATE.selectedSensor);
+    const d = STATE.liveData[k] || {};
+    const safe = 'pc_' + k.replace(/[^\w]/g, '_');
+    const val = d.falla ? 'FALLA'
+      : (d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : '—'));
+    const unit = d.falla ? '' : (d.unidad || (d.rpm !== undefined ? 'rpm' : ''));
+    const linked = Object.values(STATE.objectLinks).find(l => l.sensorKey === k);
+    return `
+      <div class="rt-card" data-key="${k}" onclick="openSensorDetail('${k}')" style="
+        border:1px solid ${sel ? 'var(--accent)' : 'var(--border)'};
+        border-radius:6px;padding:10px;margin-bottom:10px;cursor:pointer;
+        background:${sel ? 'rgba(0,229,160,0.07)' : 'var(--bg2)'};
+        box-shadow:${sel ? '0 0 0 1px var(--accent) inset' : 'none'};">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:6px;">
+          <div style="font-size:11px;font-weight:600;color:var(--text);">
+            ${sel ? '▸ ' : ''}${sensorDisplayName(k)}
+          </div>
+          <div style="font-size:${sel ? '18px' : '13px'};color:${d.falla ? 'var(--err)' : 'var(--accent)'};font-weight:700;">
+            <span id="${safe}_val">${val}</span>
+            <span style="font-size:10px;color:var(--text2);font-weight:400;">${unit}</span>
+          </div>
+        </div>
+        <div style="font-size:9px;color:var(--text3);margin-bottom:6px;">
+          ${k}${linked ? ' · ⬡ ' + (linked.objectName || '') : ''}
+        </div>
+        <div style="position:relative;height:${sel ? '150px' : '80px'};">
+          <canvas id="${safe}_chart"></canvas>
+        </div>
+        ${sel ? `<button class="btn-sm" style="width:100%;margin-top:8px;"
+                   onclick="event.stopPropagation();openSensorModal('${k}')">Ver Detalles →</button>` : ''}
+      </div>`;
+  }).join('');
+
+  // Crear los gráficos una vez montado el HTML
+  // Crear los gráficos en el siguiente frame, cuando el navegador ya asignó
+  // tamaño a los <canvas> (si no, Chart.js los dibuja con altura 0 y no se ven).
+  requestAnimationFrame(() => {
+    keys.forEach(k => renderSensorChart(k, 'pc_' + k.replace(/[^\w]/g, '_') + '_chart'));
+  });
+  STATE._panelKeys = keys.join('|') + '#' + (STATE.selectedSensor || '');
+}
+
 function updateRTPanel() {
   updateNodeCharts();
-  if (!STATE.selectedSensor) return;
-  const sKey = STATE.selectedSensor;
-  const d = STATE.liveData[sKey] || {};
-  const val = d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : (d.estado !== undefined ? (d.estado ? 'ON':'OFF') : '—'));
-  const ts = d.ts ? new Date(d.ts * 1000).toLocaleTimeString() : '—';
 
-  const valEl = document.getElementById('rt-live-val');
-  const tsEl  = document.getElementById('rt-live-ts');
-  if (valEl) valEl.textContent = val;
-  if (tsEl)  tsEl.textContent  = 'Actualizado: ' + ts;
+  const keys = panelSensorKeys();
+  const sig = keys.join('|') + '#' + (STATE.selectedSensor || '');
+  // Si cambió la lista de sensores o la selección, reconstruir; si no, solo refrescar
+  if (sig !== STATE._panelKeys) { buildRTPanel(); return; }
 
-  // Update chart data in-place
-  renderSensorChart(sKey, 'rt-chart');
+  keys.forEach(k => {
+    const safe = 'pc_' + k.replace(/[^\w]/g, '_');
+    const d = STATE.liveData[k] || {};
+    const el = document.getElementById(safe + '_val');
+    if (el) {
+      el.textContent = d.falla ? 'FALLA'
+        : (d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : '—'));
+    }
+    renderSensorChart(k, safe + '_chart');
+  });
 
-  // If history tab is visible, push new point there too
   const histView = document.getElementById('view-history');
   if (histView && histView.style.display !== 'none' && STATE.selectedSensor) {
-    pushHistoryChartPoint(sKey);
+    pushHistoryChartPoint(STATE.selectedSensor);
   }
 }
 
-// Build panel HTML only when switching sensors
+// Selecciona un sensor: lo mueve arriba y lo resalta
 function openSensorDetail(sensorKey) {
-  const prevKey = STATE.selectedSensor;
   STATE.selectedSensor = sensorKey;
-
+  buildRTPanel();
+  // Desplazar el panel al tope para ver el seleccionado
   const panel = document.getElementById('rt-sensor-panel');
-  const d = STATE.liveData[sensorKey] || {};
-  const label = sensorKey.split('/').pop();
-  const val = d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : (d.estado !== undefined ? (d.estado ? 'ON':'OFF') : '—'));
-  const unit = d.unidad || (d.rpm !== undefined ? 'rpm' : '');
-  const ts = d.ts ? new Date(d.ts * 1000).toLocaleTimeString() : '—';
-  const isLinked = Object.values(STATE.objectLinks).find(l => l.sensorKey === sensorKey);
-
-  panel.innerHTML = `
-    <div style="margin-bottom:12px;">
-      <div style="font-size:13px;color:var(--text);margin-bottom:2px;">${label}</div>
-      <div style="font-size:10px;color:var(--text3);">${sensorKey}</div>
-    </div>
-    <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:16px;">
-      <span id="rt-live-val" style="font-size:32px;color:var(--accent);font-weight:700;">${val}</span>
-      <span style="font-size:13px;color:var(--text2);">${unit}</span>
-    </div>
-    <div id="rt-live-ts" style="font-size:10px;color:var(--text3);margin-bottom:16px;">Actualizado: ${ts}</div>
-    ${isLinked ? `<div style="font-size:10px;color:var(--accent);margin-bottom:12px;">⬡ Vinculado a: ${isLinked.objectName || '—'}</div>` : ''}
-    <div class="chart-container">
-      <canvas id="rt-chart"></canvas>
-    </div>
-    <button class="btn-sm" style="width:100%;margin-top:8px;" onclick="openSensorModal('${sensorKey}')">Ver Detalles →</button>
-  `;
-  renderSensorChart(sensorKey, 'rt-chart');
+  if (panel) panel.scrollTop = 0;
 }
 
 function getChartPoints(sensorKey) {
@@ -2100,7 +2168,10 @@ function getChartPoints(sensorKey) {
   const now = Date.now() / 1000;
   const rangeMap = { '1h': 3600, '6h': 21600, '24h': 86400, '7d': 604800 };
   const rangeS = rangeMap[STATE.timeRange] || 3600;
-  const filtered = hist.filter(p => (now - p.ts) <= rangeS);
+  let filtered = hist.filter(p => (now - p.ts) <= rangeS);
+  // Si nada cae en el rango (p. ej. datos importados con fecha antigua),
+  // mostrar los últimos puntos para que la tarjeta no quede vacía.
+  if (filtered.length === 0 && hist.length) filtered = hist.slice(-120);
   const pts = filtered.length > 120 ? filtered.filter((_,i) => i % Math.ceil(filtered.length/120) === 0) : filtered;
   return pts;
 }
@@ -2153,7 +2224,9 @@ function renderSensorChart(sensorKey, canvasId) {
   const canvas = document.getElementById(canvasId);
   if (!canvas) return;
   const hist = STATE.history[sensorKey] || [];
-  if (hist.length < 2) return;
+  // Con 0 puntos no hay nada que dibujar; con 1 se dibuja igual para que la
+  // tarjeta no quede vacía (antes exigía 2 y las tarjetas nuevas no se veían).
+  if (hist.length < 1) return;
 
   const pts = getChartPoints(sensorKey);
   const labels = pts.map(p => {
@@ -2167,8 +2240,9 @@ function renderSensorChart(sensorKey, canvasId) {
 
   const existing = STATE.rtCharts[canvasId];
 
-  // If chart exists for same sensor, update data in-place (no flicker)
-  if (existing && existing._sensorKey === sensorKey) {
+  // Reutilizar SOLO si el gráfico sigue atado a este mismo elemento <canvas>.
+  // Si el DOM se reconstruyó, el canvas es otro aunque el id coincida.
+  if (existing && existing._sensorKey === sensorKey && existing.canvas === canvas) {
     existing.data.labels = labels;
     existing.data.datasets[0].data = vals;
     existing.$limits = limits;
@@ -2257,14 +2331,144 @@ function initThree() {
   canvas.addEventListener('mousemove', onMouseMove);
   canvas.addEventListener('pointerdown', e => { STATE._downX = e.clientX; STATE._downY = e.clientY; });
   canvas.addEventListener('click', onCanvasClick);
+  canvas.addEventListener('dblclick', onCanvasDblClick);
 
   window.addEventListener('resize', onWindowResize);
   animate();
 }
 
+/* ══════════════════════════════════════════════════════
+   SIMULACIÓN DE AGUA
+   Los objetos cuyo nombre contenga "water" (o "agua") reciben
+   automáticamente: material líquido translúcido + oleaje real en los
+   vértices de la cara superior + un leve vaivén del nivel (~10%).
+══════════════════════════════════════════════════════ */
+const WATER_RE = /water|agua|liquid|líquido|liquido/i;
+
+function isWaterObject(obj) {
+  if (!obj || !obj.isMesh) return false;
+  if (WATER_RE.test(obj.name || '')) return true;
+  // También si el padre inmediato es un grupo "water"
+  return !!(obj.parent && WATER_RE.test(obj.parent.name || ''));
+}
+
+// Material de agua: translúcido, azulado, brillante
+function makeWaterMaterial() {
+  return new THREE.MeshStandardMaterial({
+    color: 0x2196c4,
+    transparent: true,
+    opacity: 0.72,
+    roughness: 0.12,      // superficie pulida → reflejos nítidos
+    metalness: 0.35,
+    side: THREE.DoubleSide,
+    emissive: 0x0a3d5c,   // brillo propio sutil, se ve bien en escenas oscuras
+    emissiveIntensity: 0.35,
+  });
+}
+
+// Prepara un mesh de agua: guarda posiciones originales y marca los vértices
+// superiores (los que ondearán). Se llama una sola vez por objeto.
+function setupWaterMesh(mesh) {
+  if (!mesh.geometry || !mesh.geometry.attributes || !mesh.geometry.attributes.position) return;
+  if (mesh.userData._waterReady) return;
+
+  const pos = mesh.geometry.attributes.position;
+  const base = new Float32Array(pos.array);      // copia de las posiciones originales
+
+  // Altura (Y) mínima y máxima en espacio local
+  let minY = Infinity, maxY = -Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    const y = base[i * 3 + 1];
+    if (y < minY) minY = y;
+    if (y > maxY) maxY = y;
+  }
+  const height = maxY - minY;
+
+  // Peso por vértice: 0 en el fondo, 1 en la superficie. Solo el tercio
+  // superior ondea, con transición suave (smoothstep) para que no se vea
+  // un corte brusco entre la parte quieta y la que se mueve.
+  const weight = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const y = base[i * 3 + 1];
+    let t = height > 0 ? (y - minY) / height : 1;
+    t = Math.max(0, Math.min(1, (t - 0.66) / 0.34));
+    weight[i] = t * t * (3 - 2 * t);            // smoothstep
+  }
+
+  mesh.userData._waterBase = base;
+  mesh.userData._waterWeight = weight;
+  mesh.userData._waterAmp = height * 0.10;      // amplitud ≈ 10% de la altura
+  mesh.userData._waterPhase = Math.random() * Math.PI * 2;  // desfase por objeto
+  mesh.userData._waterReady = true;
+
+  // Material líquido (guardando el original por si se desactiva)
+  if (!mesh.userData.originalMaterial) {
+    mesh.userData.originalMaterial = Array.isArray(mesh.material)
+      ? mesh.material.map(m => m.clone()) : mesh.material.clone();
+  }
+  mesh.material = makeWaterMaterial();
+  mesh.geometry.attributes.position.setUsage(THREE.DynamicDrawUsage);
+}
+
+// Recorre el modelo y activa el agua en los objetos que corresponda
+function setupWaterObjects() {
+  STATE.waterMeshes = [];
+  if (!STATE.model) return;
+  STATE.model.traverse(child => {
+    if (isWaterObject(child)) {
+      setupWaterMesh(child);
+      if (child.userData._waterReady) STATE.waterMeshes.push(child);
+    }
+  });
+  if (STATE.waterMeshes.length) {
+    toast('Simulación de agua activa en ' + STATE.waterMeshes.length + ' objeto(s)', 'ok');
+  }
+}
+
+// Anima el oleaje. Suma dos ondas cruzadas (en X y en Z) de distinta
+// frecuencia para que el patrón no se vea repetitivo, más un vaivén global
+// del nivel. Todo suave y lento, tipo líquido en reposo.
+function animateWater(time) {
+  const list = STATE.waterMeshes;
+  if (!list || !list.length) return;
+
+  for (let m = 0; m < list.length; m++) {
+    const mesh = list[m];
+    const geo = mesh.geometry;
+    if (!geo || !geo.attributes || !geo.attributes.position) continue;
+
+    const pos = geo.attributes.position;
+    const base = mesh.userData._waterBase;
+    const w = mesh.userData._waterWeight;
+    const amp = mesh.userData._waterAmp;
+    const ph = mesh.userData._waterPhase;
+    if (!base || !w) continue;
+
+    // Vaivén global del nivel (respiración del líquido)
+    const level = Math.sin(time * 0.7 + ph) * amp * 0.35;
+
+    for (let i = 0; i < pos.count; i++) {
+      const ix = i * 3;
+      const x = base[ix], z = base[ix + 2];
+      if (w[i] > 0.001) {
+        const wave =
+          Math.sin(x * 2.6 + time * 1.5 + ph) * 0.6 +
+          Math.sin(z * 3.1 + time * 1.1 + ph * 1.7) * 0.4 +
+          Math.sin((x + z) * 1.7 + time * 0.8) * 0.25;
+        pos.array[ix + 1] = base[ix + 1] + w[i] * (wave * amp * 0.5 + level);
+      } else {
+        pos.array[ix + 1] = base[ix + 1];
+      }
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();     // recalcular normales → los reflejos siguen la onda
+  }
+}
+
 function animate() {
   requestAnimationFrame(animate);
   if (STATE.controls) STATE.controls.update();
+  animateWater(performance.now() * 0.001);
   if (STATE.renderer && STATE.scene && STATE.camera) {
     STATE.renderer.render(STATE.scene, STATE.camera);
     updateSensorIconPositions();
@@ -2361,13 +2565,19 @@ function updateSensorIcons() {
       '<div class="sensor-icon-stem"></div>' +
       '<div class="sensor-icon-dot"></div>';
 
-    // Click opens modal
-    (function(capturedName) {
-      el.addEventListener('click', function() {
-        var o = findObjectByName(capturedName);
-        if (o) openObjectModal(getTopParent(o));
+    // Clic: destaca su gráfico en el panel derecho (igual que clicar el modelo).
+    // Doble clic: abre la ventana de detalle del objeto vinculado.
+    (function(capturedName, capturedKey) {
+      el.addEventListener('click', function(ev) {
+        ev.stopPropagation();
+        if (capturedKey) openSensorDetail(capturedKey);
       });
-    })(objName);
+      el.addEventListener('dblclick', function(ev) {
+        ev.stopPropagation();
+        var o = findAnchorObject(STATE.objectLinks[capturedName]) || findObjectByName(capturedName);
+        if (o) openObjectModal(o, capturedName);
+      });
+    })(objName, link && link.sensorKey);
 
     layer.appendChild(el);
     setTimeout(function() { el.classList.remove('entering'); }, 350);
@@ -2486,24 +2696,33 @@ function onMouseMove(e) {
   }
 }
 
-function onCanvasClick(e) {
+// Resuelve el objeto bajo el puntero (compartido por clic simple y doble)
+function pickObject(e) {
   // Si el puntero se movió (arrastre para rotar/desplazar la cámara), no es
   // un clic de selección → ignorar. Umbral de 6 px distingue clic de arrastre.
   if (STATE._downX != null) {
     const dx = e.clientX - STATE._downX, dy = e.clientY - STATE._downY;
-    if (Math.hypot(dx, dy) > 6) return;
+    if (Math.hypot(dx, dy) > 6) return null;
   }
   STATE.raycaster.setFromCamera(STATE.mouse, STATE.camera);
   const hits = STATE.raycaster.intersectObjects(STATE.meshes, true);
-  if (hits.length === 0) return;
+  if (hits.length === 0) return null;
 
   const hitMesh = hits[0].object;
   STATE._lastHitMesh = hitMesh;
-
-  // Key = mesh's own name if it has one, else top parent's name, else uuid
   const topParent = getTopParent(hitMesh);
   const key = hitMesh.name || topParent.name || hitMesh.uuid;
+  return { hitMesh, key };
+}
 
+// CLIC SIMPLE: solo selecciona → destaca su gráfico en el panel derecho.
+// (El modal emergente ahora requiere DOBLE clic.)
+function onCanvasClick(e) {
+  const pick = pickObject(e);
+  if (!pick) return;
+  const { hitMesh, key } = pick;
+
+  // Modo "vincular objeto": completar el enlace pendiente
   if (STATE.pendingLinkNode) {
     const node = STATE.pendingLinkNode;
     STATE.objectLinks[key] = {
@@ -2511,7 +2730,6 @@ function onCanvasClick(e) {
       sensorKey: node.sensorKey,
       deviceId: node.deviceId,
       objectName: key,
-      // Store the exact mesh uuid for anchor lookup
       meshUUID: hitMesh.uuid,
     };
     STATE.pendingLinkNode = null;
@@ -2523,7 +2741,21 @@ function onCanvasClick(e) {
     return;
   }
 
-  openObjectModal(hitMesh, key);
+  const link = STATE.objectLinks[key] ||
+    Object.values(STATE.objectLinks).find(l => l.meshUUID === hitMesh.uuid);
+  if (link) {
+    openSensorDetail(link.sensorKey);   // sube y resalta su gráfico
+  } else {
+    toast(key + ' · sin sensor vinculado (doble clic para vincular)', 'warn', 2500);
+  }
+}
+
+// DOBLE CLIC: abre la ventana de detalle del objeto
+function onCanvasDblClick(e) {
+  const pick = pickObject(e);
+  if (!pick) return;
+  if (STATE.pendingLinkNode) return;   // en modo vinculación no abrir el modal
+  openObjectModal(pick.hitMesh, pick.key);
 }
 
 function getTopParent(obj) {
@@ -2703,9 +2935,11 @@ function loadGLB(url, name) {
       }
     });
 
+    // Activar simulación de agua en objetos cuyo nombre contenga "water"
+    setupWaterObjects();
+
     // Center & scale
-    const box = new THREE.Box3().setFromObject(STATE.model);
-    const center = box.getCenter(new THREE.Vector3());
+    const box = new THREE.Box3().setFromObject(STATE.model);    const center = box.getCenter(new THREE.Vector3());
     const size = box.getSize(new THREE.Vector3());
     const maxDim = Math.max(size.x, size.y, size.z);
     if (!isFinite(maxDim) || maxDim <= 0) {
@@ -2766,6 +3000,7 @@ function loadProceduralDemo() {
     { name: 'Motor_Principal', geo: new THREE.CylinderGeometry(0.3,0.3,0.6,16), pos: [0.8,0,0.3], color: 0xff6b35 },
     { name: 'Sensor_Presion', geo: new THREE.SphereGeometry(0.15,12,12), pos: [0.7,0.8,0.3], color: 0xffb800 },
     { name: 'Panel_Control', geo: new THREE.BoxGeometry(0.8,0.5,0.05), pos: [-0.5,-0.2,0.53], color: 0x334455 },
+    { name: 'Water_Tank', geo: new THREE.BoxGeometry(1.1, 0.8, 0.9, 24, 12, 24), pos: [-1.9, 0.1, 0], color: 0x2196c4 },
   ];
 
   parts.forEach(p => {
@@ -2780,8 +3015,9 @@ function loadProceduralDemo() {
 
   STATE.scene.add(group);
   STATE.model = group;
+  setupWaterObjects();     // activa el efecto en Water_Tank
   document.getElementById('model-name-badge').textContent = 'Escena Demo';
-  toast('Escena demo cargada · 6 objetos', 'ok');
+  toast('Escena demo cargada · 7 objetos', 'ok');
 
   // Auto-link sensors with demo device
   if (STATE.simulating) {
@@ -2820,6 +3056,8 @@ function toggleHighlights() {
 function updateHighlights() {
   if (!STATE.meshes.length) return;
   STATE.meshes.forEach(mesh => {
+    // Los objetos de agua conservan su brillo propio: no los tocamos
+    if (mesh.userData && mesh.userData._waterReady) return;
     const name = mesh.name;
     // Match by name OR by stored meshUUID
     const link = STATE.objectLinks[name] ||
@@ -2882,7 +3120,10 @@ function openObjectModal(hitMesh, key) {
       <div style="position:relative;height:180px;margin-bottom:16px;">
         <canvas id="modal-chart"></canvas>
       </div>
-      <button class="btn-sm" style="width:100%;" onclick="openSensorDetail('${sKey}');closeModal('object-modal');">Ver en Panel →</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn-sm" style="flex:1;" onclick="openSensorDetail('${sKey}');closeModal('object-modal');">Ver en Panel →</button>
+        <button class="btn-sm" style="flex:1;color:var(--err);border-color:var(--err);" onclick="unlinkObject('${name}')">✕ Desvincular</button>
+      </div>
     `;
   } else {
     document.getElementById('modal-sub').textContent = 'Sin sensor vinculado';
@@ -2919,6 +3160,19 @@ function linkObjectToSensor(objName) {
   closeModal('object-modal');
   updateHighlights();
   updateSensorIcons();
+}
+
+// Elimina la vinculación objeto 3D ↔ sensor
+function unlinkObject(objName) {
+  const link = STATE.objectLinks[objName];
+  if (!link) return;
+  delete STATE.objectLinks[objName];
+  persistAll();
+  toast('Vinculación eliminada: ' + objName, 'warn');
+  closeModal('object-modal');
+  updateHighlights();
+  updateSensorIcons();
+  renderDiagram();
 }
 
 /* ══════════════════════════════════════════════════════
@@ -4980,8 +5234,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   renderDevices();
   renderSensors();
-
-  // Load saved config into form
+  buildRTPanel();
   if (STATE.config.firebase) {
     populateSettings();
     initFirebase();
