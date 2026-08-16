@@ -681,10 +681,16 @@
   #diag-svg {
     position: absolute;
     inset: 0;
-    width: 100%;
-    height: 100%;
+    width: 4000px;
+    height: 3000px;
     overflow: visible;
     pointer-events: none;
+  }
+  .conn-waypoint { pointer-events: all; }
+  .mach-node.multi-selected, .panel-node.multi-selected, .capsule-node.multi-selected {
+    outline: 2px dashed var(--accent);
+    outline-offset: 3px;
+    box-shadow: 0 0 14px rgba(0,229,160,0.35);
   }
   .conn-hit { pointer-events: stroke; cursor: pointer; stroke: transparent; stroke-width: 12; fill: none; }
   .conn-visual { pointer-events: none; fill: none; }
@@ -1051,6 +1057,7 @@
     <div class="header-right">
       <div class="status-badge online" id="conn-badge">EN LÍNEA</div>
       <button class="btn-sm" onclick="toggleSimulate()">Simular Datos</button>
+      <button class="btn-sm" onclick="openDemoConfig()" title="Configurar los sensores del demo">⚙ Demo</button>
       <input type="file" id="scene-import-input" accept=".json" style="display:none" onchange="importSceneFile(event)">
       <button class="btn-sm" onclick="exportScene()" title="Exportar escena (modelo 3D + diagramas + config) a demo.json">⬇ Escena</button>
       <button class="btn-sm" onclick="document.getElementById('scene-import-input').click()" title="Importar escena desde un archivo JSON">⬆ Escena</button>
@@ -1107,6 +1114,7 @@
           <button class="vc-btn" onclick="toggleWireframe()">Wireframe</button>
           <button class="vc-btn" onclick="toggleHighlights()">Resaltar Sensores</button>
           <button class="vc-btn" onclick="updateSensorIcons();refreshSensorIconAnchors();toast('Iconos actualizados','ok');">Actualizar Iconos</button>
+          <button class="vc-btn" onclick="saveCurrentView()" title="Guardar este encuadre como vista inicial de la escena">📌 Fijar Vista</button>
         </div>
       </div>
 
@@ -1278,21 +1286,32 @@
       <span class="capsule-breadcrumb-sep">›</span>
       <span class="capsule-breadcrumb-name" id="capsule-breadcrumb-name"></span>
     </div>
+    <button class="btn-sm" id="btn-edit-toggle" onclick="toggleDiagEdit()"
+      style="color:var(--warn);border-color:var(--warn);">🔒 Vista</button>
     <div class="diag-toolbar-sep" id="toolbar-sep-add"></div>
-    <button class="btn-sm" id="btn-add-machine" onclick="openAddMachineModal()">+ Máquina</button>
-    <button class="btn-sm" id="btn-add-panel" onclick="openAddPanelModal()">+ Panel</button>
-    <button class="btn-sm" id="btn-add-capsule" onclick="openAddCapsuleModal()" style="color:#a78bfa;border-color:rgba(167,139,250,0.4);">⬡ Cápsula</button>
+    <span id="diag-edit-tools" style="display:none;gap:6px;align-items:center;">
+      <button class="btn-sm" id="btn-add-machine" onclick="openAddMachineModal()">+ Máquina</button>
+      <button class="btn-sm" id="btn-add-panel" onclick="openAddPanelModal()">+ Panel</button>
+      <button class="btn-sm" id="btn-add-capsule" onclick="openAddCapsuleModal()" style="color:#a78bfa;border-color:rgba(167,139,250,0.4);">⬡ Cápsula</button>
+      <span style="font-size:10px;color:var(--text3);margin-left:4px;">Nueva conexión:</span>
+      <select id="new-conn-type" onchange="DIAG.newConnType=this.value"
+        style="font-size:10px;padding:3px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+        <option value="hydraulic">Hidráulica</option>
+        <option value="electrical">Eléctrica</option>
+        <option value="steam">Vapor</option>
+        <option value="pneumatic">Neumática</option>
+        <option value="signal">Señal / Datos</option>
+      </select>
+      <button class="btn-sm" id="btn-cancel-conn" style="display:none;color:var(--warn);border-color:var(--warn);" onclick="cancelConn()">✕ Cancelar</button>
+    </span>
     <div class="diag-toolbar-sep"></div>
-    <span style="font-size:10px;color:var(--text3);">Nueva conexión:</span>
-    <select id="new-conn-type" onchange="DIAG.newConnType=this.value"
-      style="font-size:10px;padding:3px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
-      <option value="hydraulic">Hidráulica</option>
-      <option value="electrical">Eléctrica</option>
-      <option value="steam">Vapor</option>
-      <option value="pneumatic">Neumática</option>
-      <option value="signal">Señal / Datos</option>
-    </select>
-    <button class="btn-sm" id="btn-cancel-conn" style="display:none;color:var(--warn);border-color:var(--warn);" onclick="cancelConn()">✕ Cancelar</button>
+    <button class="btn-sm accent" onclick="openDiagCommands()" title="Comandos rápidos del diagrama">⚡ Comandos</button>
+    <div class="diag-toolbar-sep"></div>
+    <button class="btn-sm" onclick="diagZoomOut()" title="Alejar">−</button>
+    <span id="diag-zoom-ind" style="font-size:10px;color:var(--text3);min-width:34px;text-align:center;">100%</span>
+    <button class="btn-sm" onclick="diagZoomIn()" title="Acercar">+</button>
+    <button class="btn-sm accent" onclick="diagFitAll()" title="Encuadrar todo el diagrama">⛶ Ajustar</button>
+    <span id="diag-hint" style="font-size:9px;color:var(--text3);margin-left:4px;">rueda: zoom · arrastrar fondo: mover</span>
     <div class="conn-legend" id="conn-legend"></div>
   </div>
 
@@ -1312,11 +1331,112 @@
         <option value="">Sin sensor</option>
       </select>
       <div id="conn-sensor-val" style="margin-top:8px;font-size:14px;color:var(--accent);font-weight:600;min-height:20px;"></div>
+      <label style="margin-top:12px;display:block;">Trazo de la línea</label>
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <button class="btn-sm" style="flex:1;" onclick="setConnLineStyle(DIAG.selected,'curve')">∿ Curva</button>
+        <button class="btn-sm" style="flex:1;" onclick="setConnLineStyle(DIAG.selected,'straight')">∠ Recta</button>
+      </div>
+      <div style="font-size:9px;color:var(--text3);margin-top:8px;line-height:1.5;">
+        Doble clic sobre la línea agrega un punto de quiebre.<br>
+        Arrastralo para moverlo · doble clic sobre él para quitarlo.
+      </div>
+      <button class="btn-sm" style="width:100%;margin-top:6px;" onclick="clearWaypoints(DIAG.selected)">Quitar puntos de quiebre</button>
       <button class="btn-sm" style="width:100%;margin-top:12px;color:var(--err);border-color:var(--err);" onclick="removeSelectedConn()">Eliminar conexión</button>
     </div>
   </div>
 
 </div><!-- /diagram-overlay -->
+
+<!-- ─── MODAL: Configurar Demo ─── -->
+<div class="modal-overlay" id="demo-config-modal">
+  <div class="modal" style="max-width:820px;width:94vw;max-height:88vh;overflow-y:auto;">
+    <button class="modal-close" onclick="closeModal('demo-config-modal')">✕</button>
+    <div class="modal-title">Configurar Demo</div>
+    <div class="modal-sub">Definí los sensores simulados y sus valores. Se guarda con la escena, así quien abra el demo ve exactamente esto.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+      <div class="field-group" style="margin:0;">
+        <label>Nombre del dispositivo</label>
+        <input type="text" id="demo-dev-name">
+      </div>
+      <div class="field-group" style="margin:0;">
+        <label>Ubicación</label>
+        <input type="text" id="demo-dev-loc">
+      </div>
+    </div>
+    <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Sensores simulados</div>
+    <div id="demo-sensors-list"></div>
+    <button class="btn-sm" style="width:100%;margin-top:6px;" onclick="addDemoSensor()">+ Agregar sensor</button>
+    <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px;">
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text2);">
+        <input type="checkbox" id="demo-motor-en" style="width:auto;"> Incluir motor simulado
+      </label>
+      <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:10px;margin-top:8px;">
+        <div class="field-group" style="margin:0;">
+          <label>Nombre del motor</label>
+          <input type="text" id="demo-motor-name">
+        </div>
+        <div class="field-group" style="margin:0;">
+          <label>RPM base</label>
+          <input type="number" id="demo-motor-rpm">
+        </div>
+        <div class="field-group" style="margin:0;">
+          <label>Variación RPM</label>
+          <input type="number" id="demo-motor-var">
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn-sm accent" style="flex:2;" onclick="saveDemoConfig()">Guardar configuración</button>
+      <button class="btn-sm" style="flex:1;" onclick="resetDemoConfig()">Restaurar por defecto</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── MODAL: Comandos del Diagrama ─── -->
+<div class="modal-overlay" id="diag-commands-modal">
+  <div class="modal" style="max-width:780px;width:94vw;max-height:88vh;overflow-y:auto;">
+    <button class="modal-close" onclick="closeModal('diag-commands-modal')">✕</button>
+    <div class="modal-title" id="diag-cmd-title">⚡ Comandos Rápidos</div>
+    <div class="modal-sub" id="diag-cmd-sub">Botones de acción que podés ejecutar con un clic.</div>
+    <div id="diag-cmd-list" style="margin-bottom:14px;"></div>
+    <div id="diag-cmd-editor" style="display:none;border:1px solid var(--border);border-radius:8px;padding:14px;background:var(--bg2);">
+      <div id="dcmd-editor-title" style="font-size:11px;font-weight:600;color:var(--text);margin-bottom:10px;">Nuevo botón de comando</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="field-group" style="margin:0;">
+          <label>Etiqueta del botón</label>
+          <input type="text" id="dcmd-label" placeholder="Ej: Encender bomba">
+        </div>
+        <div class="field-group" style="margin:0;">
+          <label>Dispositivo</label>
+          <select id="dcmd-device"></select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
+        <div class="field-group" style="margin:0;">
+          <label>Acción</label>
+          <select id="dcmd-type" onchange="renderCmdParams()"></select>
+        </div>
+        <div class="field-group" style="margin:0;">
+          <label>Color / estilo</label>
+          <select id="dcmd-color">
+            <option value="accent">Normal (verde)</option>
+            <option value="warn">Precaución (naranja)</option>
+            <option value="err">Peligro (rojo)</option>
+          </select>
+        </div>
+      </div>
+      <div id="dcmd-params" style="margin-top:10px;"></div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;color:var(--text2);">
+        <input type="checkbox" id="dcmd-confirm" style="width:auto;"> Pedir confirmación antes de ejecutar
+      </label>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn-sm accent" style="flex:1;" onclick="saveDiagCommand()">Guardar botón</button>
+        <button class="btn-sm" style="flex:1;" onclick="hideCmdEditor()">Cancelar</button>
+      </div>
+    </div>
+    <button class="btn-sm" id="dcmd-add-btn" style="width:100%;margin-top:6px;" onclick="showCmdEditor()">+ Agregar botón de comando</button>
+  </div>
+</div>
 
 <!-- ─── MODAL: Agregar Máquina ─── -->
 <!-- ─── MODAL: Enviar Comandos ─── -->
@@ -1395,6 +1515,15 @@
         style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
         <option value="">Sin modelo — usar ícono</option>
       </select>
+      <button class="btn-sm accent" style="width:100%;margin-top:6px;" onclick="pickObjectFor3D('machine')">
+        🎯 Elegir haciendo clic en el modelo 3D
+      </button>
+      <button class="btn-sm" style="width:100%;margin-top:6px;" onclick="openDiagCommands(DIAG.editingMachineId)">
+        ⚡ Comandos de esta máquina
+      </button>
+      <div style="font-size:9px;color:var(--text3);margin-top:4px;">
+        Te lleva a la vista 3D para que selecciones el objeto directamente.
+      </div>
     </div>
 
     <div class="field-group">
@@ -1469,6 +1598,15 @@
         style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
         <option value="">Sin ensamble — usar ícono</option>
       </select>
+      <button class="btn-sm accent" style="width:100%;margin-top:6px;" onclick="pickObjectFor3D('panel')">
+        🎯 Elegir haciendo clic en el modelo 3D
+      </button>
+      <button class="btn-sm" style="width:100%;margin-top:6px;" onclick="openDiagCommands(DIAG.editingPanelId)">
+        ⚡ Comandos de este panel
+      </button>
+      <div style="font-size:9px;color:var(--text3);margin-top:4px;">
+        Te lleva a la vista 3D para que selecciones el objeto directamente.
+      </div>
     </div>
     <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin:14px 0 8px;">Sensores asignados</div>
     <div id="panel-modal-elements-list"></div>
@@ -1522,6 +1660,15 @@
         style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
         <option value="">Sin ensamble</option>
       </select>
+      <button class="btn-sm accent" style="width:100%;margin-top:6px;" onclick="pickObjectFor3D('capsule')">
+        🎯 Elegir haciendo clic en el modelo 3D
+      </button>
+      <button class="btn-sm" style="width:100%;margin-top:6px;" onclick="openDiagCommands(DIAG.editingCapsuleId)">
+        ⚡ Comandos de esta cápsula
+      </button>
+      <div style="font-size:9px;color:var(--text3);margin-top:4px;">
+        Te lleva a la vista 3D para que selecciones el objeto directamente.
+      </div>
     </div>
 
     <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin:14px 0 8px;">Máquinas en esta cápsula</div>
@@ -1635,6 +1782,8 @@ function persistAll() {
   saveLocal('offlineQueue', STATE.offlineQueue);
   saveLocal('sensorDefs', STATE.sensorDefs);
   saveLocal('channels', STATE.channels);
+  saveLocal('diagCommands', STATE.diagCommands || []);
+  saveLocal('demoConfig', STATE.demoConfig || null);
 }
 
 function loadPersisted() {
@@ -1648,6 +1797,9 @@ function loadPersisted() {
   STATE.offlineQueue = loadLocal('offlineQueue', []);
   STATE.sensorDefs = loadLocal('sensorDefs', {});
   STATE.channels = loadLocal('channels', {});
+  STATE.diagCommands = loadLocal('diagCommands', []);
+  STATE.cameraView = loadLocal('cameraView', null);
+  STATE.demoConfig = loadLocal('demoConfig', null);
   STATE.glbData = loadLocal('glbData', null);
 }
 
@@ -1827,19 +1979,67 @@ function processRTDBData(data) {
 /* ══════════════════════════════════════════════════════
    SIMULATE
 ══════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════
+   DEMO CONFIGURABLE
+   Los sensores de la simulación se definen aquí y se guardan en el JSON de
+   la escena, para que quien abra el demo vea exactamente lo que definiste.
+══════════════════════════════════════════════════════ */
+const DEMO_DEVICE_ID = 'demo_node';
+
+// Sensores por defecto (se usan si la escena no trae configuración propia)
+function defaultDemoConfig() {
+  return {
+    deviceName: 'Dispositivo Demo',
+    deviceLoc: 'Simulación',
+    sensors: [
+      { key:'temp', name:'Temperatura', unit:'°C',  mode:'wave', base:22,   amp:4,  period:60,  noise:0.5 },
+      { key:'hum',  name:'Humedad',     unit:'%',   mode:'wave', base:55,   amp:10, period:90,  noise:1   },
+      { key:'pres', name:'Presión',     unit:'hPa', mode:'wave', base:1013, amp:5,  period:120, noise:0   },
+    ],
+    motor: { enabled:true, name:'Motor Principal', rpmBase:900, rpmVar:400 }
+  };
+}
+
+function demoConfig() {
+  if (!STATE.demoConfig) STATE.demoConfig = defaultDemoConfig();
+  if (!Array.isArray(STATE.demoConfig.sensors)) STATE.demoConfig.sensors = [];
+  return STATE.demoConfig;
+}
+
+// Calcula el valor de un sensor demo en un instante dado
+function demoValue(s, ts) {
+  const base = Number(s.base) || 0;
+  const amp = Number(s.amp) || 0;
+  const period = Number(s.period) || 60;
+  const noise = Number(s.noise) || 0;
+  let v;
+  switch (s.mode) {
+    case 'fixed':  v = base; break;
+    case 'random': v = base + (Math.random() * 2 - 1) * amp; break;
+    case 'ramp':   v = base + amp * ((ts % period) / period); break;
+    case 'wave':
+    default:       v = base + Math.sin(ts / period * Math.PI * 2) * amp; break;
+  }
+  if (noise) v += (Math.random() * 2 - 1) * noise;
+  return Math.round(v * 100) / 100;
+}
+
 function toggleSimulate() {
   STATE.simulating = !STATE.simulating;
   if (STATE.simulating) {
-    // Create demo device if none
-    if (!STATE.devices['demo_node']) {
-      STATE.devices['demo_node'] = {
-        name: 'Dispositivo Demo',
-        loc: 'Simulación',
-        sensors: { temp:'Temperatura', hum:'Humedad', pres:'Presión' },
-        motors: { motor1:'Motor Principal' }
-      };
-    }
+    const cfg = demoConfig();
+    // Crear/actualizar el dispositivo demo según la configuración
+    const sensors = {};
+    cfg.sensors.forEach(s => { sensors[s.key] = s.name; });
+    STATE.devices[DEMO_DEVICE_ID] = {
+      name: cfg.deviceName || 'Dispositivo Demo',
+      loc: cfg.deviceLoc || 'Simulación',
+      sensors,
+      motors: cfg.motor && cfg.motor.enabled ? { motor1: cfg.motor.name || 'Motor' } : {},
+      lastUpdate: Date.now()
+    };
     STATE.simInterval = setInterval(simulateTick, 1500);
+    simulateTick();
     toast('Simulación activada', 'ok');
   } else {
     clearInterval(STATE.simInterval);
@@ -1849,24 +2049,30 @@ function toggleSimulate() {
 }
 
 function simulateTick() {
-  const devId = 'demo_node';
+  const devId = DEMO_DEVICE_ID;
+  const cfg = demoConfig();
   const ts = Math.floor(Date.now()/1000);
-  const newData = {
-    temp: { valor: (22 + Math.sin(ts/60)*4 + Math.random()*0.5).toFixed(2)*1, unidad: '°C', ts },
-    hum:  { valor: (55 + Math.cos(ts/90)*10 + Math.random()*1).toFixed(1)*1, unidad: '%', ts },
-    pres: { valor: (1013 + Math.sin(ts/120)*5).toFixed(1)*1, unidad: 'hPa', ts },
-    motores_motor1: { estado: Math.random() > 0.1 ? 1 : 0, rpm: Math.floor(900 + Math.random()*400), ts },
-  };
 
-  ['temp','hum','pres'].forEach(k => {
-    const fk = devId + '/' + k;
-    STATE.liveData[fk] = newData[k];
+  cfg.sensors.forEach(s => {
+    if (!s.key) return;
+    const fk = devId + '/' + s.key;
+    const val = demoValue(s, ts);
+    STATE.liveData[fk] = { valor: val, unidad: s.unit || '', ts, name: s.name || s.key };
     if (!STATE.history[fk]) STATE.history[fk] = [];
-    STATE.history[fk].push({ ts, val: newData[k].valor });
+    STATE.history[fk].push({ ts, val });
     if (STATE.history[fk].length > 300) STATE.history[fk].shift();
   });
-  const mk = devId + '/motores/motor1';
-  STATE.liveData[mk] = newData.motores_motor1;
+
+  if (cfg.motor && cfg.motor.enabled) {
+    const mk = devId + '/motores/motor1';
+    STATE.liveData[mk] = {
+      estado: 1,
+      rpm: Math.floor((Number(cfg.motor.rpmBase) || 0) + Math.random() * (Number(cfg.motor.rpmVar) || 0)),
+      ts
+    };
+  }
+
+  if (STATE.devices[devId]) STATE.devices[devId].lastUpdate = Date.now();
 
   setOnline(true);
   renderSensors();
@@ -1874,7 +2080,6 @@ function simulateTick() {
   updateSensorIconValues();
   if (document.getElementById('diagram-overlay').classList.contains('active')) renderDiagram();
 
-  // Push new point to history chart if that tab is currently visible
   const histView = document.getElementById('view-history');
   if (histView && histView.style.display !== 'none' && STATE.selectedSensor) {
     pushHistoryChartPoint(STATE.selectedSensor);
@@ -1884,6 +2089,134 @@ function simulateTick() {
   document.getElementById('last-update-bar').textContent = '← Última actualización: ' + new Date().toLocaleTimeString();
 }
 
+/* ── Editor de la configuración del demo ─────────────── */
+function openDemoConfig() {
+  const cfg = demoConfig();
+  document.getElementById('demo-dev-name').value = cfg.deviceName || '';
+  document.getElementById('demo-dev-loc').value = cfg.deviceLoc || '';
+  const m = cfg.motor || {};
+  document.getElementById('demo-motor-en').checked = !!m.enabled;
+  document.getElementById('demo-motor-name').value = m.name || 'Motor';
+  document.getElementById('demo-motor-rpm').value = m.rpmBase != null ? m.rpmBase : 900;
+  document.getElementById('demo-motor-var').value = m.rpmVar != null ? m.rpmVar : 400;
+  renderDemoSensors();
+  openModal('demo-config-modal');
+}
+
+const DEMO_MODES = [['wave','Onda (sube y baja)'],['random','Aleatorio'],['ramp','Rampa'],['fixed','Valor fijo']];
+
+function renderDemoSensors() {
+  const cont = document.getElementById('demo-sensors-list');
+  const cfg = demoConfig();
+  const IS = 'padding:5px 7px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);font-size:11px;width:100%;';
+
+  if (!cfg.sensors.length) {
+    cont.innerHTML = '<div style="font-size:11px;color:var(--text3);text-align:center;padding:16px;">Sin sensores. Agregá uno abajo.</div>';
+    return;
+  }
+
+  cont.innerHTML = cfg.sensors.map((s, i) => `
+    <div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;background:var(--bg2);">
+      <div style="display:grid;grid-template-columns:1fr 1fr 0.7fr 1.2fr;gap:8px;">
+        <div class="field-group" style="margin:0;"><label style="font-size:10px;">Clave</label>
+          <input type="text" id="ds_${i}_key" style="${IS}" value="${chEsc(s.key||'')}" placeholder="temp"></div>
+        <div class="field-group" style="margin:0;"><label style="font-size:10px;">Nombre</label>
+          <input type="text" id="ds_${i}_name" style="${IS}" value="${chEsc(s.name||'')}" placeholder="Temperatura"></div>
+        <div class="field-group" style="margin:0;"><label style="font-size:10px;">Unidad</label>
+          <input type="text" id="ds_${i}_unit" style="${IS}" value="${chEsc(s.unit||'')}" placeholder="°C"></div>
+        <div class="field-group" style="margin:0;"><label style="font-size:10px;">Comportamiento</label>
+          <select id="ds_${i}_mode" style="${IS}">
+            ${DEMO_MODES.map(m => `<option value="${m[0]}"${s.mode===m[0]?' selected':''}>${m[1]}</option>`).join('')}
+          </select></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:8px;margin-top:8px;align-items:end;">
+        <div class="field-group" style="margin:0;"><label style="font-size:10px;">Valor base</label>
+          <input type="number" step="any" id="ds_${i}_base" style="${IS}" value="${s.base != null ? s.base : 0}"></div>
+        <div class="field-group" style="margin:0;"><label style="font-size:10px;">Amplitud (±)</label>
+          <input type="number" step="any" id="ds_${i}_amp" style="${IS}" value="${s.amp != null ? s.amp : 0}"></div>
+        <div class="field-group" style="margin:0;"><label style="font-size:10px;">Periodo (s)</label>
+          <input type="number" step="any" id="ds_${i}_period" style="${IS}" value="${s.period != null ? s.period : 60}"></div>
+        <div class="field-group" style="margin:0;"><label style="font-size:10px;">Ruido</label>
+          <input type="number" step="any" id="ds_${i}_noise" style="${IS}" value="${s.noise != null ? s.noise : 0}"></div>
+        <button class="btn-sm" style="color:var(--err);border-color:var(--err);" onclick="removeDemoSensor(${i})">✕</button>
+      </div>
+    </div>`).join('');
+}
+
+// Lee los campos del formulario al objeto de configuración
+function readDemoSensors() {
+  const cfg = demoConfig();
+  cfg.sensors = cfg.sensors.map((s, i) => {
+    const g = id => { const el = document.getElementById('ds_' + i + '_' + id); return el ? el.value : ''; };
+    const n = id => { const v = parseFloat(g(id)); return isFinite(v) ? v : 0; };
+    return {
+      key: (g('key') || ('s' + i)).trim().replace(/[^\w]/g, '_'),
+      name: g('name').trim() || g('key'),
+      unit: g('unit').trim(),
+      mode: g('mode') || 'wave',
+      base: n('base'), amp: n('amp'),
+      period: n('period') || 60, noise: n('noise')
+    };
+  });
+  return cfg;
+}
+
+function addDemoSensor() {
+  readDemoSensors();
+  demoConfig().sensors.push({ key:'s' + (demoConfig().sensors.length+1), name:'Nuevo sensor', unit:'', mode:'wave', base:50, amp:10, period:60, noise:0.5 });
+  renderDemoSensors();
+}
+
+function removeDemoSensor(i) {
+  readDemoSensors();
+  const cfg = demoConfig();
+  const s = cfg.sensors[i];
+  cfg.sensors.splice(i, 1);
+  // Limpiar sus datos en vivo e historial
+  if (s && s.key) {
+    delete STATE.liveData[DEMO_DEVICE_ID + '/' + s.key];
+    delete STATE.history[DEMO_DEVICE_ID + '/' + s.key];
+  }
+  renderDemoSensors();
+}
+
+function saveDemoConfig() {
+  const cfg = readDemoSensors();
+  cfg.deviceName = document.getElementById('demo-dev-name').value.trim() || 'Dispositivo Demo';
+  cfg.deviceLoc  = document.getElementById('demo-dev-loc').value.trim();
+  cfg.motor = {
+    enabled: document.getElementById('demo-motor-en').checked,
+    name: document.getElementById('demo-motor-name').value.trim() || 'Motor',
+    rpmBase: parseFloat(document.getElementById('demo-motor-rpm').value) || 0,
+    rpmVar: parseFloat(document.getElementById('demo-motor-var').value) || 0,
+  };
+  STATE.demoConfig = cfg;
+  saveLocal('demoConfig', cfg);
+
+  // Actualizar el dispositivo demo y refrescar la vista
+  const sensors = {};
+  cfg.sensors.forEach(s => { sensors[s.key] = s.name; });
+  STATE.devices[DEMO_DEVICE_ID] = Object.assign(STATE.devices[DEMO_DEVICE_ID] || {}, {
+    name: cfg.deviceName, loc: cfg.deviceLoc, sensors,
+    motors: cfg.motor.enabled ? { motor1: cfg.motor.name } : {},
+    lastUpdate: Date.now()
+  });
+  persistAll();
+  if (STATE.simulating) simulateTick();
+  renderDevices();
+  renderSensors();
+  buildRTPanel();
+  closeModal('demo-config-modal');
+  toast('Configuración del demo guardada', 'ok');
+}
+
+function resetDemoConfig() {
+  if (!confirm('¿Restaurar la configuración del demo por defecto?')) return;
+  STATE.demoConfig = defaultDemoConfig();
+  saveLocal('demoConfig', STATE.demoConfig);
+  openDemoConfig();
+  toast('Configuración restaurada', 'warn');
+}
 /* ══════════════════════════════════════════════════════
    RENDER SIDEBAR LEFT
 ══════════════════════════════════════════════════════ */
@@ -2131,6 +2464,7 @@ function buildRTPanel() {
 
 function updateRTPanel() {
   updateNodeCharts();
+  updateSensorModal();   // mantener vivo el modal de detalle si está abierto
 
   const keys = panelSensorKeys();
   const sig = keys.join('|') + '#' + (STATE.selectedSensor || '');
@@ -2722,6 +3056,12 @@ function onCanvasClick(e) {
   if (!pick) return;
   const { hitMesh, key } = pick;
 
+  // Modo "elegir objeto 3D para una máquina del diagrama"
+  if (DIAG.pickingFor) {
+    completePickObject(hitMesh, key);
+    return;
+  }
+
   // Modo "vincular objeto": completar el enlace pendiente
   if (STATE.pendingLinkNode) {
     const node = STATE.pendingLinkNode;
@@ -2755,6 +3095,7 @@ function onCanvasDblClick(e) {
   const pick = pickObject(e);
   if (!pick) return;
   if (STATE.pendingLinkNode) return;   // en modo vinculación no abrir el modal
+  if (DIAG.pickingFor) return;         // eligiendo objeto para el diagrama
   openObjectModal(pick.hitMesh, pick.key);
 }
 
@@ -2809,17 +3150,53 @@ function persistGlb() {
   } catch (e) {}
 }
 
+// Captura la vista actual de la cámara 3D (posición, objetivo y zoom)
+// Fija la vista actual como la que se guardará/exportará con la escena
+function saveCurrentView() {
+  const v = captureCameraView();
+  if (!v) { toast('La vista 3D no está lista', 'warn'); return; }
+  STATE.cameraView = v;
+  saveLocal('cameraView', v);
+  toast('Vista guardada · se usará al abrir la escena', 'ok');
+}
+
+function captureCameraView() {
+  if (!STATE.camera || !STATE.controls) return null;
+  const p = STATE.camera.position, t = STATE.controls.target;
+  return {
+    pos: [p.x, p.y, p.z],
+    target: [t.x, t.y, t.z],
+    zoom: STATE.camera.zoom || 1,
+    fov: STATE.camera.fov || 50
+  };
+}
+
+// Restaura una vista guardada
+function applyCameraView(v) {
+  if (!v || !STATE.camera || !STATE.controls) return false;
+  if (Array.isArray(v.pos))    STATE.camera.position.set(v.pos[0], v.pos[1], v.pos[2]);
+  if (Array.isArray(v.target)) STATE.controls.target.set(v.target[0], v.target[1], v.target[2]);
+  if (v.fov)  { STATE.camera.fov = v.fov; }
+  if (v.zoom) { STATE.camera.zoom = v.zoom; }
+  STATE.camera.updateProjectionMatrix();
+  STATE.controls.update();
+  return true;
+}
+
 function exportScene() {
   const scene = {
     type: 'iot-platform-scene',
     version: 1,
     exportedAt: new Date().toISOString(),
     glb: STATE.glbData || null,
+    cameraView: STATE.cameraView || captureCameraView(),   // posición de la vista 3D
+    demoConfig: STATE.demoConfig || null,                  // sensores simulados del demo
     diagMachines: STATE.diagMachines,
     diagConnections: STATE.diagConnections,
     diagPanels: STATE.diagPanels,
     diagCapsules: STATE.diagCapsules,
     objectLinks: STATE.objectLinks,
+    diagCommands: STATE.diagCommands || [],
     sensorDefs: STATE.sensorDefs,
     channels: STATE.channels,
     devices: STATE.devices,
@@ -2845,6 +3222,7 @@ function importSceneObj(obj, opts) {
   STATE.diagPanels = obj.diagPanels || [];
   STATE.diagCapsules = obj.diagCapsules || [];
   STATE.objectLinks = obj.objectLinks || {};
+  STATE.diagCommands = obj.diagCommands || [];
   STATE.sensorDefs = obj.sensorDefs || {};
   STATE.channels = obj.channels || {};
   if (obj.devices) {
@@ -2853,14 +3231,24 @@ function importSceneObj(obj, opts) {
   }
   if (obj.liveData) STATE.liveData = obj.liveData;
   STATE.glbData = obj.glb || null;
-  if (!opts.noPersist) { persistAll(); persistGlb(); }
+  STATE.cameraView = obj.cameraView || null;
+  if (obj.demoConfig) STATE.demoConfig = obj.demoConfig;
+  if (!opts.noPersist) { persistAll(); persistGlb(); saveLocal('cameraView', STATE.cameraView); }
 
   if (STATE.glbData && STATE.glbData.data) {
+    // loadGLB reencuadra la cámara al terminar; la vista guardada se aplica
+    // después mediante STATE._pendingCameraView (ver final de loadGLB).
+    STATE._pendingCameraView = STATE.cameraView;
     loadGLB(base64ToBlobUrl(STATE.glbData.data), STATE.glbData.name || 'modelo.glb');
+  } else if (STATE.cameraView) {
+    applyCameraView(STATE.cameraView);
   }
   renderDevices();
   renderSensors();
   updateRTPanel();
+  // Si la escena trae configuración de demo, arrancar la simulación para que
+  // el visitante vea datos en vivo sin tener que activarla a mano.
+  if (obj.demoConfig && !STATE.simulating) toggleSimulate();
   if (document.getElementById('diagram-overlay').classList.contains('active')) renderDiagram();
   if (!opts.silent) toast('Escena cargada ✓', 'ok');
   return true;
@@ -2886,14 +3274,28 @@ function tryLoadServerDemo(opts) {
 // Al arrancar: restaura el GLB local si lo hay; si no hay NADA guardado,
 // carga la escena demo del servidor (para visitantes / modo demo).
 function bootScene() {
+  // 1) Si el usuario ya tiene su propio modelo guardado, se restaura ese.
   if (STATE.glbData && STATE.glbData.data) {
+    STATE._pendingCameraView = STATE.cameraView;   // conservar el encuadre guardado
     loadGLB(base64ToBlobUrl(STATE.glbData.data), STATE.glbData.name || 'modelo.glb');
     return;
   }
   const hasLocalScene = (STATE.diagMachines && STATE.diagMachines.length) ||
                         Object.keys(STATE.sensorDefs || {}).length ||
                         Object.keys(STATE.channels || {}).length;
-  if (!hasLocalScene) tryLoadServerDemo({ silent: true, noPersist: true });
+  if (hasLocalScene) return;   // ya trabajó antes: respetamos lo suyo
+
+  // 2) Visitante nuevo: cargar la escena demo publicada en el servidor
+  //    (demo.json junto al HTML). Si no existe, usar la demo incorporada,
+  //    para que nunca se encuentre con la pantalla vacía.
+  tryLoadServerDemo({ silent: true, noPersist: true }).then(ok => {
+    if (ok) return;
+    loadProceduralDemo();
+    if (!STATE.simulating) toggleSimulate();   // datos en vivo desde el inicio
+    setTimeout(() => {
+      toast('Modo demo · explorá el modelo 3D y el diagrama 2D', 'ok', 5000);
+    }, 1200);
+  });
 }
 
 function loadGLB(url, name) {
@@ -2952,6 +3354,13 @@ function loadGLB(url, name) {
     STATE.camera.position.set(0, size.y * scale * 0.5, maxDim * scale * 1.5);
     STATE.controls.target.set(0, 0, 0);
     STATE.controls.update();
+
+    // Si la escena traía una vista guardada, se aplica AHORA (después del
+    // reencuadre automático de arriba, que si no la pisaría).
+    if (STATE._pendingCameraView) {
+      applyCameraView(STATE._pendingCameraView);
+      STATE._pendingCameraView = null;
+    }
 
     document.getElementById('model-name-badge').textContent = name || 'Modelo';
     toast('Modelo cargado · ' + STATE.meshes.length + ' objetos', 'ok');
@@ -3144,6 +3553,7 @@ function openObjectModal(hitMesh, key) {
   document.getElementById('object-modal').classList.add('open');
 
   if (link) {
+    STATE._modalSensorKey = link.sensorKey;   // refresco en vivo del gráfico
     setTimeout(() => renderSensorChart(link.sensorKey, 'modal-chart'), 50);
   }
 }
@@ -3228,10 +3638,846 @@ const DIAG = {
   editingCapsuleId: null,
   openCapsuleId: null,     // when non-null, showing inside this capsule
   nodeChartKeys: [],       // sensor keys currently shown in node charts modal
+  // ── Vista: zoom y desplazamiento del canvas ──
+  zoom: 1, panX: 0, panY: 0,
+  panning: false, panStartX: 0, panStartY: 0, panOrigX: 0, panOrigY: 0,
+  draggingWaypoint: null,  // {connId, index} mientras se arrastra un punto de quiebre
+  multi: [],               // ids de nodos con selección múltiple
+  pickingFor: null,        // machineId mientras se elige su objeto 3D con un clic
+  editMode: false,         // edición del diagrama bloqueada por defecto
+  cmdNodeId: null,         // nodo al que pertenecen los comandos que se editan
+  cmdEditIndex: null,      // índice del comando en edición (null = creando)
 };
+
+/* ══════════════════════════════════════════════════════
+   VISTA DEL DIAGRAMA — zoom, desplazamiento y encuadre
+══════════════════════════════════════════════════════ */
+// Aplica la transformación al contenedor del diagrama
+function applyDiagTransform() {
+  const inner = document.getElementById('diag-canvas-inner');
+  if (!inner) return;
+  inner.style.transformOrigin = '0 0';
+  inner.style.transform = `translate(${DIAG.panX}px, ${DIAG.panY}px) scale(${DIAG.zoom})`;
+  const ind = document.getElementById('diag-zoom-ind');
+  if (ind) ind.textContent = Math.round(DIAG.zoom * 100) + '%';
+}
+
+// Convierte coordenadas de pantalla → coordenadas del diagrama
+function screenToDiag(clientX, clientY) {
+  const wrap = document.getElementById('diag-canvas-wrap');
+  const r = wrap.getBoundingClientRect();
+  return {
+    x: (clientX - r.left - DIAG.panX) / DIAG.zoom,
+    y: (clientY - r.top - DIAG.panY) / DIAG.zoom
+  };
+}
+
+function setDiagZoom(z, cx, cy) {
+  const wrap = document.getElementById('diag-canvas-wrap');
+  if (!wrap) return;
+  const r = wrap.getBoundingClientRect();
+  // Punto de referencia: centro del área visible si no se indica otro
+  if (cx == null) { cx = r.left + r.width / 2; cy = r.top + r.height / 2; }
+  const before = screenToDiag(cx, cy);
+  DIAG.zoom = Math.max(0.15, Math.min(3, z));
+  // Reajustar el desplazamiento para que el punto bajo el cursor no se mueva
+  DIAG.panX = (cx - r.left) - before.x * DIAG.zoom;
+  DIAG.panY = (cy - r.top) - before.y * DIAG.zoom;
+  applyDiagTransform();
+}
+
+function diagZoomIn()  { setDiagZoom(DIAG.zoom * 1.2); }
+function diagZoomOut() { setDiagZoom(DIAG.zoom / 1.2); }
+function diagZoomReset() { DIAG.zoom = 1; DIAG.panX = 0; DIAG.panY = 0; applyDiagTransform(); }
+
+// Encuadra todo el diagrama en la vista
+function diagFitAll() {
+  const wrap = document.getElementById('diag-canvas-wrap');
+  if (!wrap) return;
+  const nodes = visibleDiagNodes();
+  if (!nodes.length) { diagZoomReset(); return; }
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  nodes.forEach(n => {
+    const w = n._w || 170, h = n._h || 170;
+    minX = Math.min(minX, n.x);       minY = Math.min(minY, n.y);
+    maxX = Math.max(maxX, n.x + w);   maxY = Math.max(maxY, n.y + h);
+  });
+
+  const pad = 60;
+  const bw = (maxX - minX) + pad * 2;
+  const bh = (maxY - minY) + pad * 2;
+  const r = wrap.getBoundingClientRect();
+  if (bw <= 0 || bh <= 0 || r.width === 0) return;
+
+  DIAG.zoom = Math.max(0.15, Math.min(1.6, Math.min(r.width / bw, r.height / bh)));
+  // Centrar el contenido en el área visible
+  DIAG.panX = (r.width  - (maxX - minX) * DIAG.zoom) / 2 - minX * DIAG.zoom;
+  DIAG.panY = (r.height - (maxY - minY) * DIAG.zoom) / 2 - minY * DIAG.zoom;
+  applyDiagTransform();
+}
+
+// Nodos visibles en la vista actual (principal o dentro de una cápsula)
+function visibleDiagNodes() {
+  const out = [];
+  const add = (arr, w, h) => arr.forEach(n => {
+    if (typeof n.x === 'number') out.push(Object.assign({}, n, { _w: w, _h: h }));
+  });
+  if (DIAG.openCapsuleId) {
+    const cap = STATE.diagCapsules.find(c => c.id === DIAG.openCapsuleId);
+    if (!cap) return out;
+    const cpids = cap.childPanelIds || [];
+    add(STATE.diagMachines.filter(m => cap.childMachineIds.includes(m.id)), 160, 160);
+    add(STATE.diagPanels.filter(p => cpids.includes(p.id)), 200, 150);
+  } else {
+    const inCap = new Set();
+    STATE.diagCapsules.forEach(c => {
+      c.childMachineIds.forEach(id => inCap.add(id));
+      (c.childPanelIds || []).forEach(id => inCap.add(id));
+    });
+    add(STATE.diagMachines.filter(m => !inCap.has(m.id)), 160, 160);
+    add(STATE.diagPanels.filter(p => !inCap.has(p.id)), 200, 150);
+    add(STATE.diagCapsules, 170, 140);
+  }
+  return out;
+}
+
+// Registra los gestos de navegación (rueda = zoom, arrastre del fondo = pan)
+function initDiagViewControls() {
+  const wrap = document.getElementById('diag-canvas-wrap');
+  if (!wrap || wrap._viewInit) return;
+  wrap._viewInit = true;
+
+  wrap.addEventListener('wheel', e => {
+    e.preventDefault();
+    setDiagZoom(DIAG.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), e.clientX, e.clientY);
+  }, { passive: false });
+
+  wrap.addEventListener('mousedown', e => {
+    // Solo desplazar si se arrastra el fondo (no un nodo, botón o conexión)
+    if (e.target !== wrap && e.target.id !== 'diag-canvas-inner' && e.target.id !== 'diag-svg') return;
+    if (e.button === 1 || e.button === 0) {
+      DIAG.panning = true;
+      DIAG.panStartX = e.clientX; DIAG.panStartY = e.clientY;
+      DIAG.panOrigX = DIAG.panX;  DIAG.panOrigY = DIAG.panY;
+      wrap.style.cursor = 'grabbing';
+      e.preventDefault();
+    }
+  });
+
+  document.addEventListener('mousemove', e => {
+    if (!DIAG.panning) return;
+    DIAG.panX = DIAG.panOrigX + (e.clientX - DIAG.panStartX);
+    DIAG.panY = DIAG.panOrigY + (e.clientY - DIAG.panStartY);
+    applyDiagTransform();
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (DIAG.panning) { DIAG.panning = false; wrap.style.cursor = 'default'; }
+  });
+}
 
 // 3D thumbnail renderers keyed by machineId or panelId
 const thumbRenderers = {};
+
+/* ══════════════════════════════════════════════════════
+   PUNTOS DE QUIEBRE (waypoints) Y ESTILO DE LÍNEA
+══════════════════════════════════════════════════════ */
+// Curva suave que PASA por todos los puntos (Catmull-Rom → Bézier cúbica)
+function smoothPath(pts) {
+  if (pts.length < 2) return '';
+  if (pts.length === 2) return `M${pts[0][0]},${pts[0][1]} L${pts[1][0]},${pts[1][1]}`;
+  let d = `M${pts[0][0]},${pts[0][1]}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i - 1] || pts[i];
+    const p1 = pts[i];
+    const p2 = pts[i + 1];
+    const p3 = pts[i + 2] || p2;
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+    const c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+    const c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ` C${c1x},${c1y} ${c2x},${c2y} ${p2[0]},${p2[1]}`;
+  }
+  return d;
+}
+
+// Agrega un punto de quiebre en la posición del cursor, insertándolo en el
+// tramo más cercano para que la línea no "salte".
+function addWaypoint(connId, clientX, clientY) {
+  if (!isDiagEditable()) return;
+  const conn = STATE.diagConnections.find(c => c.id === connId);
+  if (!conn) return;
+  const p = screenToDiag(clientX, clientY);
+
+  const a = findDiagNode(conn.fromId), b = findDiagNode(conn.toId);
+  if (!a || !b) return;
+  const [x1, y1] = getNodeCenter(a);
+  const [x2, y2] = getNodeCenter(b);
+
+  if (!Array.isArray(conn.waypoints)) conn.waypoints = [];
+  const pts = [[x1, y1], ...conn.waypoints.map(w => [w.x, w.y]), [x2, y2]];
+
+  // Buscar el segmento más cercano al clic
+  let best = 0, bestD = Infinity;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const d = distToSegment(p.x, p.y, pts[i][0], pts[i][1], pts[i+1][0], pts[i+1][1]);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  conn.waypoints.splice(best, 0, { x: Math.round(p.x), y: Math.round(p.y) });
+  DIAG.selected = connId; DIAG.selectedType = 'connection';
+  persistAll();
+  renderDiagram();
+  toast('Punto de quiebre agregado (doble clic sobre el punto para quitarlo)', 'ok', 2500);
+}
+
+function removeWaypoint(connId, index) {
+  const conn = STATE.diagConnections.find(c => c.id === connId);
+  if (!conn || !Array.isArray(conn.waypoints)) return;
+  conn.waypoints.splice(index, 1);
+  persistAll();
+  renderDiagram();
+}
+
+function clearWaypoints(connId) {
+  const conn = STATE.diagConnections.find(c => c.id === connId);
+  if (!conn) return;
+  conn.waypoints = [];
+  persistAll();
+  renderDiagram();
+  toast('Puntos de quiebre eliminados', 'warn');
+}
+
+// Alterna entre trazo curvo y recto
+function setConnLineStyle(connId, style) {
+  const conn = STATE.diagConnections.find(c => c.id === connId);
+  if (!conn) return;
+  conn.lineStyle = style;
+  persistAll();
+  renderDiagram();
+}
+
+// Distancia de un punto a un segmento (para insertar el waypoint donde toca)
+function distToSegment(px, py, x1, y1, x2, y2) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const l2 = dx*dx + dy*dy;
+  let t = l2 ? ((px - x1) * dx + (py - y1) * dy) / l2 : 0;
+  t = Math.max(0, Math.min(1, t));
+  const cx = x1 + t * dx, cy = y1 + t * dy;
+  return Math.hypot(px - cx, py - cy);
+}
+
+// Arrastre de los puntos de quiebre
+document.addEventListener('mousemove', e => {
+  const dw = DIAG.draggingWaypoint;
+  if (!dw) return;
+  const conn = STATE.diagConnections.find(c => c.id === dw.connId);
+  if (!conn || !conn.waypoints || !conn.waypoints[dw.index]) return;
+  const p = screenToDiag(e.clientX, e.clientY);
+  conn.waypoints[dw.index] = { x: Math.round(p.x), y: Math.round(p.y) };
+  renderDiagram();
+});
+document.addEventListener('mouseup', () => {
+  if (DIAG.draggingWaypoint) { DIAG.draggingWaypoint = null; persistAll(); }
+});
+
+// Ajusta el tamaño del lienzo al contenido, con margen para seguir creciendo.
+// Si algún nodo quedó en coordenadas negativas, desplaza TODO al positivo para
+// que nada se pierda fuera del área (y compensa el pan para que no salte).
+function autoSizeDiagCanvas() {
+  const inner = document.getElementById('diag-canvas-inner');
+  const svg = document.getElementById('diag-svg');
+  if (!inner) return;
+  const nodes = visibleDiagNodes();
+
+  const MARGIN = 800;   // espacio libre alrededor para seguir arrastrando
+  let minX = 0, minY = 0, maxX = 1200, maxY = 800;
+  nodes.forEach(n => {
+    minX = Math.min(minX, n.x);
+    minY = Math.min(minY, n.y);
+    maxX = Math.max(maxX, n.x + (n._w || 170));
+    maxY = Math.max(maxY, n.y + (n._h || 170));
+  });
+  // Incluir también los puntos de quiebre de las conexiones
+  STATE.diagConnections.forEach(c => (c.waypoints || []).forEach(w => {
+    minX = Math.min(minX, w.x); minY = Math.min(minY, w.y);
+    maxX = Math.max(maxX, w.x); maxY = Math.max(maxY, w.y);
+  }));
+
+  // Reubicar al positivo si algo quedó en negativo
+  if (minX < 0 || minY < 0) {
+    const dx = minX < 0 ? -minX + 40 : 0;
+    const dy = minY < 0 ? -minY + 40 : 0;
+    STATE.diagMachines.forEach(n => { n.x += dx; n.y += dy; });
+    STATE.diagPanels.forEach(n => { n.x += dx; n.y += dy; });
+    STATE.diagCapsules.forEach(n => { n.x += dx; n.y += dy; });
+    STATE.diagConnections.forEach(c => (c.waypoints || []).forEach(w => { w.x += dx; w.y += dy; }));
+    DIAG.panX -= dx * DIAG.zoom;   // compensar para que la vista no salte
+    DIAG.panY -= dy * DIAG.zoom;
+    maxX += dx; maxY += dy;
+  }
+
+  const w = Math.ceil(maxX + MARGIN);
+  const h = Math.ceil(maxY + MARGIN);
+  inner.style.width = w + 'px';
+  inner.style.height = h + 'px';
+  if (svg) { svg.setAttribute('width', w); svg.setAttribute('height', h); svg.style.width = w + 'px'; svg.style.height = h + 'px'; }
+}
+
+/* ══════════════════════════════════════════════════════
+   SELECCIÓN MÚLTIPLE
+══════════════════════════════════════════════════════ */
+// DIAG.multi guarda los ids seleccionados. Ctrl/Shift+clic alterna un nodo;
+// arrastrar sobre el fondo dibuja un recuadro de selección.
+function isMultiSelected(id) { return DIAG.multi.indexOf(id) !== -1; }
+
+function clearMultiSelection(rerender) {
+  DIAG.multi = [];
+  if (rerender !== false) renderDiagram();
+}
+
+function toggleMultiSelect(id) {
+  if (!isDiagEditable()) return;
+  const i = DIAG.multi.indexOf(id);
+  if (i === -1) DIAG.multi.push(id); else DIAG.multi.splice(i, 1);
+  DIAG.selected = null; DIAG.selectedType = null;
+  document.getElementById('conn-detail-panel').style.display = 'none';
+  renderDiagram();
+  updateMultiBar();
+}
+
+// Barra flotante con las acciones para la selección múltiple
+function updateMultiBar() {
+  let bar = document.getElementById('diag-multi-bar');
+  if (!bar) {
+    bar = document.createElement('div');
+    bar.id = 'diag-multi-bar';
+    bar.style.cssText = 'position:absolute;bottom:16px;left:50%;transform:translateX(-50%);' +
+      'background:var(--panel);border:1px solid var(--accent);border-radius:8px;padding:8px 12px;' +
+      'display:flex;gap:8px;align-items:center;z-index:60;box-shadow:0 4px 20px rgba(0,0,0,.5);';
+    const wrap = document.getElementById('diag-canvas-wrap');
+    if (wrap) wrap.appendChild(bar);
+  }
+  const n = DIAG.multi.length;
+  if (!n) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  bar.innerHTML =
+    '<span style="font-size:11px;color:var(--text);">' + n + ' seleccionado(s)</span>' +
+    '<button class="btn-sm" onclick="alignMulti(\'h\')">≡ Alinear H</button>' +
+    '<button class="btn-sm" onclick="alignMulti(\'v\')">⋮⋮ Alinear V</button>' +
+    '<button class="btn-sm" style="color:var(--err);border-color:var(--err);" onclick="deleteMultiSelection()">🗑 Eliminar</button>' +
+    '<button class="btn-sm" onclick="clearMultiSelection()">✕</button>';
+}
+
+function alignMulti(axis) {
+  const nodes = DIAG.multi.map(findDiagNode).filter(Boolean);
+  if (nodes.length < 2) return;
+  if (axis === 'h') {
+    const avg = nodes.reduce((s, n) => s + n.y, 0) / nodes.length;
+    nodes.forEach(n => { n.y = Math.round(avg); });
+  } else {
+    const avg = nodes.reduce((s, n) => s + n.x, 0) / nodes.length;
+    nodes.forEach(n => { n.x = Math.round(avg); });
+  }
+  persistAll();
+  renderDiagram();
+}
+
+function deleteMultiSelection() {
+  if (!isDiagEditable()) { toast('Habilitá la edición para eliminar', 'warn'); return; }
+  const n = DIAG.multi.length;
+  if (!n) return;
+  if (!confirm('¿Eliminar ' + n + ' elemento(s) y sus conexiones?')) return;
+  const ids = new Set(DIAG.multi);
+  STATE.diagMachines = STATE.diagMachines.filter(m => !ids.has(m.id));
+  STATE.diagPanels   = STATE.diagPanels.filter(p => !ids.has(p.id));
+  STATE.diagCapsules = STATE.diagCapsules.filter(c => !ids.has(c.id));
+  STATE.diagCapsules.forEach(c => {
+    c.childMachineIds = (c.childMachineIds || []).filter(id => !ids.has(id));
+    c.childPanelIds   = (c.childPanelIds || []).filter(id => !ids.has(id));
+  });
+  STATE.diagConnections = STATE.diagConnections.filter(c => !ids.has(c.fromId) && !ids.has(c.toId));
+  DIAG.multi = [];
+  persistAll();
+  renderDiagram();
+  updateMultiBar();
+  toast(n + ' elemento(s) eliminado(s)', 'warn');
+}
+
+// Mueve todos los nodos seleccionados (se usa al arrastrar uno del grupo)
+function moveMultiSelection(dx, dy, exceptId) {
+  DIAG.multi.forEach(id => {
+    if (id === exceptId) return;
+    const n = findDiagNode(id);
+    if (n) { n.x += dx; n.y += dy; }
+  });
+}
+
+// Recuadro de selección sobre el fondo
+function initMarquee() {
+  const wrap = document.getElementById('diag-canvas-wrap');
+  if (!wrap || wrap._marqueeInit) return;
+  wrap._marqueeInit = true;
+
+  let box = null, sx = 0, sy = 0, active = false;
+
+  wrap.addEventListener('mousedown', e => {
+    // Solo con Shift o Ctrl sobre el fondo (sin modificador el fondo desplaza la vista)
+    const onBg = e.target === wrap || e.target.id === 'diag-canvas-inner' || e.target.id === 'diag-svg';
+    if (!onBg || !(e.shiftKey || e.ctrlKey || e.metaKey)) return;
+    e.preventDefault(); e.stopPropagation();
+    DIAG.panning = false;
+    active = true;
+    const p = screenToDiag(e.clientX, e.clientY);
+    sx = p.x; sy = p.y;
+    box = document.createElement('div');
+    box.style.cssText = 'position:absolute;border:1px dashed var(--accent);background:rgba(0,229,160,0.08);z-index:50;pointer-events:none;';
+    document.getElementById('diag-canvas-inner').appendChild(box);
+  }, true);
+
+  document.addEventListener('mousemove', e => {
+    if (!active || !box) return;
+    const p = screenToDiag(e.clientX, e.clientY);
+    box.style.left = Math.min(sx, p.x) + 'px';
+    box.style.top = Math.min(sy, p.y) + 'px';
+    box.style.width = Math.abs(p.x - sx) + 'px';
+    box.style.height = Math.abs(p.y - sy) + 'px';
+  });
+
+  document.addEventListener('mouseup', e => {
+    if (!active) return;
+    active = false;
+    const p = screenToDiag(e.clientX, e.clientY);
+    const x1 = Math.min(sx, p.x), x2 = Math.max(sx, p.x);
+    const y1 = Math.min(sy, p.y), y2 = Math.max(sy, p.y);
+    if (box && box.parentNode) box.parentNode.removeChild(box);
+    box = null;
+    if (Math.abs(x2 - x1) < 5 && Math.abs(y2 - y1) < 5) return;   // clic suelto
+    visibleDiagNodes().forEach(n => {
+      const cx = n.x + (n._w || 170) / 2, cy = n.y + (n._h || 170) / 2;
+      if (cx >= x1 && cx <= x2 && cy >= y1 && cy <= y2 && !isMultiSelected(n.id)) {
+        DIAG.multi.push(n.id);
+      }
+    });
+    renderDiagram();
+    updateMultiBar();
+  });
+}
+
+/* ══════════════════════════════════════════════════════
+   ELEGIR OBJETO 3D CON UN CLIC
+   Sirve para máquinas, paneles y cápsulas: lleva a la vista 3D, espera el
+   clic en un objeto y vincula ese objeto con el nodo del diagrama.
+══════════════════════════════════════════════════════ */
+// Configuración por tipo de nodo: dónde guardar el objeto y cómo reabrir
+const PICK_KINDS = {
+  machine: { field: 'modelObjectName', modal: 'machine-detail-modal', reopen: id => openMachineDetail(id) },
+  panel:   { field: 'assemblyName',    modal: 'panel-detail-modal',   reopen: id => openPanelDetail(id) },
+  capsule: { field: 'assemblyName',    modal: 'capsule-detail-modal', reopen: id => openCapsuleDetail(id) },
+};
+
+function pickObjectFor3D(kind, nodeId) {
+  kind = kind || 'machine';
+  const cfg = PICK_KINDS[kind];
+  if (!cfg) return;
+  // Si no se pasa id, usar el que esté en edición según el tipo
+  if (!nodeId) {
+    nodeId = kind === 'machine' ? DIAG.editingMachineId
+           : kind === 'panel'   ? DIAG.editingPanelId
+           : DIAG.editingCapsuleId;
+  }
+  if (!nodeId) return;
+  const node = findDiagNode(nodeId);
+  if (!node) return;
+
+  if (!STATE.model || !STATE.meshes.length) {
+    toast('Primero cargá un modelo 3D', 'warn');
+    return;
+  }
+
+  DIAG.pickingFor = { kind, nodeId };   // modo activo
+
+  // Cerrar el modal y el diagrama para dejar ver el modelo 3D
+  closeModal(cfg.modal);
+  closeDiagram();
+  const rtTab = document.querySelector('.header-tabs .tab');
+  if (rtTab) switchTab('realtime', rtTab);
+
+  showPickBanner(node.label || nodeId);
+  toast('Hacé clic en el objeto 3D que representa "' + (node.label || nodeId) + '"', 'ok', 4000);
+}
+
+// Banner de ayuda mientras se está eligiendo
+function showPickBanner(label) {
+  let b = document.getElementById('pick-banner');
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'pick-banner';
+    b.style.cssText = 'position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:80;' +
+      'background:var(--panel);border:1px solid var(--accent);border-radius:8px;padding:10px 16px;' +
+      'display:flex;gap:12px;align-items:center;box-shadow:0 4px 20px rgba(0,0,0,.5);';
+    const vp = document.getElementById('viewport');
+    if (vp) vp.appendChild(b);
+  }
+  b.style.display = 'flex';
+  b.innerHTML = '<span style="font-size:12px;color:var(--accent);">🎯 Hacé clic en el objeto 3D para vincular con: <b>' +
+    chEsc(label) + '</b></span>' +
+    '<button class="btn-sm" onclick="cancelPickObject()">Cancelar</button>';
+}
+
+function hidePickBanner() {
+  const b = document.getElementById('pick-banner');
+  if (b) b.style.display = 'none';
+}
+
+function cancelPickObject() {
+  DIAG.pickingFor = null;
+  hidePickBanner();
+  toast('Selección cancelada', 'warn');
+}
+
+// Completa la vinculación tras el clic en el objeto 3D
+function completePickObject(hitMesh, key) {
+  const pick = DIAG.pickingFor;
+  DIAG.pickingFor = null;
+  hidePickBanner();
+  if (!pick) return;
+
+  const cfg = PICK_KINDS[pick.kind];
+  const node = findDiagNode(pick.nodeId);
+  if (!cfg || !node) return;
+
+  // 1) El nodo del diagrama apunta al objeto 3D
+  const prev = node[cfg.field];
+  node[cfg.field] = key;
+  if (prev !== key && typeof disposeThumb === 'function') disposeThumb(node.id);  // refrescar miniatura
+
+  // 2) Reflejar el enlace en el modelo 3D: si el nodo tiene un sensor
+  //    asociado, se crea también el vínculo objeto↔sensor (rótulo en 3D).
+  let sKey = null;
+  if (pick.kind === 'machine') {
+    sKey = (node.sensorKeys && node.sensorKeys[0]) || null;
+  } else if (pick.kind === 'panel') {
+    const el = (node.elements || []).find(e => e && e.sensorKey);
+    sKey = el ? el.sensorKey : null;
+  }
+  if (sKey) {
+    STATE.objectLinks[key] = {
+      nodeId: node.id,
+      sensorKey: sKey,
+      deviceId: sKey.split('/')[0],
+      objectName: key,
+      meshUUID: hitMesh.uuid,
+    };
+  }
+
+  persistAll();
+  updateHighlights();
+  updateSensorIcons();
+  renderDiagram();
+
+  toast('Vinculado: "' + (node.label || node.id) + '" ↔ ' + key +
+        (sKey ? ' (con sensor)' : ''), 'ok', 4000);
+
+  // Volver al diagrama y reabrir la configuración de ese nodo
+  setTimeout(() => {
+    const diagTab = Array.from(document.querySelectorAll('.header-tabs .tab'))
+      .find(t => /diagrama/i.test(t.textContent));
+    if (diagTab) switchTab('diagram', diagTab);
+    cfg.reopen(pick.nodeId);
+  }, 600);
+}
+
+/* ══════════════════════════════════════════════════════
+   MODO EDICIÓN DEL DIAGRAMA
+   Por defecto el diagrama está en solo lectura: se puede ver, navegar y
+   ejecutar comandos, pero no mover ni modificar elementos por accidente.
+══════════════════════════════════════════════════════ */
+function isDiagEditable() { return !!DIAG.editMode; }
+
+function toggleDiagEdit() {
+  DIAG.editMode = !DIAG.editMode;
+  applyDiagEditMode();
+  toast(DIAG.editMode ? 'Edición habilitada' : 'Edición bloqueada (solo vista)',
+        DIAG.editMode ? 'ok' : 'warn');
+}
+
+function applyDiagEditMode() {
+  const on = !!DIAG.editMode;
+  const btn = document.getElementById('btn-edit-toggle');
+  if (btn) {
+    btn.textContent = on ? '🔓 Editando' : '🔒 Vista';
+    btn.style.color = on ? 'var(--accent)' : 'var(--warn)';
+    btn.style.borderColor = on ? 'var(--accent)' : 'var(--warn)';
+  }
+  const tools = document.getElementById('diag-edit-tools');
+  if (tools) tools.style.display = on ? 'inline-flex' : 'none';
+  const sep = document.getElementById('toolbar-sep-add');
+  if (sep) sep.style.display = on ? '' : 'none';
+  const hint = document.getElementById('diag-hint');
+  if (hint) {
+    hint.textContent = on
+      ? 'rueda: zoom · arrastrar fondo: mover · Ctrl/Shift+clic o Shift+arrastrar: selección múltiple'
+      : 'rueda: zoom · arrastrar fondo: mover · edición bloqueada';
+  }
+  if (!on) {
+    DIAG.multi = [];
+    cancelConn();
+    const p = document.getElementById('conn-detail-panel');
+    if (p) p.style.display = 'none';
+    updateMultiBar();
+  }
+  renderDiagram();
+}
+
+/* ══════════════════════════════════════════════════════
+   COMANDOS CONFIGURABLES DEL DIAGRAMA
+   Botones que el usuario define una vez y luego ejecuta con un clic.
+   Se guardan en STATE.diagCommands y viajan en el JSON de la escena.
+══════════════════════════════════════════════════════ */
+// Catálogo de acciones con sus parámetros (lo que entiende el firmware)
+const CMD_CATALOG = {
+  setOutput:      { label: 'Encender / apagar salida', params: [
+                      { id:'pin', label:'Pin', type:'number', def:2 },
+                      { id:'state', label:'Estado', type:'select', options:[['1','Encendido'],['0','Apagado']] } ] },
+  setMotor:       { label: 'Motor (estado y RPM)', params: [
+                      { id:'estado', label:'Estado', type:'select', options:[['1','Encendido'],['0','Apagado']] },
+                      { id:'rpm', label:'RPM', type:'number', def:0 } ] },
+  setSampleRate:  { label: 'Intervalo de muestreo', params: [
+                      { id:'intervalMs', label:'Milisegundos', type:'number', def:5000 } ] },
+  setPublishRate: { label: 'Intervalo de publicación', params: [
+                      { id:'intervalMs', label:'Milisegundos', type:'number', def:15000 } ] },
+  setFilter:      { label: 'Filtro de señal', params: [
+                      { id:'type', label:'Tipo', type:'select', options:[['0','Ninguno'],['1','Media móvil'],['2','Mediana'],['3','EMA']] },
+                      { id:'window', label:'Ventana (2-16)', type:'number', def:8 } ] },
+  rescan:         { label: 'Re-escanear hardware', params: [] },
+  syncConfig:     { label: 'Sincronizar configuración', params: [] },
+  listSdFiles:    { label: 'Listar archivos de la tarjeta', params: [] },
+  reboot:         { label: 'Reiniciar equipo', params: [] },
+};
+
+// Botón "Comandos" que se agrega al pie de cada nodo del diagrama.
+// Muestra el número de comandos configurados para ese elemento.
+function nodeCmdButton(nodeId) {
+  const n = diagCommands().filter(c => c.nodeId === nodeId).length;
+  const label = n ? '⚡ ' + n : '⚡';
+  return `<button class="mach-btn" title="Comandos de este elemento"
+    onclick="event.stopPropagation();openDiagCommands('${nodeId}')"
+    style="color:${n ? 'var(--warn)' : 'var(--text3)'};border-color:${n ? 'rgba(255,184,0,0.4)' : 'var(--border)'};">${label}</button>`;
+}
+
+function diagCommands() {
+  if (!Array.isArray(STATE.diagCommands)) STATE.diagCommands = [];
+  return STATE.diagCommands;
+}
+
+// Abre el panel de comandos. Si se pasa un nodo, los comandos quedan
+// asociados a ese elemento del diagrama.
+function openDiagCommands(nodeId) {
+  DIAG.cmdNodeId = nodeId || null;
+  const node = nodeId ? findDiagNode(nodeId) : null;
+
+  const title = document.getElementById('diag-cmd-title');
+  if (title) {
+    title.textContent = node ? '⚡ Comandos · ' + (node.label || nodeId) : '⚡ Comandos Rápidos';
+  }
+  const sub = document.getElementById('diag-cmd-sub');
+  if (sub) {
+    sub.innerHTML = node
+      ? 'Comandos de este elemento. Un clic los ejecuta en el dispositivo. ' +
+        '<a href="#" onclick="event.preventDefault();openDiagCommands()" style="color:var(--accent);">Ver todos los comandos →</a>'
+      : 'Todos los comandos configurados. Un clic los ejecuta en el dispositivo.';
+  }
+  hideCmdEditor();
+  renderDiagCommands();
+  openModal('diag-commands-modal');
+}
+
+function renderDiagCommands() {
+  const cont = document.getElementById('diag-cmd-list');
+  if (!cont) return;
+  const all = diagCommands();
+  const list = DIAG.cmdNodeId ? all.filter(c => c.nodeId === DIAG.cmdNodeId) : all;
+
+  if (!list.length) {
+    cont.innerHTML = '<div style="font-size:11px;color:var(--text3);text-align:center;padding:22px;">' +
+      (DIAG.cmdNodeId
+        ? 'Este elemento todavía no tiene comandos. Agregá uno con el botón de abajo.'
+        : 'Todavía no hay comandos. Agregá uno con el botón de abajo.') + '</div>';
+    return;
+  }
+
+  const colorOf = c => c.color === 'err' ? 'var(--err)' : (c.color === 'warn' ? 'var(--warn)' : 'var(--accent)');
+  cont.innerHTML = '<div style="display:flex;flex-wrap:wrap;gap:10px;">' + list.map((c, i) => {
+    const idx = all.indexOf(c);
+    const node = c.nodeId ? findDiagNode(c.nodeId) : null;
+    const cat = CMD_CATALOG[c.type];
+    const mini = 'background:none;border:none;cursor:pointer;font-family:var(--font);font-size:9px;padding:2px 4px;';
+    return `<div style="border:1px solid ${colorOf(c)};border-radius:8px;padding:10px 12px;min-width:190px;background:var(--bg2);">
+      <button class="btn-sm" style="width:100%;font-size:12px;padding:8px;color:${colorOf(c)};border-color:${colorOf(c)};"
+        onclick="runDiagCommand(${idx})">${chEsc(c.label)}</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:6px;">
+        <div style="font-size:9px;color:var(--text3);line-height:1.4;flex:1;min-width:0;">
+          ${chEsc((cat && cat.label) || c.type)}<br>
+          <span style="opacity:.75;">${chEsc(c.deviceId || '—')}${node ? ' · ' + chEsc(node.label || '') : ''}</span>
+        </div>
+        <div style="display:flex;gap:2px;flex-shrink:0;">
+          <button title="Editar" style="${mini}color:var(--text3);"
+            onmouseover="this.style.color='var(--accent)'" onmouseout="this.style.color='var(--text3)'"
+            onclick="editDiagCommand(${idx})">✎</button>
+          <button title="Eliminar" style="${mini}color:var(--text3);"
+            onmouseover="this.style.color='var(--err)'" onmouseout="this.style.color='var(--text3)'"
+            onclick="deleteDiagCommand(${idx})">🗑</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+function showCmdEditor(keepEdit) {
+  if (!keepEdit) DIAG.cmdEditIndex = null;
+  const ed = document.getElementById('diag-cmd-editor');
+  const addBtn = document.getElementById('dcmd-add-btn');
+  if (!ed) return;
+  // Dispositivos disponibles
+  const devSel = document.getElementById('dcmd-device');
+  const devs = Object.keys(STATE.devices);
+  devSel.innerHTML = devs.length
+    ? devs.map(d => `<option value="${chEsc(d)}">${chEsc((STATE.devices[d] && STATE.devices[d].name) || d)}</option>`).join('')
+    : '<option value="">(sin dispositivos)</option>';
+  // Acciones disponibles
+  const typeSel = document.getElementById('dcmd-type');
+  typeSel.innerHTML = Object.entries(CMD_CATALOG)
+    .map(([k, v]) => `<option value="${k}">${chEsc(v.label)}</option>`).join('');
+  document.getElementById('dcmd-label').value = '';
+  renderCmdParams();
+  ed.style.display = '';
+  if (addBtn) addBtn.style.display = 'none';
+}
+
+function hideCmdEditor() {
+  const ed = document.getElementById('diag-cmd-editor');
+  const addBtn = document.getElementById('dcmd-add-btn');
+  if (ed) ed.style.display = 'none';
+  if (addBtn) addBtn.style.display = '';
+  DIAG.cmdEditIndex = null;
+  const title = document.getElementById('dcmd-editor-title');
+  if (title) title.textContent = 'Nuevo botón de comando';
+}
+
+// Dibuja los campos del parámetro según la acción elegida
+function renderCmdParams() {
+  const cont = document.getElementById('dcmd-params');
+  const type = document.getElementById('dcmd-type').value;
+  const cat = CMD_CATALOG[type];
+  if (!cont || !cat) return;
+  if (!cat.params.length) {
+    cont.innerHTML = '<div style="font-size:10px;color:var(--text3);">Esta acción no necesita parámetros.</div>';
+    return;
+  }
+  cont.innerHTML = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' + cat.params.map(p => {
+    if (p.type === 'select') {
+      return `<div class="field-group" style="margin:0;"><label>${chEsc(p.label)}</label>
+        <select id="dcmdp_${p.id}">${p.options.map(o => `<option value="${o[0]}">${chEsc(o[1])}</option>`).join('')}</select></div>`;
+    }
+    return `<div class="field-group" style="margin:0;"><label>${chEsc(p.label)}</label>
+      <input type="number" id="dcmdp_${p.id}" value="${p.def != null ? p.def : ''}"></div>`;
+  }).join('') + '</div>';
+}
+
+// Abre el editor cargado con los valores de un comando existente
+function editDiagCommand(index) {
+  const c = diagCommands()[index];
+  if (!c) return;
+  DIAG.cmdEditIndex = index;
+  showCmdEditor(true);   // true = conservar el modo edición
+
+  document.getElementById('dcmd-label').value = c.label || '';
+  const devSel = document.getElementById('dcmd-device');
+  if (c.deviceId && !Array.from(devSel.options).some(o => o.value === c.deviceId)) {
+    // El dispositivo del comando ya no está conectado: lo agregamos igual
+    devSel.insertAdjacentHTML('afterbegin', `<option value="${chEsc(c.deviceId)}">${chEsc(c.deviceId)} (no conectado)</option>`);
+  }
+  devSel.value = c.deviceId || '';
+  document.getElementById('dcmd-type').value = c.type;
+  document.getElementById('dcmd-color').value = c.color || 'accent';
+  document.getElementById('dcmd-confirm').checked = !!c.confirm;
+
+  renderCmdParams();
+  // Rellenar los parámetros guardados
+  const cat = CMD_CATALOG[c.type];
+  if (cat) cat.params.forEach(p => {
+    const el = document.getElementById('dcmdp_' + p.id);
+    if (el && c.params && c.params[p.id] !== undefined) el.value = c.params[p.id];
+  });
+
+  const title = document.getElementById('dcmd-editor-title');
+  if (title) title.textContent = 'Editar botón de comando';
+}
+
+function saveDiagCommand() {
+  const label = document.getElementById('dcmd-label').value.trim();
+  const deviceId = document.getElementById('dcmd-device').value;
+  const type = document.getElementById('dcmd-type').value;
+  const color = document.getElementById('dcmd-color').value;
+  const confirmar = document.getElementById('dcmd-confirm').checked;
+  if (!label) { toast('Poné una etiqueta al botón', 'err'); return; }
+  if (!deviceId) { toast('No hay dispositivos disponibles', 'err'); return; }
+
+  const cat = CMD_CATALOG[type];
+  const params = {};
+  (cat.params || []).forEach(p => {
+    const el = document.getElementById('dcmdp_' + p.id);
+    if (!el) return;
+    const v = el.value;
+    params[p.id] = (p.type === 'number' || /^\d+$/.test(v)) ? Number(v) : v;
+  });
+
+  const cmd = {
+    id: (DIAG.cmdEditIndex != null && diagCommands()[DIAG.cmdEditIndex])
+        ? diagCommands()[DIAG.cmdEditIndex].id : 'cmd_' + Date.now(),
+    label, deviceId, type, params, color,
+    confirm: confirmar,
+    nodeId: (DIAG.cmdEditIndex != null && diagCommands()[DIAG.cmdEditIndex])
+        ? diagCommands()[DIAG.cmdEditIndex].nodeId : (DIAG.cmdNodeId || null),
+  };
+
+  if (DIAG.cmdEditIndex != null) {
+    diagCommands()[DIAG.cmdEditIndex] = cmd;      // actualizar existente
+  } else {
+    diagCommands().push(cmd);                     // crear nuevo
+  }
+  const wasEdit = DIAG.cmdEditIndex != null;
+  DIAG.cmdEditIndex = null;
+
+  persistAll();
+  hideCmdEditor();
+  renderDiagCommands();
+  renderDiagram();
+  toast('Botón "' + label + (wasEdit ? '" actualizado' : '" creado'), 'ok');
+}
+
+function deleteDiagCommand(index) {
+  const all = diagCommands();
+  const c = all[index];
+  if (!c) return;
+  if (!confirm('¿Eliminar el botón "' + c.label + '"?')) return;
+  all.splice(index, 1);
+  persistAll();
+  renderDiagCommands();
+  renderDiagram();
+}
+
+// Ejecuta el comando: reutiliza el mismo envío que el panel de comandos
+function runDiagCommand(index) {
+  const c = diagCommands()[index];
+  if (!c) return;
+  if (c.confirm && !confirm('¿Ejecutar "' + c.label + '"?')) return;
+  const prevDevice = STATE.actionsDevice;
+  STATE.actionsDevice = c.deviceId;
+  sendAction(c.type, c.params || {});
+  STATE.actionsDevice = prevDevice;
+}
 
 /* ── Node lookup helpers ── */
 function findDiagNode(id) {
@@ -3250,8 +4496,14 @@ function getNodeCenter(node) {
 /* ── Open / Close ── */
 function openDiagram() {
   document.getElementById('diagram-overlay').classList.add('active');
+  initDiagViewControls();
+  initMarquee();
+  applyDiagEditMode();
   renderLegend();
   renderDiagram();
+  applyDiagTransform();
+  // Encuadrar todo el diagrama al abrir (tras el layout, para medir bien)
+  requestAnimationFrame(() => diagFitAll());
   document.addEventListener('keydown', diagKeyHandler);
 }
 
@@ -3265,6 +4517,9 @@ function diagKeyHandler(e) {
   if (e.key !== 'Delete' && e.key !== 'Backspace') return;
   const tag = document.activeElement ? document.activeElement.tagName : '';
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (!isDiagEditable()) return;   // edición bloqueada
+  // Selección múltiple tiene prioridad
+  if (DIAG.multi.length) { e.preventDefault(); deleteMultiSelection(); return; }
   if (!DIAG.selected) return;
   e.preventDefault();
   if (DIAG.selectedType === 'connection') {
@@ -3639,6 +4894,7 @@ function renderCapsuleNode(c, inner) {
   const el = document.createElement('div');
   el.className = 'capsule-node'
     + (DIAG.selected === c.id && DIAG.selectedType === 'capsule' ? ' selected' : '')
+    + (isMultiSelected(c.id) ? ' multi-selected' : '')
     + (DIAG.pendingConn ? ' conn-target' : '');
   el.style.left = c.x + 'px';
   el.style.top  = c.y + 'px';
@@ -3699,7 +4955,7 @@ function renderCapsuleNode(c, inner) {
   const footer = document.createElement('div');
   footer.className = 'capsule-footer';
   footer.innerHTML = `
-    <button class="mach-btn" onclick="event.stopPropagation();openCapsuleDetail('${c.id}')">Editar</button>
+    <button class="mach-btn" onclick="event.stopPropagation();openCapsuleDetail('${c.id}')">Editar</button>${nodeCmdButton(c.id)}
     <button class="capsule-open-btn" onclick="event.stopPropagation();openCapsuleView('${c.id}')">▶ Abrir</button>`;
   el.appendChild(footer);
 
@@ -3712,9 +4968,11 @@ function renderCapsuleNode(c, inner) {
   });
 
   el.addEventListener('click', e => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey) { e.stopPropagation(); toggleMultiSelect(c.id); return; }
     if (DIAG.pendingConn && DIAG.pendingConn.fromId !== c.id) {
       completeConn(c.id);
     } else if (!DIAG.pendingConn) {
+      if (DIAG.multi.length) clearMultiSelection(false);
       selectCapsule(c.id);
     }
   });
@@ -3726,12 +4984,15 @@ function renderCapsuleNode(c, inner) {
 function makeCapsuleDraggable(el, c) {
   let dragging = false, ox, oy;
   el.addEventListener('mousedown', e => {
+    if (!isDiagEditable()) return;
     if (e.target.classList.contains('port-dot') || e.target.tagName === 'BUTTON') return;
-    dragging = true; ox = e.clientX - c.x; oy = e.clientY - c.y; e.preventDefault();
+    dragging = true; ox = e.clientX - c.x * DIAG.zoom; oy = e.clientY - c.y * DIAG.zoom; e.preventDefault();
   });
   document.addEventListener('mousemove', e => {
     if (!dragging) return;
-    c.x = Math.max(0, e.clientX - ox); c.y = Math.max(0, e.clientY - oy);
+    const _nx = (e.clientX - ox) / DIAG.zoom, _ny = (e.clientY - oy) / DIAG.zoom;
+    if (isMultiSelected(c.id)) moveMultiSelection(_nx - c.x, _ny - c.y, c.id);
+    c.x = _nx; c.y = _ny;
     el.style.left = c.x + 'px'; el.style.top = c.y + 'px';
     renderConnections();
   });
@@ -3849,11 +5110,14 @@ function renderDiagram() {
     STATE.diagMachines.filter(m => !encapsulatedMachIds.has(m.id)).forEach(m => renderMachineNode(m, inner));
   }
   renderConnections();
+  autoSizeDiagCanvas();   // el lienzo crece con el contenido
+  applyDiagTransform();   // conservar zoom/desplazamiento tras redibujar
 }
 
 function renderMachineNode(m, inner) {
   const el = document.createElement('div');
   el.className = 'mach-node' + (DIAG.selected === m.id && DIAG.selectedType === 'machine' ? ' selected' : '')
+    + (isMultiSelected(m.id) ? ' multi-selected' : '')
     + (DIAG.pendingConn ? ' conn-target' : '');
   el.style.left = m.x + 'px';
   el.style.top  = m.y + 'px';
@@ -3890,7 +5154,8 @@ function renderMachineNode(m, inner) {
   const footer = document.createElement('div');
   footer.className = 'mach-footer';
   footer.innerHTML = `<button class="mach-btn" onclick="event.stopPropagation();openMachineDetail('${m.id}')">Editar</button>`
-    + (m.sensorKeys.length ? `<button class="mach-btn" onclick="event.stopPropagation();openNodeCharts('${m.id}','machine')" style="color:var(--accent2);border-color:rgba(0,180,255,0.3);">Gráficas</button>` : '');
+    + (m.sensorKeys.length ? `<button class="mach-btn" onclick="event.stopPropagation();openNodeCharts('${m.id}','machine')" style="color:var(--accent2);border-color:rgba(0,180,255,0.3);">Gráficas</button>` : '')
+    + nodeCmdButton(m.id);
   el.appendChild(footer);
 
   // Ports
@@ -3903,9 +5168,11 @@ function renderMachineNode(m, inner) {
 
   // Click → complete connection or select
   el.addEventListener('click', e => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey) { e.stopPropagation(); toggleMultiSelect(m.id); return; }
     if (DIAG.pendingConn && DIAG.pendingConn.fromId !== m.id) {
       completeConn(m.id);
     } else if (!DIAG.pendingConn) {
+      if (DIAG.multi.length) clearMultiSelection(false);
       selectMachine(m.id);
     }
   });
@@ -3925,6 +5192,7 @@ function renderPanelNode(p, inner) {
   const el = document.createElement('div');
   el.className = 'panel-node'
     + (DIAG.selected === p.id && DIAG.selectedType === 'panel' ? ' selected' : '')
+    + (isMultiSelected(p.id) ? ' multi-selected' : '')
     + (DIAG.pendingConn ? ' conn-target' : '');
   el.style.left = p.x + 'px';
   el.style.top  = p.y + 'px';
@@ -3983,7 +5251,8 @@ function renderPanelNode(p, inner) {
   const footer = document.createElement('div');
   footer.className = 'panel-footer';
   footer.innerHTML = `<button class="mach-btn" onclick="event.stopPropagation();openPanelDetail('${p.id}')">Editar</button>`
-    + (p.elements.length ? `<button class="mach-btn" onclick="event.stopPropagation();openNodeCharts('${p.id}','panel')" style="color:var(--accent2);border-color:rgba(0,180,255,0.3);">Gráficas</button>` : '');
+    + (p.elements.length ? `<button class="mach-btn" onclick="event.stopPropagation();openNodeCharts('${p.id}','panel')" style="color:var(--accent2);border-color:rgba(0,180,255,0.3);">Gráficas</button>` : '')
+    + nodeCmdButton(p.id);
   el.appendChild(footer);
 
   // Ports
@@ -3996,9 +5265,11 @@ function renderPanelNode(p, inner) {
 
   // Click → complete connection or select
   el.addEventListener('click', e => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey) { e.stopPropagation(); toggleMultiSelect(p.id); return; }
     if (DIAG.pendingConn && DIAG.pendingConn.fromId !== p.id) {
       completeConn(p.id);
     } else if (!DIAG.pendingConn) {
+      if (DIAG.multi.length) clearMultiSelection(false);
       selectPanel(p.id);
     }
   });
@@ -4010,16 +5281,18 @@ function renderPanelNode(p, inner) {
 function makePanelDraggable(el, p) {
   let dragging = false, ox, oy;
   el.addEventListener('mousedown', e => {
+    if (!isDiagEditable()) return;
     if (e.target.classList.contains('port-dot') || e.target.tagName === 'BUTTON') return;
     dragging = true;
-    ox = e.clientX - p.x;
-    oy = e.clientY - p.y;
+    ox = e.clientX - p.x * DIAG.zoom;
+    oy = e.clientY - p.y * DIAG.zoom;
     e.preventDefault();
   });
   document.addEventListener('mousemove', e => {
     if (!dragging) return;
-    p.x = Math.max(0, e.clientX - ox);
-    p.y = Math.max(0, e.clientY - oy);
+    const _nx = (e.clientX - ox) / DIAG.zoom, _ny = (e.clientY - oy) / DIAG.zoom;
+    if (isMultiSelected(p.id)) moveMultiSelection(_nx - p.x, _ny - p.y, p.id);
+    p.x = _nx; p.y = _ny;
     el.style.left = p.x + 'px';
     el.style.top  = p.y + 'px';
     renderConnections();
@@ -4032,16 +5305,18 @@ function makePanelDraggable(el, p) {
 function makeMachineDraggable(el, m) {
   let dragging = false, ox, oy;
   el.addEventListener('mousedown', e => {
+    if (!isDiagEditable()) return;
     if (e.target.classList.contains('port-dot') || e.target.tagName === 'BUTTON') return;
     dragging = true;
-    ox = e.clientX - m.x;
-    oy = e.clientY - m.y;
+    ox = e.clientX - m.x * DIAG.zoom;
+    oy = e.clientY - m.y * DIAG.zoom;
     e.preventDefault();
   });
   document.addEventListener('mousemove', e => {
     if (!dragging) return;
-    m.x = Math.max(0, e.clientX - ox);
-    m.y = Math.max(0, e.clientY - oy);
+    const _nx = (e.clientX - ox) / DIAG.zoom, _ny = (e.clientY - oy) / DIAG.zoom;
+    if (isMultiSelected(m.id)) moveMultiSelection(_nx - m.x, _ny - m.y, m.id);
+    m.x = _nx; m.y = _ny;
     el.style.left = m.x + 'px';
     el.style.top  = m.y + 'px';
     renderConnections();
@@ -4093,13 +5368,42 @@ function renderConnections() {
 
     const [x1, y1] = getNodeCenter(a);
     const [x2, y2] = getNodeCenter(b);
-    const mx = (x1+x2)/2, my = (y1+y2)/2;
-    const dx = x2-x1, dy = y2-y1;
-    const len = Math.sqrt(dx*dx+dy*dy) || 1;
-    const curve = len * 0.25;
-    const nx = (-dy/len)*curve, ny = (dx/len)*curve;
-    const cpx = mx+nx, cpy = my+ny;
-    const pathD = `M${x1},${y1} Q${cpx},${cpy} ${x2},${y2}`;
+
+    // Puntos de quiebre definidos por el usuario (doble clic sobre la línea)
+    const wps = Array.isArray(conn.waypoints) ? conn.waypoints : [];
+    // Modo de trazo: 'curve' (por defecto) o 'straight'
+    const straight = conn.lineStyle === 'straight';
+
+    const pts = [[x1, y1], ...wps.map(p => [p.x, p.y]), [x2, y2]];
+    let pathD, mx, my, nx = 0, ny = 0, prevX, prevY;
+
+    if (pts.length === 2 && !straight) {
+      // Sin waypoints y en modo curva: arco simple (comportamiento original)
+      mx = (x1+x2)/2; my = (y1+y2)/2;
+      const dx = x2-x1, dy = y2-y1;
+      const len = Math.sqrt(dx*dx+dy*dy) || 1;
+      const curve = len * 0.25;
+      nx = (-dy/len)*curve; ny = (dx/len)*curve;
+      const cpx = mx+nx, cpy = my+ny;
+      pathD = `M${x1},${y1} Q${cpx},${cpy} ${x2},${y2}`;
+      const t = 0.85;
+      prevX = (1-t)*(1-t)*x1 + 2*(1-t)*t*cpx + t*t*x2;
+      prevY = (1-t)*(1-t)*y1 + 2*(1-t)*t*cpy + t*t*y2;
+    } else if (straight) {
+      // Polilínea recta por los waypoints
+      pathD = 'M' + pts.map(p => p[0] + ',' + p[1]).join(' L');
+      const midIdx = Math.floor((pts.length - 1) / 2);
+      mx = (pts[midIdx][0] + pts[midIdx+1][0]) / 2;
+      my = (pts[midIdx][1] + pts[midIdx+1][1]) / 2;
+      prevX = pts[pts.length-2][0]; prevY = pts[pts.length-2][1];
+    } else {
+      // Curva suave (Catmull-Rom → Bézier) que pasa por todos los waypoints
+      pathD = smoothPath(pts);
+      const midIdx = Math.floor((pts.length - 1) / 2);
+      mx = (pts[midIdx][0] + pts[midIdx+1][0]) / 2;
+      my = (pts[midIdx][1] + pts[midIdx+1][1]) / 2;
+      prevX = pts[pts.length-2][0]; prevY = pts[pts.length-2][1];
+    }
 
     // Invisible wide hit target
     const hit = document.createElementNS('http://www.w3.org/2000/svg','path');
@@ -4107,6 +5411,12 @@ function renderConnections() {
     hit.setAttribute('class','conn-hit');
     hit.dataset.connId = conn.id;
     hit.addEventListener('click', e => { e.stopPropagation(); selectConnection(conn.id); });
+    // Doble clic: agrega un punto de quiebre en esa posición
+    hit.addEventListener('dblclick', e => {
+      e.stopPropagation();
+      e.preventDefault();
+      addWaypoint(conn.id, e.clientX, e.clientY);
+    });
     svg.appendChild(hit);
 
     // Visible line
@@ -4120,10 +5430,7 @@ function renderConnections() {
     svg.appendChild(line);
 
     // Arrow at end
-    const t = 0.85;
-    const ax = (1-t)*(1-t)*x1 + 2*(1-t)*t*cpx + t*t*x2;
-    const ay = (1-t)*(1-t)*y1 + 2*(1-t)*t*cpy + t*t*y2;
-    const tang = Math.atan2(y2-ay, x2-ax);
+    const tang = Math.atan2(y2-prevY, x2-prevX);
     const as = 7;
     const arr = document.createElementNS('http://www.w3.org/2000/svg','polygon');
     arr.setAttribute('points',`0,0 -${as},-${as/2} -${as},${as/2}`);
@@ -4131,6 +5438,30 @@ function renderConnections() {
     arr.setAttribute('transform',`translate(${x2},${y2}) rotate(${tang*180/Math.PI})`);
     arr.setAttribute('class','conn-arrow');
     svg.appendChild(arr);
+
+    // Manejadores de los puntos de quiebre (solo en la conexión seleccionada)
+    if (DIAG.selected === conn.id && wps.length) {
+      wps.forEach((wp, i) => {
+        const h = document.createElementNS('http://www.w3.org/2000/svg','circle');
+        h.setAttribute('cx', wp.x); h.setAttribute('cy', wp.y); h.setAttribute('r', 6);
+        h.setAttribute('fill', ct.color);
+        h.setAttribute('stroke', '#fff');
+        h.setAttribute('stroke-width', 1.5);
+        h.setAttribute('class', 'conn-waypoint');
+        h.style.pointerEvents = 'all';
+        h.style.cursor = 'move';
+        h.addEventListener('mousedown', ev => {
+          ev.stopPropagation(); ev.preventDefault();
+          DIAG.draggingWaypoint = { connId: conn.id, index: i };
+        });
+        // Doble clic sobre el punto lo elimina
+        h.addEventListener('dblclick', ev => {
+          ev.stopPropagation(); ev.preventDefault();
+          removeWaypoint(conn.id, i);
+        });
+        svg.appendChild(h);
+      });
+    }
 
     // Sensor label at midpoint
     if (conn.sensorKey && STATE.liveData[conn.sensorKey]) {
@@ -4176,15 +5507,16 @@ function renderConnections() {
 }
 
 function startConn(fromId) {
+  if (!isDiagEditable()) { toast('Habilitá la edición para crear conexiones', 'warn'); return; }
   DIAG.pendingConn = { fromId };
   document.getElementById('btn-cancel-conn').style.display = '';
   toast('Haz clic en otra máquina o panel para conectar', 'warn');
 
   const wrap = document.getElementById('diag-canvas-wrap');
   wrap._connMouseMove = e => {
-    const rect = document.getElementById('diag-canvas-inner').getBoundingClientRect();
-    DIAG.mouseX = e.clientX - rect.left;
-    DIAG.mouseY = e.clientY - rect.top;
+    const p = screenToDiag(e.clientX, e.clientY);   // respeta zoom/desplazamiento
+    DIAG.mouseX = p.x;
+    DIAG.mouseY = p.y;
     renderConnections();
   };
   wrap.addEventListener('mousemove', wrap._connMouseMove);
@@ -4381,10 +5713,10 @@ function openSensorModal(sensorKey) {
 
   document.getElementById('modal-content').innerHTML = `
     <div class="metric-grid">
-      <div class="metric-box"><div class="metric-box-label">Actual</div><div class="metric-box-val">${val}<span class="metric-box-unit">${unit}</span></div></div>
-      <div class="metric-box"><div class="metric-box-label">Mínimo</div><div class="metric-box-val" style="color:var(--accent2);">${minVal}</div></div>
-      <div class="metric-box"><div class="metric-box-label">Máximo</div><div class="metric-box-val" style="color:var(--accent3);">${maxVal}</div></div>
-      <div class="metric-box"><div class="metric-box-label">Promedio</div><div class="metric-box-val" style="color:var(--warn);">${avgVal}</div></div>
+      <div class="metric-box"><div class="metric-box-label">Actual</div><div class="metric-box-val"><span id="msd-val">${val}</span><span class="metric-box-unit" id="msd-unit">${unit}</span></div></div>
+      <div class="metric-box"><div class="metric-box-label">Mínimo</div><div class="metric-box-val" style="color:var(--accent2);" id="msd-min">${minVal}</div></div>
+      <div class="metric-box"><div class="metric-box-label">Máximo</div><div class="metric-box-val" style="color:var(--accent3);" id="msd-max">${maxVal}</div></div>
+      <div class="metric-box"><div class="metric-box-label">Promedio</div><div class="metric-box-val" style="color:var(--warn);" id="msd-avg">${avgVal}</div></div>
     </div>
     <div class="modal-section-label">Historial · ${STATE.timeRange}</div>
     <div style="position:relative;height:200px;margin-bottom:16px;">
@@ -4393,8 +5725,32 @@ function openSensorModal(sensorKey) {
     <button class="btn-sm" style="width:100%;" onclick="exportSensorCSV('${sensorKey}')">↓ Exportar Sensor CSV</button>
   `;
 
+  STATE._modalSensorKey = sensorKey;   // marca que este modal está en vivo
   document.getElementById('object-modal').classList.add('open');
   setTimeout(() => renderSensorChart(sensorKey, 'modal-chart'), 50);
+}
+
+// Refresca los valores y el gráfico del modal de detalle mientras está abierto
+function updateSensorModal() {
+  const sensorKey = STATE._modalSensorKey;
+  if (!sensorKey) return;
+  const modal = document.getElementById('object-modal');
+  if (!modal || !modal.classList.contains('open')) return;
+
+  const d = STATE.liveData[sensorKey] || {};
+  const hist = STATE.history[sensorKey] || [];
+  const val = d.falla ? 'FALLA'
+    : (d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : '—'));
+
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('msd-val', val);
+  set('msd-unit', d.falla ? '' : (d.unidad || (d.rpm !== undefined ? 'rpm' : '')));
+  if (hist.length) {
+    set('msd-min', Math.min(...hist.map(p => p.val)).toFixed(2));
+    set('msd-max', Math.max(...hist.map(p => p.val)).toFixed(2));
+    set('msd-avg', (hist.reduce((a, b) => a + b.val, 0) / hist.length).toFixed(2));
+  }
+  renderSensorChart(sensorKey, 'modal-chart');
 }
 
 /* ══════════════════════════════════════════════════════
@@ -4753,6 +6109,7 @@ function setTimeRange(range, el) {
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
+  if (id === 'object-modal') STATE._modalSensorKey = null;
   if (id === 'object-modal') DIAG.nodeChartKeys = [];
   if (STATE.rtCharts['modal-chart']) { STATE.rtCharts['modal-chart'].destroy(); delete STATE.rtCharts['modal-chart']; }
   Object.keys(STATE.rtCharts).filter(k => k.startsWith('node-chart-')).forEach(k => {
@@ -5264,7 +6621,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Demo hint
   if (Object.keys(STATE.devices).length === 0) {
-    setTimeout(() => toast('Activa "Simular Datos" y luego "Cargar Escena Demo" para un preview rápido', 'warn', 5000), 1000);
+    // La escena demo se carga sola en bootScene(); no hace falta pedirlo.
   } else {
     toast('Datos locales restaurados ✓', 'ok');
   }
