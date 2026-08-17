@@ -83,7 +83,108 @@
     grid-template-rows: 48px 1fr;
     grid-template-columns: 220px 1fr 280px;
     height: 100vh;
+    height: 100dvh;              /* evita el corte por la barra del navegador móvil */
   }
+
+  /* ─── Botones para mostrar/ocultar paneles ─── */
+  .panel-toggle {
+    display: none;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    color: var(--text2);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-family: var(--font);
+    font-size: 13px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .panel-toggle.active { color: var(--accent); border-color: var(--accent); }
+  .sidebar-scrim {
+    display: none;
+    position: fixed;
+    inset: 48px 0 0 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 90;
+  }
+  .sidebar-scrim.show { display: block; }
+
+  /* Botón flotante para abrir el panel de gráficas (siempre alcanzable,
+     aunque la barra superior esté desplazada) */
+  .fab-charts {
+    display: none;
+    position: absolute;
+    right: 14px;
+    top: 14px;
+    z-index: 45;
+    background: var(--panel);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    border-radius: 24px;
+    padding: 9px 14px;
+    font-family: var(--font);
+    font-size: 12px;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(0,0,0,.5);
+  }
+
+  /* En orientación vertical (o pantallas angostas) los paneles se ocultan y
+     aparecen superpuestos solo cuando hacen falta, para ver mejor el modelo. */
+  @media (max-width: 1024px), (orientation: portrait) and (max-width: 1400px) {
+    .app { grid-template-columns: 1fr; }
+    .panel-toggle { display: inline-block; }
+
+    .sidebar-left, .sidebar-right {
+      position: fixed;
+      top: 48px;
+      bottom: 0;
+      width: 280px;
+      max-width: 84vw;
+      z-index: 95;
+      transition: transform .22s ease;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .sidebar-left  { left: 0;  transform: translateX(-102%); }
+    .sidebar-right { right: 0; transform: translateX(102%); }
+    .sidebar-left.open, .sidebar-right.open { transform: translateX(0); }
+
+    header { padding: 0 10px; gap: 10px; }
+    .header-tabs { gap: 2px; margin-left: 8px; }
+    .header-tabs .tab { padding: 6px 8px; font-size: 10px; }
+    .header-right { gap: 6px; }
+    .main { grid-column: 1; }
+
+
+    .btn-sm, .vc-btn, .mach-btn { min-height: 32px; }
+    .fab-charts { display: block; }
+  }
+
+  /* Vertical estrecho: el panel derecho ocupa la mitad inferior (más natural
+     que un cajón lateral para ver gráficas en un teléfono en vertical) */
+  @media (orientation: portrait) and (max-width: 700px) {
+    .sidebar-right {
+      left: 0; right: 0; width: auto; max-width: none;
+      top: auto; height: 52vh;
+      transform: translateY(102%);
+      border-top: 1px solid var(--accent);
+      border-left: none;
+    }
+    .sidebar-right.open { transform: translateY(0); }
+  }
+
+  /* Pestañas compactas: lo aplica fitHeader() cuando no entran de otro modo */
+  .header-tabs.tabs-compact .tab { font-size: 9px; padding: 5px 5px; letter-spacing: 0; }
+  .header-tabs.tabs-compact { margin-left: 4px; gap: 1px; }
+
+  @media (max-width: 640px) {
+    .header-tabs .tab { font-size: 9px; padding: 5px 6px; }
+    .modal { width: 96vw !important; max-width: 96vw !important; }
+    .viewport-overlay { flex-wrap: wrap; }
+  }
+
+  /* En táctil, el canvas 3D y el diagrama manejan sus propios gestos */
+  #three-canvas, .diag-canvas-wrap { touch-action: none; }
 
   /* ─── HEADER ─── */
   header {
@@ -96,7 +197,44 @@
     border-bottom: 1px solid var(--border);
     position: relative;
     z-index: 100;
+    overflow: visible;      /* el menú desplegable debe poder salirse */
+    min-width: 0;
   }
+  header > *, .header-right > * { flex-shrink: 0; }
+  /* Las pestañas sí ceden espacio y se recortan con elegancia si hace falta */
+  .header-tabs { min-width: 0; overflow: hidden; }
+
+  /* ─── Menú de acciones (⋯) ─── */
+  .hdr-menu-wrap { position: relative; }
+  .hdr-menu {
+    display: none;
+    position: absolute;
+    right: 0;
+    top: calc(100% + 6px);
+    min-width: 200px;
+    background: var(--panel);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: 6px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.6);
+    z-index: 200;
+  }
+  .hdr-menu.open { display: block; }
+  .hdr-menu button {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--text2);
+    font-family: var(--font);
+    font-size: 11px;
+    padding: 8px 10px;
+    border-radius: 5px;
+    cursor: pointer;
+  }
+  .hdr-menu button:hover { background: var(--bg3); color: var(--accent); }
+  .hdr-menu-sep { height: 1px; background: var(--border); margin: 4px 6px; }
 
   .logo {
     display: flex;
@@ -175,10 +313,14 @@
     background: var(--bg2);
     border-right: 1px solid var(--border);
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     display: flex;
     flex-direction: column;
     gap: 0;
+    min-height: 0;
   }
+  /* La sección de sensores crece pero no bloquea el scroll del contenedor */
+  .sidebar-left > .sidebar-section { flex: 0 0 auto; }
 
   .sidebar-section {
     padding: 14px 14px 6px;
@@ -1035,6 +1177,29 @@
   /* Settings */
   .settings-section { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius2); padding: 16px; margin-bottom: 12px; }
   .settings-title { font-size: 12px; color: var(--text); margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+
+  /* ─────────────────────────────────────────────────────────────
+     Ajustes responsive del diagrama 2D.
+     Van al final del CSS a propósito: las reglas base de
+     #diagram-overlay y .diag-toolbar están más abajo en el archivo
+     y, con igual especificidad, ganarían por orden de aparición.
+     ───────────────────────────────────────────────────────────── */
+  @media (max-width: 1024px), (orientation: portrait) and (max-width: 1400px) {
+    /* El panel izquierdo ya no ocupa columna: el diagrama usa todo el ancho */
+    #diagram-overlay { inset: 48px 0 0 0; }
+    /* La barra fluye en varias líneas en vez de cortarse */
+    .diag-toolbar {
+      height: auto;
+      min-height: 46px;
+      flex-wrap: wrap;
+      padding: 6px 10px;
+      gap: 6px;
+      justify-content: flex-start;
+    }
+    .diag-toolbar .diag-toolbar-sep { display: none; }
+    #diag-hint { display: none; }
+    .conn-legend { display: none; }
+  }
 </style>
 </head>
 <body>
@@ -1043,9 +1208,10 @@
 
   <!-- ─── HEADER ─── -->
   <header>
+    <button class="panel-toggle" id="tgl-left" onclick="toggleSidebar('left')" title="Dispositivos y sensores">☰</button>
     <div class="logo">
       <div class="logo-dot"></div>
-      IoT PLATFORM
+      <span class="logo-text">IoT PLATFORM</span>
     </div>
     <div class="header-tabs">
       <button class="tab active" onclick="switchTab('realtime',this)">Tiempo Real</button>
@@ -1056,14 +1222,30 @@
     </div>
     <div class="header-right">
       <div class="status-badge online" id="conn-badge">EN LÍNEA</div>
-      <button class="btn-sm" onclick="toggleSimulate()">Simular Datos</button>
-      <button class="btn-sm" onclick="openDemoConfig()" title="Configurar los sensores del demo">⚙ Demo</button>
       <input type="file" id="scene-import-input" accept=".json" style="display:none" onchange="importSceneFile(event)">
-      <button class="btn-sm" onclick="exportScene()" title="Exportar escena (modelo 3D + diagramas + config) a demo.json">⬇ Escena</button>
-      <button class="btn-sm" onclick="document.getElementById('scene-import-input').click()" title="Importar escena desde un archivo JSON">⬆ Escena</button>
-      <button class="btn-sm accent" onclick="exportTodayCSV()">↓ Exportar CSV</button>
+
+      <!-- Acciones visibles solo si hay espacio; el resto va al menú ⋯ -->
+      <button class="btn-sm hide-narrow" onclick="toggleSimulate()">Simular Datos</button>
+      <button class="btn-sm accent hide-narrow" onclick="exportTodayCSV()">↓ Exportar CSV</button>
+
+      <!-- Menú de acciones -->
+      <div class="hdr-menu-wrap">
+        <button class="btn-sm" id="hdr-menu-btn" onclick="toggleHeaderMenu(event)" title="Más acciones">⋯</button>
+        <div class="hdr-menu" id="hdr-menu">
+          <button onclick="closeHeaderMenu();toggleSimulate()">▶ Simular Datos</button>
+          <button onclick="closeHeaderMenu();openDemoConfig()">⚙ Configurar Demo</button>
+          <div class="hdr-menu-sep"></div>
+          <button onclick="closeHeaderMenu();exportScene()">⬇ Exportar Escena</button>
+          <button onclick="closeHeaderMenu();document.getElementById('scene-import-input').click()">⬆ Importar Escena</button>
+          <div class="hdr-menu-sep"></div>
+          <button onclick="closeHeaderMenu();exportTodayCSV()">↓ Exportar CSV</button>
+        </div>
+      </div>
+
+      <button class="panel-toggle" id="tgl-right" onclick="toggleSidebar('right')" title="Panel de sensores">📊</button>
     </div>
   </header>
+  <div class="sidebar-scrim" id="sidebar-scrim" onclick="closeSidebars()"></div>
 
   <!-- ─── SIDEBAR LEFT ─── -->
   <aside class="sidebar-left">
@@ -1099,6 +1281,19 @@
 
         <!-- Sensor icon overlays - positioned by JS projection -->
         <div id="sensor-icons-layer" style="position:absolute;inset:0;pointer-events:none;overflow:hidden;"></div>
+
+        <button class="fab-charts" id="fab-charts" onclick="toggleSidebar('right')">📊 Gráficas</button>
+
+        <!-- Comandos del objeto 3D seleccionado (aparece si tiene comandos) -->
+        <div id="obj-cmd-bar" style="display:none;position:absolute;left:50%;bottom:64px;transform:translateX(-50%);
+             z-index:40;background:var(--panel);border:1px solid var(--border2);border-radius:10px;
+             padding:10px 14px;max-width:92%;box-shadow:0 6px 24px rgba(0,0,0,.55);">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:8px;">
+            <span id="obj-cmd-title" style="font-size:11px;color:var(--text);font-weight:600;"></span>
+            <button class="btn-sm" style="padding:2px 8px;min-height:0;" onclick="hideObjCommands()">✕</button>
+          </div>
+          <div id="obj-cmd-buttons" style="display:flex;flex-wrap:wrap;gap:8px;"></div>
+        </div>
 
         <div class="viewport-overlay">
           <div class="viewport-badge">
@@ -1346,6 +1541,41 @@
   </div>
 
 </div><!-- /diagram-overlay -->
+
+<!-- ─── MODAL: Ubicación GPS ─── -->
+<div class="modal-overlay" id="map-modal">
+  <div class="modal" style="max-width:720px;width:94vw;">
+    <button class="modal-close" onclick="closeModal('map-modal')">✕</button>
+    <div class="modal-title" id="map-modal-title">Ubicación</div>
+    <div class="modal-sub" id="map-modal-sub"></div>
+    <div id="map-container" style="width:100%;height:300px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--bg3);"></div>
+    <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px;">
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Definir ubicación manualmente</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div class="field-group" style="margin:0;">
+          <label>Latitud</label>
+          <input type="number" step="any" id="map-lat" placeholder="9.9281">
+        </div>
+        <div class="field-group" style="margin:0;">
+          <label>Longitud</label>
+          <input type="number" step="any" id="map-lon" placeholder="-84.0907">
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+        <button class="btn-sm accent" style="flex:2;" onclick="saveMapCoords()">Guardar ubicación</button>
+        <button class="btn-sm" style="flex:1;" onclick="useMyLocationInMap()">📍 Mi ubicación</button>
+      </div>
+      <div style="font-size:9px;color:var(--text3);margin-top:8px;line-height:1.5;">
+        Podés pegar coordenadas de Google Maps (clic derecho sobre el punto → copiar).
+        Se guardan en la ficha del equipo, no requieren que tenga GPS.
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+      <a id="map-open-link" href="#" target="_blank" rel="noopener" class="btn-sm" style="flex:1;text-align:center;text-decoration:none;line-height:22px;">↗ Abrir en Google Maps</a>
+      <button class="btn-sm" style="flex:1;" onclick="copyCoords()">⧉ Copiar coordenadas</button>
+    </div>
+  </div>
+</div>
 
 <!-- ─── MODAL: Configurar Demo ─── -->
 <div class="modal-overlay" id="demo-config-modal">
@@ -1889,6 +2119,7 @@ function processRTDBData(data) {
     if (devData.sdFiles) STATE.devices[devId].sdFiles = devData.sdFiles;
     if (devData.last_action_result) {
       STATE.devices[devId].lastResult = devData.last_action_result;
+      onActionResult(devId, devData.last_action_result);   // confirma la ejecución
       const am = document.getElementById('actions-modal');
       if (am && am.classList.contains('open')) updateActionResult();
     }
@@ -2045,7 +2276,25 @@ function toggleSimulate() {
     clearInterval(STATE.simInterval);
     toast('Simulación detenida', 'warn');
   }
+  updateSimLabels();
   renderDevices();
+}
+
+// Refleja si la simulación está corriendo, en el botón y en el menú
+function updateSimLabels() {
+  const on = !!STATE.simulating;
+  document.querySelectorAll('.hide-narrow').forEach(b => {
+    if (/Simular|Detener/.test(b.textContent)) {
+      b.textContent = on ? '■ Detener Simulación' : 'Simular Datos';
+      b.style.color = on ? 'var(--warn)' : '';
+      b.style.borderColor = on ? 'var(--warn)' : '';
+    }
+  });
+  const menu = document.getElementById('hdr-menu');
+  if (menu) {
+    const btn = Array.from(menu.querySelectorAll('button')).find(b => /Simula/.test(b.textContent));
+    if (btn) btn.textContent = on ? '■ Detener Simulación' : '▶ Simular Datos';
+  }
 }
 
 function simulateTick() {
@@ -2140,6 +2389,13 @@ function renderDemoSensors() {
           <input type="number" step="any" id="ds_${i}_noise" style="${IS}" value="${s.noise != null ? s.noise : 0}"></div>
         <button class="btn-sm" style="color:var(--err);border-color:var(--err);" onclick="removeDemoSensor(${i})">✕</button>
       </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px;margin-top:8px;align-items:end;">
+        <div class="field-group" style="margin:0;"><label style="font-size:10px;">Límite inferior</label>
+          <input type="number" step="any" id="ds_${i}_lmin" style="${IS}" value="${s.limitMin != null ? s.limitMin : ''}" placeholder="opcional"></div>
+        <div class="field-group" style="margin:0;"><label style="font-size:10px;">Límite superior</label>
+          <input type="number" step="any" id="ds_${i}_lmax" style="${IS}" value="${s.limitMax != null ? s.limitMax : ''}" placeholder="opcional"></div>
+        <div style="font-size:9px;color:var(--text3);">Se dibujan como líneas punteadas en el gráfico.</div>
+      </div>
     </div>`).join('');
 }
 
@@ -2149,13 +2405,15 @@ function readDemoSensors() {
   cfg.sensors = cfg.sensors.map((s, i) => {
     const g = id => { const el = document.getElementById('ds_' + i + '_' + id); return el ? el.value : ''; };
     const n = id => { const v = parseFloat(g(id)); return isFinite(v) ? v : 0; };
+    const nOrNull = id => { const raw = String(g(id)).trim(); if (raw === '') return null; const v = parseFloat(raw); return isFinite(v) ? v : null; };
     return {
       key: (g('key') || ('s' + i)).trim().replace(/[^\w]/g, '_'),
       name: g('name').trim() || g('key'),
       unit: g('unit').trim(),
       mode: g('mode') || 'wave',
       base: n('base'), amp: n('amp'),
-      period: n('period') || 60, noise: n('noise')
+      period: n('period') || 60, noise: n('noise'),
+      limitMin: nOrNull('lmin'), limitMax: nOrNull('lmax')
     };
   });
   return cfg;
@@ -2193,6 +2451,18 @@ function saveDemoConfig() {
   STATE.demoConfig = cfg;
   saveLocal('demoConfig', cfg);
 
+  // Reflejar nombre, unidad y límites en sensorDefs: es de ahí que los
+  // gráficos toman las líneas punteadas de mínimo y máximo.
+  cfg.sensors.forEach(s => {
+    const fk = DEMO_DEVICE_ID + '/' + s.key;
+    const prev = STATE.sensorDefs[fk] || {};
+    STATE.sensorDefs[fk] = Object.assign({}, prev, {
+      name: s.name, unit: s.unit,
+      limitMin: s.limitMin, limitMax: s.limitMax,
+      type: 'raw_ma', presetId: prev.presetId || 'raw_ma'
+    });
+  });
+
   // Actualizar el dispositivo demo y refrescar la vista
   const sensors = {};
   cfg.sensors.forEach(s => { sensors[s.key] = s.name; });
@@ -2206,6 +2476,8 @@ function saveDemoConfig() {
   renderDevices();
   renderSensors();
   buildRTPanel();
+  fitHeader();
+  window.addEventListener('orientationchange', () => setTimeout(fitHeader, 300));
   closeModal('demo-config-modal');
   toast('Configuración del demo guardada', 'ok');
 }
@@ -2257,10 +2529,13 @@ function renderDevices() {
       const mins = Math.floor((Date.now() - dev.lastUpdate) / 60000);
       seen = ' · visto hace ' + (mins < 1 ? '<1' : mins) + ' min';
     }
+    const hasGps = !!deviceCoords(id);
     card.innerHTML = `
       <div class="device-name">
         <span>${dev.name}</span>
         <span style="display:flex;align-items:center;gap:6px;">
+          <button class="device-map-btn" title="${hasGps ? 'Ver ubicación en el mapa' : 'Definir ubicación'}" data-dev-id="${id}"
+             style="background:none;border:none;cursor:pointer;font-size:12px;padding:0 2px;opacity:${hasGps ? '1' : '.4'};">📍</button>
           <span class="device-status-dot ${isOnline ? 'dot-ok' : 'dot-err'}"></span>
           <button class="device-del-btn" title="Eliminar dispositivo" data-dev-id="${id}">✕</button>
         </span>
@@ -2268,6 +2543,8 @@ function renderDevices() {
       <div class="device-id">${id} · ${dev.loc || '—'}${seen}</div>
     `;
     card.onclick = () => selectDevice(id);
+    const mapBtn = card.querySelector('.device-map-btn');
+    if (mapBtn) mapBtn.onclick = (ev) => { ev.stopPropagation(); openDeviceMap(id); };
     card.querySelector('.device-del-btn').onclick = (ev) => {
       ev.stopPropagation();
       deleteDevice(id);
@@ -2492,6 +2769,21 @@ function updateRTPanel() {
 function openSensorDetail(sensorKey) {
   STATE.selectedSensor = sensorKey;
   buildRTPanel();
+  // En pantallas chicas, cerrar el panel izquierdo para dejar ver el contenido
+  if (isCompactLayout()) {
+    const left = document.querySelector('.sidebar-left');
+    if (left && left.classList.contains('open')) closeSidebars();
+    // En vertical, mostrar automáticamente las gráficas del objeto elegido
+    if (isPortraitNarrow() && STATE._autoOpenCharts !== false) {
+      const right = document.querySelector('.sidebar-right');
+      if (right && !right.classList.contains('open')) {
+        right.classList.add('open');
+        const tr = document.getElementById('tgl-right');
+        if (tr) tr.classList.add('active');
+        requestAnimationFrame(() => buildRTPanel());
+      }
+    }
+  }
   // Desplazar el panel al tope para ver el seleccionado
   const panel = document.getElementById('rt-sensor-panel');
   if (panel) panel.scrollTop = 0;
@@ -2656,6 +2948,10 @@ function initThree() {
   // Controls
   STATE.controls = new THREE.OrbitControls(STATE.camera, canvas);
   STATE.controls.enableDamping = true;
+  // Gestos táctiles: un dedo rota, dos dedos hacen zoom y desplazan
+  if (THREE.TOUCH) {
+    STATE.controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+  }
   STATE.controls.dampingFactor = 0.08;
 
   // Raycaster
@@ -2905,6 +3201,7 @@ function updateSensorIcons() {
       el.addEventListener('click', function(ev) {
         ev.stopPropagation();
         if (capturedKey) openSensorDetail(capturedKey);
+        showObjCommands(capturedName);
       });
       el.addEventListener('dblclick', function(ev) {
         ev.stopPropagation();
@@ -3051,6 +3348,29 @@ function pickObject(e) {
 
 // CLIC SIMPLE: solo selecciona → destaca su gráfico en el panel derecho.
 // (El modal emergente ahora requiere DOBLE clic.)
+// Busca el vínculo objeto↔sensor del objeto clicado o de cualquiera de sus
+// ensambles padres (al hacer clic siempre se golpea una malla individual).
+function findLinkForHit(key, hitObj) {
+  let link = STATE.objectLinks[key] ||
+    (hitObj && Object.values(STATE.objectLinks).find(l => l.meshUUID === hitObj.uuid));
+  if (link) return link;
+  let cur = hitObj ? hitObj.parent : null;
+  while (cur && cur !== STATE.scene) {
+    if (cur.name && STATE.objectLinks[cur.name]) return STATE.objectLinks[cur.name];
+    cur = cur.parent;
+  }
+  // Último recurso: el nodo del diagrama asociado a un ensamble padre
+  const node = nodeForObject3D(key, hitObj);
+  if (node) {
+    const byNode = Object.values(STATE.objectLinks).find(l => l.nodeId === node.id);
+    if (byNode) return byNode;
+    const sKey = (node.sensorKeys && node.sensorKeys[0]) ||
+                 ((node.elements || []).find(el => el && el.sensorKey) || {}).sensorKey;
+    if (sKey) return { sensorKey: sKey, nodeId: node.id, objectName: key };
+  }
+  return null;
+}
+
 function onCanvasClick(e) {
   const pick = pickObject(e);
   if (!pick) return;
@@ -3081,8 +3401,9 @@ function onCanvasClick(e) {
     return;
   }
 
-  const link = STATE.objectLinks[key] ||
-    Object.values(STATE.objectLinks).find(l => l.meshUUID === hitMesh.uuid);
+  showObjCommands(key, hitMesh);   // busca también en sus ensambles padres
+
+  const link = findLinkForHit(key, hitMesh);
   if (link) {
     openSensorDetail(link.sensorKey);   // sube y resalta su gráfico
   } else {
@@ -3468,9 +3789,16 @@ function updateHighlights() {
     // Los objetos de agua conservan su brillo propio: no los tocamos
     if (mesh.userData && mesh.userData._waterReady) return;
     const name = mesh.name;
-    // Match by name OR by stored meshUUID
-    const link = STATE.objectLinks[name] ||
+    // Match by name, by stored meshUUID, o por un ensamble padre vinculado
+    let link = STATE.objectLinks[name] ||
       Object.values(STATE.objectLinks).find(function(l) { return l.meshUUID === mesh.uuid; });
+    if (!link) {
+      let cur = mesh.parent;
+      while (cur && cur !== STATE.scene && !link) {
+        if (cur.name && STATE.objectLinks[cur.name]) link = STATE.objectLinks[cur.name];
+        cur = cur.parent;
+      }
+    }
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     if (link && STATE.highlightSensors) {
       const d = STATE.liveData[link.sensorKey];
@@ -3497,7 +3825,8 @@ function openObjectModal(hitMesh, key) {
   if (!key) key = hitMesh.name || getTopParent(hitMesh).name || hitMesh.uuid;
   STATE.selectedObject = hitMesh;
   const name = key;
-  const link = STATE.objectLinks[name];
+  // Reconoce el vínculo aunque se haya clicado una pieza de un ensamble
+  const link = findLinkForHit(name, hitMesh);
 
   document.getElementById('modal-title').textContent = hitMesh.name || name || 'Objeto 3D';
 
@@ -3691,11 +4020,20 @@ function diagZoomOut() { setDiagZoom(DIAG.zoom / 1.2); }
 function diagZoomReset() { DIAG.zoom = 1; DIAG.panX = 0; DIAG.panY = 0; applyDiagTransform(); }
 
 // Encuadra todo el diagrama en la vista
-function diagFitAll() {
+function diagFitAll(retry) {
   const wrap = document.getElementById('diag-canvas-wrap');
   if (!wrap) return;
   const nodes = visibleDiagNodes();
   if (!nodes.length) { diagZoomReset(); return; }
+
+  const r = wrap.getBoundingClientRect();
+  // Si el overlay todavía no tiene tamaño definitivo (se acaba de abrir o el
+  // dispositivo se está rotando), reintentar en el siguiente frame. Sin esto
+  // el encuadre se calcula con un ancho equivocado y el diagrama queda corrido.
+  if (r.width < 50 || r.height < 50) {
+    if ((retry || 0) < 10) requestAnimationFrame(() => diagFitAll((retry || 0) + 1));
+    return;
+  }
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   nodes.forEach(n => {
@@ -3704,11 +4042,10 @@ function diagFitAll() {
     maxX = Math.max(maxX, n.x + w);   maxY = Math.max(maxY, n.y + h);
   });
 
-  const pad = 60;
+  const pad = 40;
   const bw = (maxX - minX) + pad * 2;
   const bh = (maxY - minY) + pad * 2;
-  const r = wrap.getBoundingClientRect();
-  if (bw <= 0 || bh <= 0 || r.width === 0) return;
+  if (bw <= 0 || bh <= 0) return;
 
   DIAG.zoom = Math.max(0.15, Math.min(1.6, Math.min(r.width / bw, r.height / bh)));
   // Centrar el contenido en el área visible
@@ -4475,8 +4812,428 @@ function runDiagCommand(index) {
   if (c.confirm && !confirm('¿Ejecutar "' + c.label + '"?')) return;
   const prevDevice = STATE.actionsDevice;
   STATE.actionsDevice = c.deviceId;
-  sendAction(c.type, c.params || {});
+  sendAction(c.type, c.params || {}, null, c.label);
   STATE.actionsDevice = prevDevice;
+}
+
+/* ══════════════════════════════════════════════════════
+   ADAPTACIÓN A TÁCTIL / PANTALLAS CHICAS
+══════════════════════════════════════════════════════ */
+/* ── Menú de acciones del encabezado ── */
+// Ajusta el encabezado midiendo el espacio REAL disponible (no por umbrales
+// fijos de ancho): va ocultando elementos secundarios hasta que todo entre.
+function fitHeader() {
+  const header = document.querySelector('header');
+  const tabs = document.querySelector('.header-tabs');
+  if (!header || !tabs) return;
+
+  const logoText = document.querySelector('.logo-text');
+  const badge = document.getElementById('conn-badge');
+  const extras = Array.from(document.querySelectorAll('.hide-narrow'));
+
+  // Partir del estado completo y quitar de a poco lo menos importante
+  extras.forEach(e => e.style.display = '');
+  if (badge) badge.style.display = '';
+  if (logoText) logoText.style.display = '';
+  tabs.classList.remove('tabs-compact');
+
+  const overflows = () => header.scrollWidth > header.clientWidth + 1;
+
+  if (!overflows()) return;
+  extras.forEach(e => e.style.display = 'none');   // 1) acciones sueltas → menú ⋯
+  if (!overflows()) return;
+  if (badge) badge.style.display = 'none';         // 2) insignia de estado
+  if (!overflows()) return;
+  if (logoText) logoText.style.display = 'none';   // 3) texto del logo
+  if (!overflows()) return;
+  tabs.classList.add('tabs-compact');              // 4) pestañas compactas
+}
+
+function toggleHeaderMenu(ev) {
+  if (ev) ev.stopPropagation();
+  const m = document.getElementById('hdr-menu');
+  if (!m) return;
+  const opening = !m.classList.contains('open');
+  m.classList.toggle('open', opening);
+  if (opening) {
+    // Cerrar al tocar fuera
+    setTimeout(() => {
+      document.addEventListener('click', closeHeaderMenu, { once: true });
+    }, 0);
+  }
+}
+
+function closeHeaderMenu() {
+  const m = document.getElementById('hdr-menu');
+  if (m) m.classList.remove('open');
+}
+
+function isCompactLayout() {
+  return window.matchMedia('(max-width: 1024px)').matches ||
+         (window.matchMedia('(orientation: portrait)').matches && window.innerWidth <= 1400);
+}
+// Vertical estrecho: el panel derecho se abre solo al elegir un sensor
+function isPortraitNarrow() {
+  return window.matchMedia('(orientation: portrait)').matches && window.innerWidth <= 700;
+}
+
+function toggleSidebar(side) {
+  const el = document.querySelector(side === 'left' ? '.sidebar-left' : '.sidebar-right');
+  const other = document.querySelector(side === 'left' ? '.sidebar-right' : '.sidebar-left');
+  if (!el) return;
+  const opening = !el.classList.contains('open');
+  if (other) other.classList.remove('open');
+  el.classList.toggle('open', opening);
+  const scrim = document.getElementById('sidebar-scrim');
+  const useScrim = opening && isCompactLayout() && !(side === 'right' && isPortraitNarrow());
+  if (scrim) scrim.classList.toggle('show', useScrim);
+  document.getElementById('tgl-left').classList.toggle('active', side === 'left' && opening);
+  document.getElementById('tgl-right').classList.toggle('active', side === 'right' && opening);
+  if (opening && side === 'right') buildRTPanel();   // asegurar gráficos dibujados
+}
+
+function closeSidebars() {
+  document.querySelectorAll('.sidebar-left, .sidebar-right').forEach(e => e.classList.remove('open'));
+  const scrim = document.getElementById('sidebar-scrim');
+  if (scrim) scrim.classList.remove('show');
+  ['tgl-left','tgl-right'].forEach(id => {
+    const b = document.getElementById(id); if (b) b.classList.remove('active');
+  });
+}
+
+// Gestos táctiles del diagrama 2D: un dedo desplaza, dos dedos hacen zoom
+function initDiagTouch() {
+  const wrap = document.getElementById('diag-canvas-wrap');
+  if (!wrap || wrap._touchInit) return;
+  wrap._touchInit = true;
+
+  let mode = null;          // 'pan' | 'pinch'
+  let startX = 0, startY = 0, origX = 0, origY = 0;
+  let startDist = 0, startZoom = 1, pinchCx = 0, pinchCy = 0;
+
+  const dist = (t1, t2) => Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+
+  wrap.addEventListener('touchstart', e => {
+    // Si el toque empezó sobre un nodo o botón, dejamos que lo maneje él
+    const onBg = e.target === wrap || e.target.id === 'diag-canvas-inner' || e.target.id === 'diag-svg';
+    if (e.touches.length === 2) {
+      mode = 'pinch';
+      startDist = dist(e.touches[0], e.touches[1]) || 1;
+      startZoom = DIAG.zoom;
+      pinchCx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      pinchCy = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      e.preventDefault();
+    } else if (e.touches.length === 1 && onBg) {
+      mode = 'pan';
+      startX = e.touches[0].clientX; startY = e.touches[0].clientY;
+      origX = DIAG.panX; origY = DIAG.panY;
+    } else {
+      mode = null;
+    }
+  }, { passive: false });
+
+  wrap.addEventListener('touchmove', e => {
+    if (mode === 'pan' && e.touches.length === 1) {
+      DIAG.panX = origX + (e.touches[0].clientX - startX);
+      DIAG.panY = origY + (e.touches[0].clientY - startY);
+      applyDiagTransform();
+      e.preventDefault();
+    } else if (mode === 'pinch' && e.touches.length === 2) {
+      const d = dist(e.touches[0], e.touches[1]) || 1;
+      setDiagZoom(startZoom * (d / startDist), pinchCx, pinchCy);
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  wrap.addEventListener('touchend', () => { mode = null; });
+}
+
+// Arrastre de nodos del diagrama con el dedo
+function addTouchDrag(el, getPos, setPos) {
+  let sx = 0, sy = 0, ox = 0, oy = 0, dragging = false;
+  el.addEventListener('touchstart', e => {
+    if (!isDiagEditable() || e.touches.length !== 1) return;
+    if (e.target.classList.contains('port-dot') || e.target.tagName === 'BUTTON') return;
+    dragging = true;
+    const p = getPos();
+    sx = e.touches[0].clientX; sy = e.touches[0].clientY;
+    ox = p.x; oy = p.y;
+    e.stopPropagation();
+  }, { passive: true });
+  el.addEventListener('touchmove', e => {
+    if (!dragging || e.touches.length !== 1) return;
+    setPos(ox + (e.touches[0].clientX - sx) / DIAG.zoom,
+           oy + (e.touches[0].clientY - sy) / DIAG.zoom);
+    renderConnections();
+    e.preventDefault();
+    e.stopPropagation();
+  }, { passive: false });
+  el.addEventListener('touchend', () => {
+    if (dragging) { dragging = false; persistAll(); renderDiagram(); }
+  });
+}
+
+/* ══════════════════════════════════════════════════════
+   COMANDOS DEL OBJETO 3D SELECCIONADO
+══════════════════════════════════════════════════════ */
+// Busca el nodo del diagrama asociado a un objeto 3D.
+// Importante: al hacer clic siempre se golpea una MALLA individual, pero el
+// diagrama suele estar asociado a un ENSAMBLE (grupo padre). Por eso se sube
+// por la jerarquía hasta la raíz buscando coincidencia en cualquier ancestro.
+function nodeForObject3D(objName, hitObj) {
+  const matchByName = (name) => {
+    if (!name) return null;
+    return STATE.diagMachines.find(m => m.modelObjectName === name)
+        || STATE.diagPanels.find(p => p.assemblyName === name)
+        || STATE.diagCapsules.find(c => c.assemblyName === name)
+        || null;
+  };
+
+  // 1) Coincidencia directa con el objeto clicado
+  let node = matchByName(objName);
+  if (node) return node;
+
+  // 2) Vínculo objeto↔sensor del propio objeto
+  const link = STATE.objectLinks[objName];
+  if (link && link.nodeId) {
+    const n = findDiagNode(link.nodeId);
+    if (n) return n;
+  }
+
+  // 3) Subir por los ancestros: el ensamble que contiene esta pieza
+  let cur = hitObj || findObjectByNameOrUUID(objName);
+  while (cur && cur !== STATE.scene) {
+    if (cur.name) {
+      node = matchByName(cur.name);
+      if (node) return node;
+      const l = STATE.objectLinks[cur.name];
+      if (l && l.nodeId) {
+        const n = findDiagNode(l.nodeId);
+        if (n) return n;
+      }
+    }
+    cur = cur.parent;
+  }
+  return null;
+}
+
+// Muestra la barra de comandos bajo el modelo, si el objeto tiene alguno
+function showObjCommands(objName, hitObj) {
+  const bar = document.getElementById('obj-cmd-bar');
+  if (!bar) return;
+  const node = nodeForObject3D(objName, hitObj);
+  const cmds = node ? diagCommands().filter(c => c.nodeId === node.id) : [];
+  if (!cmds.length) { bar.style.display = 'none'; return; }
+
+  document.getElementById('obj-cmd-title').textContent = '⚡ ' + (node.label || objName);
+  const colorOf = c => c.color === 'err' ? 'var(--err)' : (c.color === 'warn' ? 'var(--warn)' : 'var(--accent)');
+  document.getElementById('obj-cmd-buttons').innerHTML = cmds.map(c => {
+    const idx = diagCommands().indexOf(c);
+    return `<button class="btn-sm" style="color:${colorOf(c)};border-color:${colorOf(c)};"
+      onclick="runDiagCommand(${idx})">${chEsc(c.label)}</button>`;
+  }).join('');
+  bar.style.display = '';
+}
+
+function hideObjCommands() {
+  const bar = document.getElementById('obj-cmd-bar');
+  if (bar) bar.style.display = 'none';
+}
+
+/* ══════════════════════════════════════════════════════
+   SEGUIMIENTO DE EJECUCIÓN DE COMANDOS
+   Muestra una barra de progreso y confirma cuando el dispositivo responde
+   en last_action_result con el mismo id de acción.
+══════════════════════════════════════════════════════ */
+const CMD_TIMEOUT_MS = 20000;
+
+function showCmdProgress(label) {
+  let box = document.getElementById('cmd-progress');
+  if (!box) {
+    box = document.createElement('div');
+    box.id = 'cmd-progress';
+    box.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:300;' +
+      'background:var(--panel);border:1px solid var(--border2);border-radius:10px;padding:12px 16px;' +
+      'min-width:280px;box-shadow:0 6px 24px rgba(0,0,0,.6);font-family:var(--font);';
+    document.body.appendChild(box);
+  }
+  box.style.display = '';
+  box.innerHTML =
+    '<div id="cmdp-text" style="font-size:12px;color:var(--text);margin-bottom:8px;">' +
+      '⏳ Enviando: <b>' + chEsc(label) + '</b></div>' +
+    '<div style="height:4px;background:var(--bg3);border-radius:2px;overflow:hidden;">' +
+      '<div id="cmdp-bar" style="height:100%;width:8%;background:var(--accent);transition:width .3s ease;"></div>' +
+    '</div>' +
+    '<div id="cmdp-sub" style="font-size:10px;color:var(--text3);margin-top:6px;">Esperando confirmación del dispositivo…</div>';
+}
+
+function setCmdProgress(pct, text, sub, color) {
+  const bar = document.getElementById('cmdp-bar');
+  const t = document.getElementById('cmdp-text');
+  const s = document.getElementById('cmdp-sub');
+  if (bar) { bar.style.width = pct + '%'; if (color) bar.style.background = color; }
+  if (t && text) t.innerHTML = text;
+  if (s && sub !== undefined) s.textContent = sub;
+}
+
+function hideCmdProgress(delay) {
+  setTimeout(() => {
+    const box = document.getElementById('cmd-progress');
+    if (box) box.style.display = 'none';
+  }, delay || 0);
+}
+
+// Registra un comando enviado y espera su confirmación
+function trackCommand(actionId, deviceId, label) {
+  STATE._pendingCmd = { id: actionId, deviceId, label, ts: Date.now() };
+  showCmdProgress(label);
+  setCmdProgress(35, null, 'Comando entregado · esperando al dispositivo…');
+
+  clearTimeout(STATE._cmdTimeout);
+  STATE._cmdTimeout = setTimeout(() => {
+    if (STATE._pendingCmd && STATE._pendingCmd.id === actionId) {
+      setCmdProgress(100, '⚠ Sin respuesta: <b>' + chEsc(label) + '</b>',
+        'El dispositivo no confirmó. Puede estar sin conexión.', 'var(--warn)');
+      STATE._pendingCmd = null;
+      hideCmdProgress(4000);
+    }
+  }, CMD_TIMEOUT_MS);
+}
+
+// Se llama cuando llega last_action_result desde el dispositivo
+function onActionResult(devId, res) {
+  const p = STATE._pendingCmd;
+  if (!p || !res || res.id !== p.id || devId !== p.deviceId) return;
+  clearTimeout(STATE._cmdTimeout);
+  STATE._pendingCmd = null;
+  if (res.success) {
+    setCmdProgress(100, '✓ Ejecutado: <b>' + chEsc(p.label) + '</b>',
+      res.message && res.message !== 'ok' ? res.message : 'Confirmado por el dispositivo', 'var(--ok)');
+    toast('✓ ' + p.label + ' · ejecutado', 'ok');
+  } else {
+    setCmdProgress(100, '✗ Falló: <b>' + chEsc(p.label) + '</b>',
+      res.message || 'El dispositivo rechazó el comando', 'var(--err)');
+    toast('✗ ' + p.label + ' · ' + (res.message || 'error'), 'err', 5000);
+  }
+  hideCmdProgress(3500);
+}
+
+/* ══════════════════════════════════════════════════════
+   UBICACIÓN GPS DEL DISPOSITIVO
+   Lee meta/lat y meta/lon de Firebase y muestra el mapa.
+══════════════════════════════════════════════════════ */
+// Devuelve {lat, lon} si el dispositivo tiene coordenadas válidas
+function deviceCoords(devId) {
+  const dev = STATE.devices[devId];
+  const m = (dev && dev.meta) || {};
+  const lat = parseFloat(m.lat !== undefined ? m.lat : m.latitud);
+  const lon = parseFloat(m.lon !== undefined ? m.lon : (m.lng !== undefined ? m.lng : m.longitud));
+  if (!isFinite(lat) || !isFinite(lon)) return null;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+  return { lat, lon };
+}
+
+function openDeviceMap(devId) {
+  if (!devId) { toast('Elegí un dispositivo', 'err'); return; }
+  STATE._mapDeviceId = devId;
+  const c = deviceCoords(devId);
+  const dev = STATE.devices[devId] || {};
+  STATE._mapCoords = c;
+
+  document.getElementById('map-modal-title').textContent = '📍 ' + (dev.name || devId);
+  document.getElementById('map-modal-sub').textContent = c
+    ? ((dev.loc ? dev.loc + ' · ' : '') + c.lat.toFixed(6) + ', ' + c.lon.toFixed(6))
+    : 'Sin ubicación definida — ingresá las coordenadas abajo';
+
+  document.getElementById('map-lat').value = c ? c.lat : '';
+  document.getElementById('map-lon').value = c ? c.lon : '';
+  renderMapPreview(c);
+  openModal('map-modal');
+}
+
+// Dibuja el mapa (o un aviso si todavía no hay coordenadas)
+function renderMapPreview(c) {
+  const cont = document.getElementById('map-container');
+  const link = document.getElementById('map-open-link');
+  if (!cont) return;
+  if (!c) {
+    cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;' +
+      'font-size:11px;color:var(--text3);text-align:center;padding:20px;">Sin ubicación definida.<br>' +
+      'Ingresá latitud y longitud abajo para ver el mapa.</div>';
+    if (link) link.href = '#';
+    return;
+  }
+  const d = 0.004;
+  const bbox = [c.lon - d, c.lat - d, c.lon + d, c.lat + d].join('%2C');
+  cont.innerHTML =
+    '<iframe width="100%" height="100%" frameborder="0" style="border:0;display:block;" ' +
+    'src="https://www.openstreetmap.org/export/embed.html?bbox=' + bbox +
+    '&layer=mapnik&marker=' + c.lat + '%2C' + c.lon + '" allowfullscreen></iframe>';
+  if (link) link.href = 'https://www.google.com/maps/search/?api=1&query=' + c.lat + ',' + c.lon;
+}
+
+// Guarda las coordenadas escritas a mano en el modal
+function saveMapCoords() {
+  const devId = STATE._mapDeviceId;
+  if (!devId) return;
+  // Acepta también un pegado tipo "9.9281, -84.0907" en el campo de latitud
+  const rawLat = document.getElementById('map-lat').value.trim();
+  const rawLon = document.getElementById('map-lon').value.trim();
+  let lat = parseFloat(rawLat), lon = parseFloat(rawLon);
+  const pair = rawLat.match(/(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/);
+  if (pair) { lat = parseFloat(pair[1]); lon = parseFloat(pair[2]); }
+
+  if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    toast('Coordenadas inválidas', 'err');
+    return;
+  }
+
+  const dev = STATE.devices[devId] || (STATE.devices[devId] = {});
+  dev.meta = Object.assign({}, dev.meta || {}, { lat, lon });
+  persistAll();
+  renderDevices();
+
+  STATE._mapCoords = { lat, lon };
+  document.getElementById('map-lat').value = lat;
+  document.getElementById('map-lon').value = lon;
+  document.getElementById('map-modal-sub').textContent =
+    (dev.loc ? dev.loc + ' · ' : '') + lat.toFixed(6) + ', ' + lon.toFixed(6);
+  renderMapPreview({ lat, lon });
+
+  if (STATE.db) {
+    const basePath = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
+    STATE.db.ref(basePath + '/' + devId + '/meta').update({ lat, lon })
+      .then(() => toast('Ubicación guardada', 'ok'))
+      .catch(e => toast('Guardada localmente · ' + e.message, 'warn'));
+  } else {
+    toast('Ubicación guardada localmente', 'warn');
+  }
+}
+
+function useMyLocationInMap() {
+  if (!navigator.geolocation) { toast('El navegador no permite geolocalización', 'err'); return; }
+  toast('Obteniendo ubicación…', 'ok', 2000);
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      document.getElementById('map-lat').value = pos.coords.latitude.toFixed(6);
+      document.getElementById('map-lon').value = pos.coords.longitude.toFixed(6);
+      toast('Ubicación obtenida · tocá Guardar', 'ok');
+    },
+    err => toast('No se pudo obtener: ' + err.message, 'err', 5000),
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+function copyCoords() {
+  const c = STATE._mapCoords;
+  if (!c) return;
+  const txt = c.lat + ', ' + c.lon;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(txt).then(() => toast('Coordenadas copiadas', 'ok'))
+      .catch(() => toast(txt, 'ok', 5000));
+  } else {
+    toast(txt, 'ok', 5000);
+  }
 }
 
 /* ── Node lookup helpers ── */
@@ -4497,6 +5254,7 @@ function getNodeCenter(node) {
 function openDiagram() {
   document.getElementById('diagram-overlay').classList.add('active');
   initDiagViewControls();
+  initDiagTouch();
   initMarquee();
   applyDiagEditMode();
   renderLegend();
@@ -4576,19 +5334,12 @@ function confirmAddMachine() {
 }
 
 function populateModelSelect(selectId) {
+  // Usa la misma detección de ensambles que los paneles/cápsulas: agrupa por
+  // "nodo que contiene mallas" en vez de depender de isGroup (los GLB de CAD
+  // exportan ensambles como Object3D y quedaban fuera de la lista).
+  populateAssemblySelect(selectId);
   const sel = document.getElementById(selectId);
-  const current = sel.value;
-  sel.innerHTML = '<option value="">Sin modelo — usar ícono</option>';
-  if (STATE.scene) {
-    const names = new Set();
-    STATE.scene.traverse(o => { if (o.name && (o.isMesh || o.isGroup)) names.add(o.name); });
-    names.forEach(n => {
-      const opt = document.createElement('option');
-      opt.value = n; opt.textContent = n;
-      if (n === current) opt.selected = true;
-      sel.appendChild(opt);
-    });
-  }
+  if (sel && sel.options.length) sel.options[0].textContent = 'Sin modelo — usar ícono';
 }
 
 /* ── Assembly select (shows groups + meshes with type tags) ── */
@@ -4598,24 +5349,28 @@ function populateAssemblySelect(selectId) {
   sel.innerHTML = '<option value="">Sin ensamble — usar ícono</option>';
   if (!STATE.scene) return;
   const groups = [], meshes = [];
-  STATE.scene.traverse(o => {
-    if (!o.name) return;
-    if (o.isGroup || (o.children && o.children.length > 0 && !o.isMesh)) groups.push(o.name);
+  const root = STATE.model || STATE.scene;
+  root.traverse(o => {
+    if (!o.name || o === root) return;
+    // Un "ensamble" es cualquier nodo que agrupa geometría (aunque no sea
+    // isGroup: los GLB de CAD suelen usar Object3D o Mesh con hijos).
+    let meshCount = 0;
+    o.traverse(ch => { if (ch !== o && ch.isMesh) meshCount++; });
+    if (meshCount > 0) groups.push({ name: o.name, n: meshCount });
     else if (o.isMesh) meshes.push(o.name);
   });
-  const addOpts = (names, tag) => [...new Set(names)].forEach(n => {
-    const opt = document.createElement('option');
-    opt.value = n; opt.textContent = n + tag;
-    if (n === cur) opt.selected = true;
-    sel.appendChild(opt);
-  });
+
   if (groups.length) {
     const grp = document.createElement('optgroup'); grp.label = 'Ensambles (grupos)';
     sel.appendChild(grp);
-    [...new Set(groups)].forEach(n => {
+    const seen = new Set();
+    groups.sort((a,b) => b.n - a.n).forEach(g => {
+      if (seen.has(g.name)) return;
+      seen.add(g.name);
       const opt = document.createElement('option');
-      opt.value = n; opt.textContent = n;
-      if (n === cur) opt.selected = true;
+      opt.value = g.name;
+      opt.textContent = g.name + '  (' + g.n + ' piezas)';
+      if (g.name === cur) opt.selected = true;
       grp.appendChild(opt);
     });
   }
@@ -4982,6 +5737,7 @@ function renderCapsuleNode(c, inner) {
 }
 
 function makeCapsuleDraggable(el, c) {
+  addTouchDrag(el, () => c, (x, y) => { c.x = x; c.y = y; el.style.left = x + 'px'; el.style.top = y + 'px'; });
   let dragging = false, ox, oy;
   el.addEventListener('mousedown', e => {
     if (!isDiagEditable()) return;
@@ -5279,6 +6035,7 @@ function renderPanelNode(p, inner) {
 }
 
 function makePanelDraggable(el, p) {
+  addTouchDrag(el, () => p, (x, y) => { p.x = x; p.y = y; el.style.left = x + 'px'; el.style.top = y + 'px'; });
   let dragging = false, ox, oy;
   el.addEventListener('mousedown', e => {
     if (!isDiagEditable()) return;
@@ -5303,6 +6060,7 @@ function makePanelDraggable(el, p) {
 }
 
 function makeMachineDraggable(el, m) {
+  addTouchDrag(el, () => m, (x, y) => { m.x = x; m.y = y; el.style.left = x + 'px'; el.style.top = y + 'px'; });
   let dragging = false, ox, oy;
   el.addEventListener('mousedown', e => {
     if (!isDiagEditable()) return;
@@ -6065,6 +6823,7 @@ function triggerDriveExport() {
 function switchTab(view, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
+  requestAnimationFrame(fitHeader);
   ['realtime','history','offline','settings'].forEach(v => {
     const panel = document.getElementById('view-' + v);
     if (panel) panel.style.display = v === view ? 'flex' : 'none';
@@ -6109,6 +6868,7 @@ function setTimeRange(range, el) {
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
+  if (id === 'map-modal') { const mc = document.getElementById('map-container'); if (mc) mc.innerHTML = ''; }
   if (id === 'object-modal') STATE._modalSensorKey = null;
   if (id === 'object-modal') DIAG.nodeChartKeys = [];
   if (STATE.rtCharts['modal-chart']) { STATE.rtCharts['modal-chart'].destroy(); delete STATE.rtCharts['modal-chart']; }
@@ -6459,16 +7219,22 @@ function genActionId() {
 function actVal(id) { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
 function actNum(id) { const v = parseFloat(actVal(id)); return isFinite(v) ? v : null; }
 
-function sendAction(type, params, confirmMsg) {
+function sendAction(type, params, confirmMsg, label) {
   const devId = STATE.actionsDevice;
   if (!devId) { toast('Elegí un dispositivo', 'err'); return; }
   if (!STATE.db) { toast('Sin conexión al servidor', 'err'); return; }
   if (confirmMsg && !confirm(confirmMsg)) return;
   const basePath = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
-  const payload = Object.assign({ id: genActionId(), type }, params || {});
+  const actionId = genActionId();
+  const payload = Object.assign({ id: actionId, type }, params || {});
+  const nice = label || (CMD_CATALOG[type] && CMD_CATALOG[type].label) || type;
+
   STATE.db.ref(basePath + '/' + devId + '/pending_action').set(payload)
-    .then(() => toast('Comando "' + type + '" enviado', 'ok'))
-    .catch(e => toast('Error: ' + e.message, 'err'));
+    .then(() => trackCommand(actionId, devId, nice))   // barra + espera confirmación
+    .catch(e => {
+      toast('Error al enviar: ' + e.message, 'err');
+      hideCmdProgress();
+    });
 }
 
 function devicesForActions() { return Object.keys(STATE.devices).sort(); }
@@ -6542,6 +7308,12 @@ function renderActionsPanel() {
       fld('Estado', `<select id="act_mot_st" style="${IS}"><option value="1">ON</option><option value="0">OFF</option></select>`) +
       fld('RPM', `<input id="act_mot_rpm" type="number" style="${IS}width:90px;" value="0">`) +
       btn('Aplicar', `sendAction('setMotor',{estado:parseInt(actVal('act_mot_st')),rpm:actNum('act_mot_rpm')})`)
+    ),
+    card('Ubicación',
+      `<div style="font-size:11px;color:var(--text2);">${m.lat != null && m.lon != null
+          ? 'Definida: ' + Number(m.lat).toFixed(5) + ', ' + Number(m.lon).toFixed(5)
+          : 'Sin ubicación definida'}</div>` +
+      btn('🗺 Ver / definir ubicación', `openDeviceMap(STATE.actionsDevice)`)
     ),
     card('Ubicación',
       fld('Ubicación', `<input id="act_ubi" type="text" style="${IS}width:230px;" value="${chEsc(m.ubicacion || '')}" placeholder="Ej: Subestación Colorado">`) +
@@ -6625,6 +7397,17 @@ document.addEventListener('DOMContentLoaded', () => {
   } else {
     toast('Datos locales restaurados ✓', 'ok');
   }
+
+  // Redibujar al rotar el dispositivo o cambiar el tamaño de la ventana
+  let _rzT;
+  window.addEventListener('resize', () => {
+    clearTimeout(_rzT);
+    _rzT = setTimeout(() => {
+      fitHeader();
+      buildRTPanel();
+      if (document.getElementById('diagram-overlay').classList.contains('active')) diagFitAll();
+    }, 250);
+  });
 
   // Check online status
   setOnline(navigator.onLine);
