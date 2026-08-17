@@ -8,6 +8,7 @@
 <!-- Cloud SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 
 <!-- Three.js 0.162 (módulos) + Draco — expuesto como global THREE para compatibilidad -->
 <script type="importmap">
@@ -1341,13 +1342,39 @@
       </div>
 
       <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius2);padding:16px;">
-        <div class="history-title" style="margin-bottom:12px;">Archivos en Google Drive</div>
-        <div class="export-row" style="margin-bottom:12px;">
-          <input type="date" id="hist-date" style="width:160px;" value="">
-          <button class="btn-sm accent" onclick="loadDriveCSV()">Cargar CSV</button>
-          <button class="btn-sm" onclick="triggerDriveExport()">↑ Exportar Hoy a Drive</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+          <div class="history-title" style="margin:0;">Archivo Histórico en la Nube</div>
+          <div id="gauth-status" style="font-size:10px;color:var(--text3);">Sin conectar</div>
         </div>
-        <div id="drive-files-list" style="font-size:11px;color:var(--text3);">Configure Google Drive en Configuración para listar archivos.</div>
+
+        <div id="hist-setup" style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.6;">
+          Conectá tu cuenta de Google para guardar el histórico completo en una hoja
+          de cálculo tuya. Los datos se sincronizan solos y quedan en tu Drive.
+        </div>
+
+        <div class="export-row" style="margin-bottom:12px;flex-wrap:wrap;">
+          <button class="btn-sm accent" id="btn-gconnect" onclick="googleConnect()">Conectar Google</button>
+          <button class="btn-sm" id="btn-gsheet-create" onclick="createHistorySheet()" style="display:none;">+ Crear hoja para este dispositivo</button>
+          <a class="btn-sm" id="btn-gsheet-open" href="#" target="_blank" rel="noopener" style="display:none;text-decoration:none;line-height:22px;">↗ Abrir hoja</a>
+          <button class="btn-sm" id="btn-gsheet-sync" onclick="forceHistorySync()" style="display:none;">⟳ Sincronizar ahora</button>
+        </div>
+
+        <div id="hist-browser" style="display:none;">
+          <div class="export-row" style="margin-bottom:12px;flex-wrap:wrap;">
+            <select id="hist-tab" style="min-width:130px;" onchange="loadHistoryTab()"></select>
+            <input type="date" id="hist-from" style="width:150px;" title="Desde">
+            <input type="date" id="hist-to" style="width:150px;" title="Hasta">
+            <button class="btn-sm accent" onclick="loadHistoryTab()">Cargar</button>
+            <button class="btn-sm" onclick="exportHistoryCSV()">↓ Descargar CSV</button>
+          </div>
+          <div id="hist-stats" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;"></div>
+          <div style="position:relative;height:280px;margin-bottom:10px;">
+            <canvas id="hist-cloud-chart"></canvas>
+          </div>
+          <div id="hist-channel-toggles" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+        </div>
+
+        <div id="hist-msg" style="font-size:11px;color:var(--text3);"></div>
       </div>
     </div>
 
@@ -1410,20 +1437,32 @@
       </div>
 
       <div class="settings-section">
-        <div class="settings-title">Google Drive / AppScript</div>
+        <div class="settings-title">Archivo Histórico en la Nube</div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:12px;line-height:1.6;">
+          El histórico completo se guarda en una hoja de cálculo de tu propia cuenta de Google.
+          Requiere el servicio de sincronización publicado (ver instrucciones del script).
+        </div>
         <div class="field-group">
-          <label>URL del Web App (AppScript)</label>
+          <label>URL del servicio de sincronización</label>
           <input type="text" id="cfg-gas-url" placeholder="https://script.google.com/macros/s/.../exec">
         </div>
         <div class="field-group">
-          <label>Folder ID en Google Drive</label>
-          <input type="text" id="cfg-drive-folder" placeholder="1abc...xyz">
+          <label>Token del servicio</label>
+          <input type="text" id="cfg-gas-token" placeholder="token definido en el script">
         </div>
         <div class="field-group">
-          <label>Hora de Exportación Automática (formato 24h)</label>
-          <input type="time" id="cfg-export-time" value="00:00">
+          <label>ID de cliente OAuth (Google)</label>
+          <input type="text" id="cfg-google-client" placeholder="....apps.googleusercontent.com">
         </div>
-        <button class="btn-sm accent" style="margin-top:12px;" onclick="saveDriveConfig()">Guardar</button>
+        <div class="field-group">
+          <label>Correo del servicio (se comparte cada hoja con esta cuenta)</label>
+          <input type="text" id="cfg-service-email" placeholder="tucuenta@gmail.com">
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+          <button class="btn-sm accent" onclick="saveDriveConfig()">Guardar</button>
+          <button class="btn-sm" onclick="testGasConnection()">Probar conexión</button>
+        </div>
+        <div id="gas-test-result" style="font-size:10px;color:var(--text3);margin-top:8px;"></div>
       </div>
 
       <div class="settings-section">
@@ -2591,6 +2630,7 @@ function deleteDevice(id) {
 
 function selectDevice(id) {
   STATE.selectedDevice = id;
+  if (typeof updateGoogleUI === 'function') updateGoogleUI();
   renderDevices();
   renderSensors();
   updateRTPanel();
@@ -5236,6 +5276,363 @@ function copyCoords() {
   }
 }
 
+/* ══════════════════════════════════════════════════════
+   HISTÓRICO EN LA NUBE
+   El usuario se conecta con su cuenta de Google; la plataforma crea una
+   hoja de cálculo EN SU DRIVE y la comparte con la cuenta del servicio,
+   que luego sincroniza los datos automáticamente desde el servidor.
+   Ámbito usado: drive.file → sólo ve los archivos creados por esta app.
+══════════════════════════════════════════════════════ */
+const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
+
+function gasCfg() {
+  const d = (STATE.config && STATE.config.drive) || {};
+  return {
+    url: d.gasUrl || '',
+    token: d.gasToken || '',
+    clientId: d.googleClientId || '',
+    serviceEmail: d.serviceEmail || ''
+  };
+}
+
+/* ── OAuth con Google Identity Services ── */
+function googleConnect() {
+  const cfg = gasCfg();
+  if (!cfg.clientId) {
+    toast('Falta el ID de cliente OAuth (Configuración)', 'err', 5000);
+    return;
+  }
+  if (!window.google || !google.accounts || !google.accounts.oauth2) {
+    toast('El SDK de Google aún no cargó, probá de nuevo', 'warn');
+    return;
+  }
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: cfg.clientId,
+    scope: GOOGLE_SCOPES,
+    callback: (resp) => {
+      if (resp && resp.access_token) {
+        STATE.gToken = resp.access_token;
+        STATE.gTokenExp = Date.now() + (Number(resp.expires_in || 3600) - 60) * 1000;
+        toast('Cuenta de Google conectada', 'ok');
+        updateGoogleUI();
+      } else {
+        toast('No se pudo obtener autorización', 'err');
+      }
+    },
+    error_callback: (err) => toast('Autorización cancelada: ' + (err.type || ''), 'warn')
+  });
+  client.requestAccessToken();
+}
+
+function googleReady() {
+  return !!(STATE.gToken && STATE.gTokenExp && Date.now() < STATE.gTokenExp);
+}
+
+function updateGoogleUI() {
+  const st = document.getElementById('gauth-status');
+  const bC = document.getElementById('btn-gconnect');
+  const bNew = document.getElementById('btn-gsheet-create');
+  const bOpen = document.getElementById('btn-gsheet-open');
+  const bSync = document.getElementById('btn-gsheet-sync');
+  const browser = document.getElementById('hist-browser');
+  const setup = document.getElementById('hist-setup');
+  if (!st) return;
+
+  const devId = STATE.selectedDevice;
+  const dev = devId ? STATE.devices[devId] : null;
+  const sheetId = dev && dev.meta && dev.meta.sheetId;
+
+  if (!googleReady()) {
+    st.textContent = 'Sin conectar';
+    st.style.color = 'var(--text3)';
+    if (bC) { bC.style.display = ''; bC.textContent = 'Conectar Google'; }
+    [bNew, bOpen, bSync].forEach(b => b && (b.style.display = 'none'));
+    if (browser) browser.style.display = 'none';
+    return;
+  }
+
+  st.textContent = '✓ Conectado';
+  st.style.color = 'var(--accent)';
+  if (bC) bC.style.display = 'none';
+
+  if (!devId) {
+    if (setup) setup.textContent = 'Elegí un dispositivo en la lista para asignarle su hoja de histórico.';
+    [bNew, bOpen, bSync].forEach(b => b && (b.style.display = 'none'));
+    if (browser) browser.style.display = 'none';
+    return;
+  }
+
+  if (sheetId) {
+    if (setup) setup.textContent = 'Histórico de "' + (dev.name || devId) + '" guardándose en tu hoja de Google.';
+    if (bNew) bNew.style.display = 'none';
+    if (bOpen) { bOpen.style.display = ''; bOpen.href = 'https://docs.google.com/spreadsheets/d/' + sheetId; }
+    if (bSync) bSync.style.display = '';
+    if (browser) browser.style.display = '';
+    loadHistoryTabs();
+  } else {
+    if (setup) setup.textContent = 'El dispositivo "' + (dev.name || devId) + '" todavía no tiene hoja de histórico.';
+    if (bNew) bNew.style.display = '';
+    [bOpen, bSync].forEach(b => b && (b.style.display = 'none'));
+    if (browser) browser.style.display = 'none';
+  }
+}
+
+/* ── Crear la hoja en el Drive del usuario ── */
+async function createHistorySheet() {
+  const devId = STATE.selectedDevice;
+  if (!devId) { toast('Elegí un dispositivo primero', 'err'); return; }
+  if (!googleReady()) { toast('Conectá tu cuenta de Google', 'err'); return; }
+  const cfg = gasCfg();
+  const dev = STATE.devices[devId] || {};
+  const msg = document.getElementById('hist-msg');
+  const setMsg = t => { if (msg) msg.textContent = t; };
+
+  try {
+    setMsg('Creando hoja de cálculo…');
+    // 1) Crear la hoja en la cuenta del usuario
+    const r = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + STATE.gToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        properties: { title: 'Histórico IoT · ' + (dev.name || devId) }
+      })
+    });
+    const sheet = await r.json();
+    if (!sheet.spreadsheetId) throw new Error((sheet.error && sheet.error.message) || 'No se pudo crear');
+
+    // 2) Compartir con la cuenta del servicio para que pueda escribir
+    if (cfg.serviceEmail) {
+      setMsg('Autorizando al servicio de sincronización…');
+      await fetch('https://www.googleapis.com/drive/v3/files/' + sheet.spreadsheetId +
+                  '/permissions?sendNotificationEmail=false', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + STATE.gToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: 'writer', type: 'user', emailAddress: cfg.serviceEmail })
+      });
+    }
+
+    // 3) Guardar el ID en el dispositivo (Firebase + local)
+    setMsg('Registrando la hoja…');
+    dev.meta = Object.assign({}, dev.meta || {}, { sheetId: sheet.spreadsheetId });
+    STATE.devices[devId] = dev;
+    persistAll();
+    if (STATE.db) {
+      const basePath = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
+      await STATE.db.ref(basePath + '/' + devId + '/meta').update({ sheetId: sheet.spreadsheetId });
+    }
+
+    // 4) Avisar al servicio (verifica que tiene permiso de escritura)
+    if (cfg.url && cfg.token) {
+      await gasPost({ action: 'register', sheetId: sheet.spreadsheetId, deviceId: devId })
+        .catch(() => {});
+    }
+
+    setMsg('');
+    toast('Hoja creada en tu Google Drive', 'ok');
+    updateGoogleUI();
+  } catch (e) {
+    setMsg('');
+    toast('Error: ' + e.message, 'err', 6000);
+  }
+}
+
+/* ── Llamadas al servicio de sincronización ── */
+function gasGet(params) {
+  const cfg = gasCfg();
+  if (!cfg.url) return Promise.reject(new Error('Falta la URL del servicio'));
+  const q = Object.assign({ token: cfg.token }, params);
+  const qs = Object.keys(q).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(q[k])).join('&');
+  return fetch(cfg.url + '?' + qs).then(r => r.json());
+}
+
+function gasPost(body) {
+  const cfg = gasCfg();
+  if (!cfg.url) return Promise.reject(new Error('Falta la URL del servicio'));
+  return fetch(cfg.url, {
+    method: 'POST',
+    // text/plain evita la verificación previa CORS con Apps Script
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(Object.assign({ token: cfg.token }, body))
+  }).then(r => r.json());
+}
+
+function testGasConnection() {
+  const el = document.getElementById('gas-test-result');
+  if (el) el.textContent = 'Probando…';
+  gasGet({ action: 'ping' })
+    .then(res => {
+      if (res && res.ok) {
+        if (el) {
+          el.textContent = '✓ Servicio activo · cuenta: ' + (res.email || '—');
+          el.style.color = 'var(--accent)';
+        }
+        // Autocompletar el correo del servicio si estaba vacío
+        const se = document.getElementById('cfg-service-email');
+        if (se && !se.value && res.email) se.value = res.email;
+      } else {
+        if (el) { el.textContent = '✗ ' + ((res && res.error) || 'sin respuesta'); el.style.color = 'var(--err)'; }
+      }
+    })
+    .catch(e => { if (el) { el.textContent = '✗ ' + e.message; el.style.color = 'var(--err)'; } });
+}
+
+function forceHistorySync() {
+  toast('Solicitando sincronización…', 'ok', 1500);
+  gasPost({ action: 'sync' })
+    .then(res => {
+      if (res && res.ok) { toast('Sincronizado', 'ok'); loadHistoryTabs(); }
+      else toast('Error: ' + ((res && res.error) || '—'), 'err');
+    })
+    .catch(e => toast('Error: ' + e.message, 'err'));
+}
+
+/* ── Explorador del histórico ── */
+function currentSheetId() {
+  const dev = STATE.devices[STATE.selectedDevice];
+  return dev && dev.meta && dev.meta.sheetId;
+}
+
+function loadHistoryTabs() {
+  const sheetId = currentSheetId();
+  const sel = document.getElementById('hist-tab');
+  if (!sheetId || !sel) return;
+  gasGet({ action: 'tabs', sheetId })
+    .then(res => {
+      if (!res || !res.ok) { document.getElementById('hist-msg').textContent = (res && res.error) || 'No se pudo leer la hoja'; return; }
+      const tabs = (res.tabs || []).filter(t => /^\d{4}-\d{2}$/.test(t.name));
+      if (!tabs.length) {
+        document.getElementById('hist-msg').textContent =
+          'La hoja todavía no tiene datos. Se llenará con la próxima sincronización.';
+        sel.innerHTML = '';
+        return;
+      }
+      document.getElementById('hist-msg').textContent = '';
+      sel.innerHTML = tabs.reverse().map(t =>
+        `<option value="${t.name}">${t.name} (${t.rows} filas)</option>`).join('');
+      loadHistoryTab();
+    })
+    .catch(e => { document.getElementById('hist-msg').textContent = e.message; });
+}
+
+function loadHistoryTab() {
+  const sheetId = currentSheetId();
+  const tab = document.getElementById('hist-tab').value;
+  if (!sheetId || !tab) return;
+  const msg = document.getElementById('hist-msg');
+  msg.textContent = 'Cargando datos…';
+
+  const params = { action: 'read', sheetId, tab, limit: 5000 };
+  const f = document.getElementById('hist-from').value;
+  const t = document.getElementById('hist-to').value;
+  if (f) params.from = f;
+  if (t) params.to = t;
+
+  gasGet(params)
+    .then(res => {
+      if (!res || !res.ok) { msg.textContent = (res && res.error) || 'Error al leer'; return; }
+      STATE.histData = res;
+      msg.textContent = '';
+      renderHistoryStats(res);
+      renderHistoryChart(res);
+    })
+    .catch(e => { msg.textContent = e.message; });
+}
+
+// Columnas numéricas del histórico (se saltan fecha_hora y timestamp)
+function histChannels(res) {
+  return (res.header || []).map((h, i) => ({ name: h, idx: i })).slice(2);
+}
+
+function renderHistoryStats(res) {
+  const cont = document.getElementById('hist-stats');
+  if (!cont) return;
+  const rows = res.rows || [];
+  if (!rows.length) { cont.innerHTML = '<span style="font-size:11px;color:var(--text3);">Sin datos en el rango.</span>'; return; }
+  const first = rows[0][0], last = rows[rows.length - 1][0];
+  cont.innerHTML = `
+    <div class="metric-box" style="flex:1;min-width:120px;"><div class="metric-box-label">Registros</div>
+      <div class="metric-box-val" style="font-size:18px;">${rows.length}</div></div>
+    <div class="metric-box" style="flex:2;min-width:180px;"><div class="metric-box-label">Desde</div>
+      <div class="metric-box-val" style="font-size:12px;color:var(--accent2);">${chEsc(first)}</div></div>
+    <div class="metric-box" style="flex:2;min-width:180px;"><div class="metric-box-label">Hasta</div>
+      <div class="metric-box-val" style="font-size:12px;color:var(--accent3);">${chEsc(last)}</div></div>`;
+}
+
+const HIST_COLORS = ['#00e5a0','#00b4ff','#ffb800','#ff5c7c','#a78bfa','#4ade80','#f97316','#38bdf8'];
+
+function renderHistoryChart(res) {
+  const canvas = document.getElementById('hist-cloud-chart');
+  if (!canvas) return;
+  const rows = res.rows || [];
+  const chans = histChannels(res);
+  if (!STATE.histHidden) STATE.histHidden = {};
+
+  const labels = rows.map(r => String(r[0]).slice(5, 16));   // MM-DD HH:mm
+  const datasets = chans.filter(c => !STATE.histHidden[c.name]).map((c, i) => ({
+    label: c.name,
+    data: rows.map(r => {
+      const v = r[c.idx];
+      return (typeof v === 'number') ? v : (v === 'FALLA' || v === '' ? null : Number(v));
+    }),
+    borderColor: HIST_COLORS[i % HIST_COLORS.length],
+    backgroundColor: 'transparent',
+    borderWidth: 1.4,
+    pointRadius: 0,
+    tension: 0.25,
+    spanGaps: true
+  }));
+
+  if (STATE.histChartCloud) STATE.histChartCloud.destroy();
+  STATE.histChartCloud = new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 200 },
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: '#545870', font: { size: 9 }, maxTicksLimit: 10 }, grid: { color: 'rgba(255,255,255,0.04)' } },
+        y: { ticks: { color: '#545870', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+      }
+    }
+  });
+
+  // Botones para mostrar/ocultar cada canal
+  const tog = document.getElementById('hist-channel-toggles');
+  if (tog) {
+    tog.innerHTML = chans.map((c, i) => {
+      const off = !!STATE.histHidden[c.name];
+      const col = HIST_COLORS[i % HIST_COLORS.length];
+      return `<button class="btn-sm" onclick="toggleHistChannel('${chEsc(c.name)}')"
+        style="font-size:10px;color:${off ? 'var(--text3)' : col};border-color:${off ? 'var(--border)' : col};opacity:${off ? '.5' : '1'};">
+        ${off ? '○' : '●'} ${chEsc(c.name)}</button>`;
+    }).join('');
+  }
+}
+
+function toggleHistChannel(name) {
+  if (!STATE.histHidden) STATE.histHidden = {};
+  STATE.histHidden[name] = !STATE.histHidden[name];
+  if (STATE.histData) renderHistoryChart(STATE.histData);
+}
+
+function exportHistoryCSV() {
+  const res = STATE.histData;
+  if (!res || !res.rows || !res.rows.length) { toast('No hay datos cargados', 'warn'); return; }
+  const sep = ';';
+  const lines = [res.header.join(sep)].concat(
+    res.rows.map(r => r.map(v => (typeof v === 'number' ? String(v).replace('.', ',') : v)).join(sep))
+  );
+  const blob = new Blob(['\ufeff' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'historico_' + (document.getElementById('hist-tab').value || 'datos') + '.csv';
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast('CSV descargado', 'ok');
+}
+
 /* ── Node lookup helpers ── */
 function findDiagNode(id) {
   return STATE.diagMachines.find(n => n.id === id)
@@ -6736,12 +7133,13 @@ function manualUpload() {
 function saveDriveConfig() {
   STATE.config.drive = {
     gasUrl: document.getElementById('cfg-gas-url').value.trim(),
-    folderId: document.getElementById('cfg-drive-folder').value.trim(),
-    exportTime: document.getElementById('cfg-export-time').value,
+    gasToken: document.getElementById('cfg-gas-token').value.trim(),
+    googleClientId: document.getElementById('cfg-google-client').value.trim(),
+    serviceEmail: document.getElementById('cfg-service-email').value.trim(),
   };
   persistAll();
-  scheduleAutoExport();
-  toast('Configuración Drive guardada', 'ok');
+  toast('Configuración guardada', 'ok');
+  updateGoogleUI();
 }
 
 function scheduleAutoExport() {
@@ -6844,8 +7242,9 @@ function populateSettings() {
   setValue('cfg-fb-projectid', fb.projectId);
   setValue('cfg-fb-path', fb.basePath);
   setValue('cfg-gas-url', dr.gasUrl);
-  setValue('cfg-drive-folder', dr.folderId);
-  setValue('cfg-export-time', dr.exportTime || '00:00');
+  setValue('cfg-gas-token', dr.gasToken);
+  setValue('cfg-google-client', dr.googleClientId);
+  setValue('cfg-service-email', dr.serviceEmail);
 }
 function setValue(id, val) {
   const el = document.getElementById(id);
