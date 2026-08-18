@@ -1522,8 +1522,11 @@
           <input type="text" id="cfg-gas-token" placeholder="token definido en el script">
         </div>
         <div class="field-group">
-          <label>ID de cliente OAuth (Google)</label>
-          <input type="text" id="cfg-google-client" placeholder="....apps.googleusercontent.com">
+          <label>ID de cliente OAuth (Google) — opcional</label>
+          <input type="text" id="cfg-google-client" placeholder="Se usa el predeterminado del sistema">
+          <div style="font-size:9px;color:var(--text3);margin-top:3px;">
+            Dejalo vacío salvo que uses tu propio proyecto de Google.
+          </div>
         </div>
         <div class="field-group">
           <label>Correo del servicio (se comparte cada hoja con esta cuenta)</label>
@@ -5435,12 +5438,18 @@ function copyCoords() {
 // profile/email: para mostrar nombre y foto del usuario en la interfaz.
 const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.file profile email';
 
+// Valores por defecto: permiten iniciar sesión y guardar la escena en el
+// Drive del usuario sin configurar nada. Se pueden sobrescribir desde
+// Configuración si se usa otro proyecto de Google.
+const DEFAULT_GOOGLE_CLIENT_ID =
+  '561965203722-99ie5uao8c0ntt2ahqdcoocv5ari4rl7.apps.googleusercontent.com';
+
 function gasCfg() {
   const d = (STATE.config && STATE.config.drive) || {};
   return {
     url: d.gasUrl || '',
     token: d.gasToken || '',
-    clientId: d.googleClientId || '',
+    clientId: d.googleClientId || DEFAULT_GOOGLE_CLIENT_ID,
     serviceEmail: d.serviceEmail || ''
   };
 }
