@@ -1357,6 +1357,7 @@
           <button class="btn-sm" id="btn-gsheet-create" onclick="createHistorySheet()" style="display:none;">+ Crear hoja para este dispositivo</button>
           <a class="btn-sm" id="btn-gsheet-open" href="#" target="_blank" rel="noopener" style="display:none;text-decoration:none;line-height:22px;">↗ Abrir hoja</a>
           <button class="btn-sm" id="btn-gsheet-sync" onclick="forceHistorySync()" style="display:none;">⟳ Sincronizar ahora</button>
+          <button class="btn-sm" id="btn-hist-toggle" onclick="toggleHistoryArchiving()" style="display:none;"></button>
         </div>
 
         <div id="hist-browser" style="display:none;">
@@ -2657,7 +2658,7 @@ function appendSensorRow(container, key, d) {
   const isLinked = Object.values(STATE.objectLinks).some(l => l.sensorKey === key);
   row.className = 'sensor-row' + (isLinked ? ' linked' : '');
   const def = STATE.sensorDefs[key];
-  const label = (def && def.name) || d.name || key.split('/').pop();
+  const label = ((def && def.name) || d.name || key.split('/').pop()) + pinSuffix(key);
   let val, unit;
   if (d.falla) {
     val = 'FALLA'; unit = '';
@@ -2707,6 +2708,24 @@ function panelSensorKeys() {
     return a.localeCompare(b);
   });
   return keys;
+}
+
+// Número de entrada física del módulo (el rotulado en la carcasa: IN1..IN64)
+// Lo publica el firmware en hardware/{canal}/pin.
+function pinOfKey(fullKey) {
+  if (!fullKey) return null;
+  const i = fullKey.indexOf('/');
+  if (i < 0) return null;
+  const devId = fullKey.slice(0, i);
+  const chanKey = fullKey.slice(i + 1);
+  const hw = STATE.channels[devId] && STATE.channels[devId][chanKey];
+  return (hw && typeof hw.pin === 'number' && hw.pin > 0) ? hw.pin : null;
+}
+
+// Sufijo " (IN33)" para no confundir el canal lógico con la bornera física
+function pinSuffix(fullKey) {
+  const p = pinOfKey(fullKey);
+  return p ? ' (IN' + p + ')' : '';
 }
 
 function sensorDisplayName(key) {
@@ -2760,7 +2779,7 @@ function buildRTPanel() {
           </div>
         </div>
         <div style="font-size:9px;color:var(--text3);margin-bottom:6px;">
-          ${k}${linked ? ' · ⬡ ' + (linked.objectName || '') : ''}
+          ${pinOfKey(k) ? '<b style="color:var(--accent2);">IN' + pinOfKey(k) + '</b> · ' : ''}${k}${linked ? ' · ⬡ ' + (linked.objectName || '') : ''}
         </div>
         <div style="position:relative;height:${sel ? '150px' : '80px'};">
           <canvas id="${safe}_chart"></canvas>
@@ -3219,7 +3238,10 @@ function updateSensorIcons() {
     var unit     = d.unidad || (d.rpm !== undefined ? 'rpm' : '');
     var noData   = Object.keys(d).length === 0;
     var typeClass = noData ? 'type-warn' : (isMotor ? 'type-motor' : 'type-sensor');
-    var typeLabel = isMotor ? 'MOTOR' : 'SENSOR';
+    // En el rótulo se muestra la bornera física (IN33) en vez de "SENSOR":
+    // es el número rotulado en la carcasa del equipo.
+    var pin = pinOfKey(sKey);
+    var typeLabel = isMotor ? 'MOTOR' : (pin ? 'IN' + pin : 'SENSOR');
 
     var el = document.createElement('div');
     el.className = 'sensor-icon entering ' + typeClass;
@@ -4627,6 +4649,9 @@ const CMD_CATALOG = {
   setFilter:      { label: 'Filtro de señal', params: [
                       { id:'type', label:'Tipo', type:'select', options:[['0','Ninguno'],['1','Media móvil'],['2','Mediana'],['3','EMA']] },
                       { id:'window', label:'Ventana (2-16)', type:'number', def:8 } ] },
+  setHistory:     { label: 'Archivado histórico', params: [
+                      { id:'enabled', label:'Estado', type:'select', options:[['1','Activado'],['0','Desactivado']] } ] },
+  checkUpdate:    { label: 'Buscar actualización (OTA)', params: [] },
   rescan:         { label: 'Re-escanear hardware', params: [] },
   syncConfig:     { label: 'Sincronizar configuración', params: [] },
   listSdFiles:    { label: 'Listar archivos de la tarjeta', params: [] },
@@ -5362,19 +5387,52 @@ function updateGoogleUI() {
     return;
   }
 
+  const bTog = document.getElementById('btn-hist-toggle');
   if (sheetId) {
-    if (setup) setup.textContent = 'Histórico de "' + (dev.name || devId) + '" guardándose en tu hoja de Google.';
+    const arch = !!(dev.meta && dev.meta.historyEnabled);
+    if (setup) setup.textContent = arch
+      ? 'Histórico de "' + (dev.name || devId) + '" guardándose en tu hoja de Google.'
+      : 'Hoja vinculada, pero el equipo tiene el archivado en pausa.';
     if (bNew) bNew.style.display = 'none';
     if (bOpen) { bOpen.style.display = ''; bOpen.href = 'https://docs.google.com/spreadsheets/d/' + sheetId; }
     if (bSync) bSync.style.display = '';
+    if (bTog) {
+      bTog.style.display = '';
+      bTog.textContent = arch ? '⏸ Pausar archivado' : '▶ Reanudar archivado';
+      bTog.style.color = arch ? 'var(--warn)' : 'var(--accent)';
+      bTog.style.borderColor = arch ? 'var(--warn)' : 'var(--accent)';
+    }
     if (browser) browser.style.display = '';
     loadHistoryTabs();
   } else {
     if (setup) setup.textContent = 'El dispositivo "' + (dev.name || devId) + '" todavía no tiene hoja de histórico.';
     if (bNew) bNew.style.display = '';
-    [bOpen, bSync].forEach(b => b && (b.style.display = 'none'));
+    [bOpen, bSync, bTog].forEach(b => b && (b.style.display = 'none'));
     if (browser) browser.style.display = 'none';
   }
+}
+
+// Pausa o reanuda el archivado en el equipo (acción + config persistente)
+function toggleHistoryArchiving() {
+  const devId = STATE.selectedDevice;
+  if (!devId) return;
+  const dev = STATE.devices[devId] || {};
+  const nuevo = !(dev.meta && dev.meta.historyEnabled);
+
+  dev.meta = Object.assign({}, dev.meta || {}, { historyEnabled: nuevo });
+  STATE.devices[devId] = dev;
+  persistAll();
+
+  if (STATE.db) {
+    const basePath = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
+    STATE.db.ref(basePath + '/' + devId + '/config').update({ historyEnabled: nuevo });
+    const prev = STATE.actionsDevice;
+    STATE.actionsDevice = devId;
+    sendAction('setHistory', { enabled: nuevo }, null,
+               nuevo ? 'Reanudar archivado' : 'Pausar archivado');
+    STATE.actionsDevice = prev;
+  }
+  updateGoogleUI();
 }
 
 /* ── Crear la hoja en el Drive del usuario ── */
@@ -5389,26 +5447,40 @@ async function createHistorySheet() {
 
   try {
     setMsg('Creando hoja de cálculo…');
-    // 1) Crear la hoja en la cuenta del usuario
-    const r = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
+    // Se crea por la API de Drive (no la de Sheets): con el ámbito
+    // drive.file esta vía es la compatible, porque el archivo nace como
+    // "creado por la app". Crear por sheets.googleapis.com devuelve 403.
+    const r = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,name,webViewLink', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + STATE.gToken, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        properties: { title: 'Histórico IoT · ' + (dev.name || devId) }
+        name: 'Histórico IoT · ' + (dev.name || devId),
+        mimeType: 'application/vnd.google-apps.spreadsheet'
       })
     });
     const sheet = await r.json();
-    if (!sheet.spreadsheetId) throw new Error((sheet.error && sheet.error.message) || 'No se pudo crear');
+    if (!sheet.id) {
+      const detalle = (sheet.error && sheet.error.message) || ('HTTP ' + r.status);
+      throw new Error(detalle + ' · Verificá que la Google Drive API esté habilitada en tu proyecto.');
+    }
+    sheet.spreadsheetId = sheet.id;   // unificar el nombre del campo
 
     // 2) Compartir con la cuenta del servicio para que pueda escribir
     if (cfg.serviceEmail) {
       setMsg('Autorizando al servicio de sincronización…');
-      await fetch('https://www.googleapis.com/drive/v3/files/' + sheet.spreadsheetId +
+      const rp = await fetch('https://www.googleapis.com/drive/v3/files/' + sheet.spreadsheetId +
                   '/permissions?sendNotificationEmail=false', {
         method: 'POST',
         headers: { Authorization: 'Bearer ' + STATE.gToken, 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: 'writer', type: 'user', emailAddress: cfg.serviceEmail })
       });
+      if (!rp.ok) {
+        const err = await rp.json().catch(() => ({}));
+        toast('Hoja creada, pero no se pudo compartir con el servicio: ' +
+              ((err.error && err.error.message) || rp.status), 'warn', 7000);
+      }
+    } else {
+      toast('Falta el correo del servicio: la sincronización no funcionará', 'warn', 6000);
     }
 
     // 3) Guardar el ID en el dispositivo (Firebase + local)
@@ -5419,6 +5491,15 @@ async function createHistorySheet() {
     if (STATE.db) {
       const basePath = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
       await STATE.db.ref(basePath + '/' + devId + '/meta').update({ sheetId: sheet.spreadsheetId });
+      // Activar el modo de archivado en el equipo. Se escribe en config
+      // (lo toma al sincronizar) y además se envía como acción para que
+      // surta efecto de inmediato sin esperar al próximo ciclo.
+      setMsg('Activando el archivado en el dispositivo…');
+      await STATE.db.ref(basePath + '/' + devId + '/config').update({ historyEnabled: true });
+      const prev = STATE.actionsDevice;
+      STATE.actionsDevice = devId;
+      sendAction('setHistory', { enabled: true }, null, 'Activar archivado histórico');
+      STATE.actionsDevice = prev;
     }
 
     // 4) Avisar al servicio (verifica que tiene permiso de escritura)
@@ -6857,7 +6938,7 @@ function openSensorModal(sensorKey) {
   const val = d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : '—');
   const unit = d.unidad || (d.rpm !== undefined ? 'rpm' : '');
 
-  document.getElementById('modal-title').textContent = label;
+  document.getElementById('modal-title').textContent = label + pinSuffix(sensorKey);
   document.getElementById('modal-sub').textContent = sensorKey;
 
   const hist = STATE.history[sensorKey] || [];
@@ -7446,7 +7527,7 @@ function renderChannelConfigList() {
     const hw = (STATE.channels[devId] && STATE.channels[devId][chanKey]) || {};
     const hasPin = typeof hw.pin === 'number' && hw.pin > 0;
     const pinBadge = hasPin
-      ? `<span style="display:inline-block;background:var(--accent,#3b82f6);color:#fff;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:600;margin-right:6px;">Pin ${hw.pin}</span>`
+      ? `<span style="display:inline-block;background:var(--accent,#3b82f6);color:#000;border-radius:4px;padding:1px 6px;font-size:10px;font-weight:700;margin-right:6px;" title="Bornera rotulada en la carcasa">IN${hw.pin}</span>`
       : '';
     const addr = hw.adsAddr
       ? (hw.tcaChannel === -1 || hw.tcaChannel == null
@@ -7728,9 +7809,10 @@ function renderActionsPanel() {
       fld('Archivo', `<select id="act_sdfile" style="${IS}">${fileOpts}</select>`) +
       btn('Subir a la nube', `sendAction('uploadSdFile',{filename:actVal('act_sdfile')})`)
     ),
-    card('Sistema',
+    card('Sistema · firmware v' + (m.firmware || '—'),
       btn('Sincronizar config', `sendAction('syncConfig',{})`, '') +
       btn('Re-escanear hardware', `sendAction('rescan',{})`, '') +
+      btn('⬆ Buscar actualización', `sendAction('checkUpdate',{},'Buscar e instalar actualizacion de firmware? El equipo se reiniciara si hay una nueva version.')`, '') +
       btn('Reiniciar equipo', `sendAction('reboot',{},'Reiniciar el dispositivo?')`, '')
     )
   ].join('');
