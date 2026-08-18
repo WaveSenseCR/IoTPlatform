@@ -1655,6 +1655,29 @@
 
 </div><!-- /diagram-overlay -->
 
+<!-- ─── MODAL: Mapa de Pines ─── -->
+<div class="modal-overlay" id="pinmap-modal">
+  <div class="modal" style="max-width:760px;width:94vw;max-height:88vh;overflow-y:auto;">
+    <button class="modal-close" onclick="closeModal('pinmap-modal')">✕</button>
+    <div class="modal-title">Mapa de Pines (GPIO)</div>
+    <div class="modal-sub">Estado de cada pin del equipo. La configuración persiste tras reiniciar.</div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+      <button class="btn-sm accent" onclick="sendAction('readPins',{},null,'Leer pines')">⟳ Actualizar</button>
+      <button class="btn-sm" style="color:var(--err);border-color:var(--err);"
+        onclick="sendAction('clearPins',{},'Liberar TODOS los pines configurados?','Liberar pines')">Liberar todos</button>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:9px;color:var(--text3);margin-bottom:10px;">
+      <span>⬛ Libre</span><span style="color:var(--accent);">⬛ Salida</span>
+      <span style="color:var(--accent2);">⬛ Entrada</span><span style="color:var(--text3);">⬛ Reservado</span>
+    </div>
+    <div id="pinmap-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(96px,1fr));gap:6px;"></div>
+    <div style="font-size:9px;color:var(--text3);margin-top:12px;line-height:1.6;">
+      Los pines reservados los usa el sistema (I2C, tarjeta SD, LEDs, botones, flash interna)
+      y no pueden reasignarse. Los GPIO 34-39 son solo entrada.
+    </div>
+  </div>
+</div>
+
 <!-- ─── MODAL: Ubicación GPS ─── -->
 <div class="modal-overlay" id="map-modal">
   <div class="modal" style="max-width:720px;width:94vw;">
@@ -1864,6 +1887,37 @@
       <button class="btn-sm" style="width:100%;margin-top:6px;" onclick="openDiagCommands(DIAG.editingMachineId)">
         ⚡ Comandos de esta máquina
       </button>
+      <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;">
+        <label style="font-size:10px;">Color según estado de un pin</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+          <div class="field-group" style="margin:0;">
+            <label style="font-size:9px;">Pin (GPIO)</label>
+            <input type="number" id="mach-pin-num" placeholder="ninguno" style="font-size:11px;">
+          </div>
+          <div class="field-group" style="margin:0;">
+            <label style="font-size:9px;">Dispositivo</label>
+            <select id="mach-pin-dev" style="font-size:11px;"></select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
+          <div class="field-group" style="margin:0;">
+            <label style="font-size:9px;">Color en ALTO</label>
+            <input type="color" id="mach-pin-hi" value="#00e5a0" style="height:30px;padding:2px;">
+          </div>
+          <div class="field-group" style="margin:0;">
+            <label style="font-size:9px;">Color en BAJO</label>
+            <input type="color" id="mach-pin-lo" value="#ff3b5c" style="height:30px;padding:2px;">
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px;">
+          <button class="btn-sm accent" style="flex:2;" onclick="saveMachinePinRule()">Guardar regla</button>
+          <button class="btn-sm" style="flex:1;" onclick="clearMachinePinRule()">Quitar</button>
+        </div>
+        <div style="font-size:9px;color:var(--text3);margin-top:5px;">
+          El objeto 3D vinculado se ilumina con el color según el estado del pin.
+        </div>
+        <div id="mach-pin-warn" style="display:none;font-size:9px;color:var(--warn);margin-top:6px;line-height:1.5;"></div>
+      </div>
       <div style="font-size:9px;color:var(--text3);margin-top:4px;">
         Te lleva a la vista 3D para que selecciones el objeto directamente.
       </div>
@@ -2233,6 +2287,13 @@ function processRTDBData(data) {
       STATE.devices[devId].loc = devData.meta.ubicacion || STATE.devices[devId].loc;
     }
     if (devData.sdFiles) STATE.devices[devId].sdFiles = devData.sdFiles;
+    if (devData.pines) {
+      STATE.devices[devId].pines = devData.pines;
+      const pm = document.getElementById('pinmap-modal');
+      if (pm && pm.classList.contains('open')) renderPinMap();
+      // Los colores por estado de pin dependen de este mapa
+      if (typeof updateHighlights === 'function') updateHighlights();
+    }
     if (devData.last_action_result) {
       STATE.devices[devId].lastResult = devData.last_action_result;
       onActionResult(devId, devData.last_action_result);   // confirma la ejecución
@@ -3866,6 +3927,14 @@ function loadGLB(url, name) {
     STATE.model.traverse(child => {
       if (child.isMesh) {
         STATE.meshes.push(child);
+        // En GLTF, las copias de un mismo ensamble suelen COMPARTIR el
+        // objeto material. Si se comparte, pintar una malla pinta todas las
+        // copias. Se le da a cada malla su propia instancia para que los
+        // colores por estado y los resaltados sean independientes.
+        // (Las texturas siguen compartidas por referencia: no se duplican.)
+        child.material = Array.isArray(child.material)
+          ? child.material.map(m => m.clone())
+          : child.material.clone();
         // SolidWorks puede exportar mallas con varios materiales (array): clonar de forma segura.
         child.userData.originalMaterial = Array.isArray(child.material)
           ? child.material.map(m => m.clone())
@@ -4015,6 +4084,19 @@ function updateHighlights() {
       }
     }
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+
+    // Prioridad 1: regla de color por estado de pin (definida en el diagrama)
+    const reglaColor = pinRuleForMesh(mesh);
+    if (reglaColor) {
+      const c = new THREE.Color(reglaColor);
+      mats.forEach(mat => {
+        if (!mat || !mat.emissive) return;
+        mat.emissive = c.clone();
+        mat.emissiveIntensity = 0.55;   // más intenso: es un indicador de estado
+      });
+      return;
+    }
+
     if (link && STATE.highlightSensors) {
       const d = STATE.liveData[link.sensorKey];
       const isMotor = link.sensorKey.includes('motor');
@@ -4702,6 +4784,10 @@ function completePickObject(hitMesh, key) {
   // 1) El nodo del diagrama apunta al objeto 3D
   const prev = node[cfg.field];
   node[cfg.field] = key;
+  // Ruta de la instancia exacta: distingue entre copias con el mismo
+  // nombre. Se guarda la del ENSAMBLE (ancestro con ese nombre), para que
+  // el color cubra todas sus piezas y no solo la clicada.
+  node.modelObjectPath = pathForNamedAncestor(hitMesh, key);
   if (prev !== key && typeof disposeThumb === 'function') disposeThumb(node.id);  // refrescar miniatura
 
   // 2) Reflejar el enlace en el modelo 3D: si el nodo tiene un sensor
@@ -4792,6 +4878,10 @@ const CMD_CATALOG = {
   setOutput:      { label: 'Encender / apagar salida', params: [
                       { id:'pin', label:'Pin', type:'number', def:2 },
                       { id:'state', label:'Estado', type:'select', options:[['1','Encendido'],['0','Apagado']] } ] },
+  setPinMode:     { label: 'Configurar pin (E/S)', params: [
+                      { id:'pin', label:'Pin', type:'number', def:2 },
+                      { id:'mode', label:'Modo', type:'select', options:[['output','Salida'],['input','Entrada'],['input_pullup','Entrada + pull-up'],['free','Libre']] } ] },
+  readPins:       { label: 'Leer estado de pines', params: [] },
   setMotor:       { label: 'Motor (estado y RPM)', params: [
                       { id:'estado', label:'Estado', type:'select', options:[['1','Encendido'],['0','Apagado']] },
                       { id:'rpm', label:'RPM', type:'number', def:0 } ] },
@@ -4828,6 +4918,92 @@ function diagCommands() {
 
 // Abre el panel de comandos. Si se pasa un nodo, los comandos quedan
 // asociados a ese elemento del diagrama.
+/* ══════════════════════════════════════════════════════
+   MAPA DE PINES GPIO
+══════════════════════════════════════════════════════ */
+function openPinMap() {
+  const devId = STATE.actionsDevice || STATE.selectedDevice;
+  if (!devId) { toast('Elegí un dispositivo', 'err'); return; }
+  STATE.actionsDevice = devId;
+  renderPinMap();
+  openModal('pinmap-modal');
+  sendAction('readPins', {}, null, 'Leer pines');   // pedir estado fresco
+}
+
+function renderPinMap() {
+  const cont = document.getElementById('pinmap-grid');
+  if (!cont) return;
+  const dev = STATE.devices[STATE.actionsDevice] || {};
+  const pines = dev.pines;
+
+  if (!pines) {
+    cont.innerHTML = '<div style="grid-column:1/-1;font-size:11px;color:var(--text3);padding:20px;text-align:center;">' +
+      'Sin datos todavía. El equipo publicará el mapa en unos segundos.</div>';
+    return;
+  }
+
+  let html = '';
+  for (let p = 0; p < 40; p++) {
+    const info = pines['p' + p];
+    if (!info) continue;
+    const modo = info.mode || 'free';
+    const val = info.value;
+    const reservado = modo === 'reservado';
+    const esSalida = modo === 'output';
+    const esEntrada = modo === 'input' || modo === 'input_pullup';
+
+    const color = reservado ? 'var(--text3)'
+                : esSalida ? 'var(--accent)'
+                : esEntrada ? 'var(--accent2)' : 'var(--border2)';
+    const etiqueta = reservado ? 'sistema'
+                : modo === 'input_pullup' ? 'entrada↑'
+                : esEntrada ? 'entrada'
+                : esSalida ? 'salida' : 'libre';
+    const estado = (val === 1) ? 'ALTO' : (val === 0) ? 'BAJO' : '—';
+
+    html += `<div style="border:1px solid ${color};border-radius:6px;padding:6px 8px;background:var(--bg2);
+        ${reservado ? 'opacity:.5;' : 'cursor:pointer;'}"
+        ${reservado ? '' : `onclick="configurePin(${p})"`}>
+      <div style="font-size:11px;font-weight:700;color:${color};">GPIO ${p}</div>
+      <div style="font-size:9px;color:var(--text3);">${etiqueta}</div>
+      <div style="font-size:10px;color:${val === 1 ? 'var(--accent)' : 'var(--text2)'};font-weight:600;">${estado}</div>
+    </div>`;
+  }
+  cont.innerHTML = html;
+}
+
+// Configura un pin desde el mapa
+function configurePin(pin) {
+  const dev = STATE.devices[STATE.actionsDevice] || {};
+  const info = (dev.pines || {})['p' + pin] || {};
+  const actual = info.mode || 'free';
+
+  const op = prompt(
+    'GPIO ' + pin + ' · actualmente: ' + actual + '\n\n' +
+    '  1 = Salida en BAJO\n' +
+    '  2 = Salida en ALTO\n' +
+    '  3 = Entrada\n' +
+    '  4 = Entrada con pull-up\n' +
+    '  5 = Liberar\n\n' +
+    'Escribí 1-5:', '1');
+  if (!op) return;
+
+  const acciones = {
+    '1': { mode: 'output', state: 0 },
+    '2': { mode: 'output', state: 1 },
+    '3': { mode: 'input' },
+    '4': { mode: 'input_pullup' },
+    '5': { mode: 'free' }
+  };
+  const a = acciones[op.trim()];
+  if (!a) { toast('Opción inválida', 'err'); return; }
+
+  sendAction('setPinMode', Object.assign({ pin }, a), null, 'GPIO ' + pin + ' → ' + a.mode);
+}
+
+/* ══════════════════════════════════════════════════════
+   MAPA DE PINES GPIO — fin
+══════════════════════════════════════════════════════ */
 function openDiagCommands(nodeId) {
   DIAG.cmdNodeId = nodeId || null;
   const node = nodeId ? findDiagNode(nodeId) : null;
@@ -6206,6 +6382,169 @@ function exportHistoryCSV() {
   toast('CSV descargado', 'ok');
 }
 
+/* ══════════════════════════════════════════════════════
+   COLOR DEL OBJETO 3D SEGÚN EL ESTADO DE UN PIN
+   Cada máquina del diagrama puede tener una regla: "si el GPIO N del
+   dispositivo X está en ALTO, pintá su objeto 3D de tal color".
+══════════════════════════════════════════════════════ */
+// Lee el estado de un pin del mapa publicado por el equipo (1, 0 o null)
+function pinState(devId, pin) {
+  const dev = STATE.devices[devId];
+  const info = dev && dev.pines && dev.pines['p' + pin];
+  if (!info || typeof info.value !== 'number' || info.value < 0) return null;
+  return info.value;
+}
+
+// Devuelve el color que corresponde a un nodo según su regla, o null
+function pinRuleColor(node) {
+  const r = node && node.pinRule;
+  if (!r || r.pin == null) return null;
+  const v = pinState(r.deviceId, r.pin);
+  if (v === null) return null;
+  return v ? (r.colorHigh || '#00e5a0') : (r.colorLow || '#ff3b5c');
+}
+
+// Carga la regla actual en el formulario del modal de máquina
+function loadMachinePinRule(m) {
+  const sel = document.getElementById('mach-pin-dev');
+  if (sel) {
+    const devs = Object.keys(STATE.devices);
+    sel.innerHTML = devs.map(d =>
+      `<option value="${chEsc(d)}">${chEsc((STATE.devices[d] && STATE.devices[d].name) || d)}</option>`).join('');
+  }
+  const r = m.pinRule || {};
+  const num = document.getElementById('mach-pin-num');
+  if (num) num.value = (r.pin != null) ? r.pin : '';
+  if (sel && r.deviceId) sel.value = r.deviceId;
+  const hi = document.getElementById('mach-pin-hi');
+  const lo = document.getElementById('mach-pin-lo');
+  if (hi) hi.value = r.colorHigh || '#00e5a0';
+  if (lo) lo.value = r.colorLow || '#ff3b5c';
+
+  // Avisar si el objeto se identifica solo por nombre y hay copias: en ese
+  // caso el color se aplicaría a todas hasta reasignarlo con el clic.
+  const av = document.getElementById('mach-pin-warn');
+  if (av) {
+    let copias = 0;
+    if (!m.modelObjectPath && m.modelObjectName && STATE.model) {
+      STATE.model.traverse(o => { if (o.name === m.modelObjectName) copias++; });
+    }
+    if (copias > 1) {
+      av.style.display = '';
+      av.style.color = 'var(--warn)';
+      av.innerHTML = '⚠ Hay <b>' + copias + ' objetos</b> con el nombre "' + chEsc(m.modelObjectName) +
+        '", así que el color se aplicaría a todos.<br>' +
+        '<button class="btn-sm accent" style="width:100%;margin-top:6px;" onclick="pickObjectFor3D(\'machine\')">' +
+        '🎯 Elegir cuál con un clic en el modelo</button>';
+    } else if (m.modelObjectPath) {
+      av.style.display = '';
+      av.style.color = 'var(--accent)';
+      av.innerHTML = '✓ Instancia específica seleccionada · el color solo afecta a esta copia.';
+    } else {
+      av.style.display = 'none';
+    }
+  }
+}
+
+function saveMachinePinRule() {
+  const m = STATE.diagMachines.find(x => x.id === DIAG.editingMachineId);
+  if (!m) return;
+  const pin = parseInt(document.getElementById('mach-pin-num').value, 10);
+  if (!isFinite(pin) || pin < 0 || pin > 39) { toast('Pin inválido (0-39)', 'err'); return; }
+  m.pinRule = {
+    pin,
+    deviceId: document.getElementById('mach-pin-dev').value || STATE.selectedDevice,
+    colorHigh: document.getElementById('mach-pin-hi').value,
+    colorLow: document.getElementById('mach-pin-lo').value
+  };
+  persistAll();
+  updateHighlights();
+  renderDiagram();
+  toast('Regla guardada: GPIO ' + pin + ' controla el color', 'ok');
+}
+
+function clearMachinePinRule() {
+  const m = STATE.diagMachines.find(x => x.id === DIAG.editingMachineId);
+  if (!m || !m.pinRule) return;
+  delete m.pinRule;
+  document.getElementById('mach-pin-num').value = '';
+  persistAll();
+  updateHighlights();
+  renderDiagram();
+  toast('Regla eliminada', 'warn');
+}
+
+/* ── Identificación de instancias concretas ──────────────────────────
+   Dos copias del mismo ensamble comparten nombre, así que el nombre no
+   alcanza para distinguirlas. Se usa la RUTA en el árbol de la escena
+   (índices de hijo desde la raíz del modelo): es única por instancia y
+   estable entre recargas, a diferencia de los UUID de Three.js, que se
+   regeneran cada vez que se carga el GLB.                              */
+function objectPath(obj) {
+  if (!obj || !STATE.model) return '';
+  const partes = [];
+  let cur = obj;
+  while (cur && cur !== STATE.model) {
+    const padre = cur.parent;
+    if (!padre) break;
+    partes.unshift(padre.children.indexOf(cur));
+    cur = padre;
+  }
+  return partes.join('/');
+}
+
+function findObjectByPath(path) {
+  if (!path || !STATE.model) return null;
+  let cur = STATE.model;
+  const partes = String(path).split('/');
+  for (let i = 0; i < partes.length; i++) {
+    const idx = parseInt(partes[i], 10);
+    if (!cur.children || !cur.children[idx]) return null;
+    cur = cur.children[idx];
+  }
+  return cur;
+}
+
+// ¿El objeto está dentro del subárbol indicado por esa ruta?
+function isInPath(mesh, path) {
+  const propia = objectPath(mesh);
+  if (!propia && !path) return false;
+  return propia === path || propia.indexOf(path + '/') === 0;
+}
+
+// Ruta del ANCESTRO que lleva el nombre indicado (el ensamble), no la de
+// la pieza clicada. Al hacer clic siempre se golpea una malla individual,
+// pero lo que hay que colorear es el ensamble entero de ESA instancia.
+function pathForNamedAncestor(hitMesh, nombre) {
+  let cur = hitMesh;
+  while (cur && cur !== STATE.scene) {
+    if (cur.name === nombre) return objectPath(cur);
+    cur = cur.parent;
+  }
+  return objectPath(hitMesh);   // si no aparece, la pieza misma
+}
+
+// Busca la regla que aplica a un objeto 3D.
+// Prioriza la ruta (instancia exacta); si la máquina no la tiene guardada
+// —configuraciones anteriores— cae al nombre, que afecta a todas las copias.
+function pinRuleForMesh(mesh) {
+  for (let i = 0; i < STATE.diagMachines.length; i++) {
+    const m = STATE.diagMachines[i];
+    if (!m.pinRule) continue;
+    if (m.modelObjectPath) {
+      if (isInPath(mesh, m.modelObjectPath)) return pinRuleColor(m);
+      continue;                      // con ruta definida, el nombre no cuenta
+    }
+    if (!m.modelObjectName) continue;
+    let cur = mesh;
+    while (cur && cur !== STATE.scene) {
+      if (cur.name === m.modelObjectName) return pinRuleColor(m);
+      cur = cur.parent;
+    }
+  }
+  return null;
+}
+
 /* ── Node lookup helpers ── */
 function findDiagNode(id) {
   return STATE.diagMachines.find(n => n.id === id)
@@ -6736,6 +7075,7 @@ function openMachineDetail(machineId) {
   document.getElementById('mach-edit-name').value = m.label;
 
   populateModelSelect('mach-edit-model');
+  loadMachinePinRule(m);
   document.getElementById('mach-edit-model').value = m.modelObjectName || '';
 
   // Capsule assignment
@@ -6776,8 +7116,14 @@ function updateMachineModel(val) {
   if (m.modelObjectName !== val) {
     disposeThumb(m.id);
     m.modelObjectName = val;
+    // El desplegable elige por NOMBRE: no puede distinguir entre copias.
+    // Se borra la ruta anterior (ya no corresponde) y, si hay más de un
+    // objeto con ese nombre, se avisa para asignarlo con el clic.
+    delete m.modelObjectPath;
     persistAll();
     renderDiagram();
+    updateHighlights();
+    loadMachinePinRule(m);   // refresca el aviso de copias
   }
 }
 
@@ -6879,6 +7225,17 @@ function renderMachineNode(m, inner) {
   // Footer
   const footer = document.createElement('div');
   footer.className = 'mach-footer';
+  // Punto de color si la máquina tiene regla de pin activa
+  const _pinCol = pinRuleColor(m);
+  if (_pinCol) {
+    const dot = document.createElement('div');
+    dot.title = 'GPIO ' + m.pinRule.pin + ' · ' +
+      (pinState(m.pinRule.deviceId, m.pinRule.pin) ? 'ALTO' : 'BAJO');
+    dot.style.cssText = 'position:absolute;top:6px;right:6px;width:10px;height:10px;border-radius:50%;' +
+      'background:' + _pinCol + ';box-shadow:0 0 8px ' + _pinCol + ';';
+    el.appendChild(dot);
+  }
+
   footer.innerHTML = `<button class="mach-btn" onclick="event.stopPropagation();openMachineDetail('${m.id}')">Editar</button>`
     + (m.sensorKeys.length ? `<button class="mach-btn" onclick="event.stopPropagation();openNodeCharts('${m.id}','machine')" style="color:var(--accent2);border-color:rgba(0,180,255,0.3);">Gráficas</button>` : '')
     + nodeCmdButton(m.id);
@@ -8273,10 +8630,11 @@ function renderActionsPanel() {
       fld('Ventana (2-16)', `<input id="act_filt_w" type="number" min="2" max="16" style="${IS}width:80px;" value="${m.filterWindow || 8}">`) +
       btn('Aplicar', `sendAction('setFilter',{type:parseInt(actVal('act_filt_t')),window:actNum('act_filt_w')})`)
     ),
-    card('Salida digital',
+    card('Pines digitales (E/S)',
       fld('Pin', `<input id="act_pin" type="number" style="${IS}width:70px;">`) +
       fld('Estado', `<select id="act_pin_st" style="${IS}"><option value="1">ON</option><option value="0">OFF</option></select>`) +
-      btn('Aplicar', `sendAction('setOutput',{pin:actNum('act_pin'),state:parseInt(actVal('act_pin_st'))})`)
+      btn('Aplicar salida', `sendAction('setOutput',{pin:actNum('act_pin'),state:parseInt(actVal('act_pin_st'))})`) +
+      btn('🔢 Ver mapa de pines', `openPinMap()`, '')
     ),
     card('Motor',
       fld('Estado', `<select id="act_mot_st" style="${IS}"><option value="1">ON</option><option value="0">OFF</option></select>`) +
