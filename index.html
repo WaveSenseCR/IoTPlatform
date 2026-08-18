@@ -101,6 +101,30 @@
     flex-shrink: 0;
   }
   .panel-toggle.active { color: var(--accent); border-color: var(--accent); }
+
+  /* ─── Tarjeta de cuenta del usuario ─── */
+  .user-card { background: var(--bg3); }
+  .user-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    object-fit: cover;
+    border: 2px solid var(--accent);
+    background: var(--accent);
+    color: #000;
+    font-weight: 700;
+    font-size: 15px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font);
+  }
+  .user-avatar-empty {
+    background: var(--bg2);
+    color: var(--text3);
+    border-color: var(--border2);
+  }
   .sidebar-scrim {
     display: none;
     position: fixed;
@@ -1236,8 +1260,11 @@
           <button onclick="closeHeaderMenu();toggleSimulate()">▶ Simular Datos</button>
           <button onclick="closeHeaderMenu();openDemoConfig()">⚙ Configurar Demo</button>
           <div class="hdr-menu-sep"></div>
-          <button onclick="closeHeaderMenu();exportScene()">⬇ Exportar Escena</button>
-          <button onclick="closeHeaderMenu();document.getElementById('scene-import-input').click()">⬆ Importar Escena</button>
+          <button onclick="closeHeaderMenu();saveSceneToDrive()">☁ Guardar en mi Drive</button>
+          <button onclick="closeHeaderMenu();loadSceneFromDrive()">⟳ Restaurar desde Drive</button>
+          <div class="hdr-menu-sep"></div>
+          <button onclick="closeHeaderMenu();exportScene()">⬇ Exportar a archivo</button>
+          <button onclick="closeHeaderMenu();document.getElementById('scene-import-input').click()">⬆ Importar de archivo</button>
           <div class="hdr-menu-sep"></div>
           <button onclick="closeHeaderMenu();exportTodayCSV()">↓ Exportar CSV</button>
         </div>
@@ -1250,6 +1277,43 @@
 
   <!-- ─── SIDEBAR LEFT ─── -->
   <aside class="sidebar-left">
+    <!-- ─── Cuenta del usuario ─── -->
+    <div class="sidebar-section user-card" id="user-card">
+      <!-- Sin sesión -->
+      <div id="user-signed-out">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <div class="user-avatar user-avatar-empty">?</div>
+          <div style="min-width:0;">
+            <div style="font-size:12px;color:var(--text);font-weight:600;">Sin sesión</div>
+            <div style="font-size:9px;color:var(--text3);">Iniciá sesión para guardar tu trabajo</div>
+          </div>
+        </div>
+        <button class="btn-sm accent" style="width:100%;" onclick="googleConnect()">
+          Iniciar sesión con Google
+        </button>
+      </div>
+
+      <!-- Con sesión -->
+      <div id="user-signed-in" style="display:none;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+          <img id="user-photo" class="user-avatar" alt="" style="display:none;">
+          <div id="user-initial" class="user-avatar"></div>
+          <div style="min-width:0;flex:1;">
+            <div id="user-name" style="font-size:12px;color:var(--text);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+            <div id="user-email" style="font-size:9px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></div>
+          </div>
+        </div>
+        <div style="display:flex;gap:5px;margin-bottom:5px;">
+          <button class="btn-sm accent" style="flex:1;" onclick="saveSceneToDrive()" title="Guardar modelo, diagramas y ajustes en tu Drive">☁ Guardar</button>
+          <button class="btn-sm" style="flex:1;" onclick="loadSceneFromDrive()" title="Restaurar lo último guardado">⟳ Cargar</button>
+        </div>
+        <div style="display:flex;gap:5px;align-items:center;">
+          <span id="user-save-state" style="flex:1;font-size:9px;color:var(--text3);"></span>
+          <button class="btn-sm" style="padding:2px 8px;min-height:0;font-size:9px;" onclick="googleDisconnect()">Salir</button>
+        </div>
+      </div>
+    </div>
+
     <div class="sidebar-section">
       <div class="sidebar-label">Dispositivos</div>
       <div id="devices-list"></div>
@@ -1311,6 +1375,7 @@
           <button class="vc-btn" onclick="toggleHighlights()">Resaltar Sensores</button>
           <button class="vc-btn" onclick="updateSensorIcons();refreshSensorIconAnchors();toast('Iconos actualizados','ok');">Actualizar Iconos</button>
           <button class="vc-btn" onclick="saveCurrentView()" title="Guardar este encuadre como vista inicial de la escena">📌 Fijar Vista</button>
+          <button class="vc-btn" onclick="changeModelGLB()" title="Cargar otro archivo .glb en lugar del actual">🔄 Cambiar Modelo</button>
         </div>
       </div>
 
@@ -1344,7 +1409,11 @@
       <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius2);padding:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
           <div class="history-title" style="margin:0;">Archivo Histórico en la Nube</div>
-          <div id="gauth-status" style="font-size:10px;color:var(--text3);">Sin conectar</div>
+          <div style="display:flex;gap:10px;align-items:center;">
+            <span id="scene-save-status" style="font-size:9px;color:var(--text3);"></span>
+            <span id="gauth-status" style="font-size:10px;color:var(--text3);">Sin conectar</span>
+            <button class="btn-sm" id="btn-gdisconnect" onclick="googleDisconnect()" style="display:none;padding:2px 8px;min-height:0;font-size:9px;">Salir</button>
+          </div>
         </div>
 
         <div id="hist-setup" style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.6;">
@@ -2055,6 +2124,7 @@ function persistAll() {
   saveLocal('channels', STATE.channels);
   saveLocal('diagCommands', STATE.diagCommands || []);
   saveLocal('demoConfig', STATE.demoConfig || null);
+  if (typeof markSceneDirty === 'function') markSceneDirty();
 }
 
 function loadPersisted() {
@@ -2517,6 +2587,7 @@ function saveDemoConfig() {
   renderDevices();
   renderSensors();
   buildRTPanel();
+  renderUserCard();
   fitHeader();
   window.addEventListener('orientationchange', () => setTimeout(fitHeader, 300));
   closeModal('demo-config-modal');
@@ -3502,6 +3573,25 @@ function findAnchorObject(link) {
   return findObjectByName(link.objectName);
 }
 
+// Cambia el modelo 3D por otro archivo .glb. La configuración (diagramas,
+// sensores, comandos) se conserva; los vínculos con objetos 3D se mantienen
+// por NOMBRE, así que seguirán funcionando si el modelo nuevo usa los mismos
+// nombres de pieza. Si no, hay que rehacerlos.
+function changeModelGLB() {
+  const tieneVinculos = Object.keys(STATE.objectLinks || {}).length > 0;
+  if (tieneVinculos) {
+    const ok = confirm(
+      '¿Cambiar el modelo 3D?\n\n' +
+      'Tus diagramas, sensores y comandos se conservan.\n' +
+      'Los vínculos con objetos 3D se mantienen por nombre de pieza: ' +
+      'seguirán funcionando si el modelo nuevo usa los mismos nombres.\n\n' +
+      'Elegí el archivo .glb en el siguiente paso.');
+    if (!ok) return;
+  }
+  const input = document.getElementById('glb-input');
+  if (input) { input.value = ''; input.click(); }   // value='' permite reelegir el mismo archivo
+}
+
 function loadGLBFile(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -3567,8 +3657,9 @@ function applyCameraView(v) {
   return true;
 }
 
-function exportScene() {
-  const scene = {
+// Arma el objeto de escena que se exporta a archivo o se guarda en Drive
+function buildSceneObject() {
+  return {
     type: 'iot-platform-scene',
     version: 1,
     exportedAt: new Date().toISOString(),
@@ -3586,6 +3677,10 @@ function exportScene() {
     devices: STATE.devices,
     liveData: STATE.liveData   // instantánea de valores para que el demo se vea "vivo"
   };
+}
+
+function exportScene() {
+  const scene = buildSceneObject();
   const blob = new Blob([JSON.stringify(scene)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -3658,6 +3753,22 @@ function tryLoadServerDemo(opts) {
 // Al arrancar: restaura el GLB local si lo hay; si no hay NADA guardado,
 // carga la escena demo del servidor (para visitantes / modo demo).
 function bootScene() {
+  // 0) Si hay sesión de Google activa, la escena del usuario manda: se
+  //    recupera de su Drive tal como la dejó la última vez.
+  if (restoreGoogleToken()) {
+    STATE.gProfile = loadLocal('gProfile', null);
+    renderUserCard();
+    fetchGoogleProfile();       // refrescar por si cambió el nombre o la foto
+    updateGoogleUI();
+    loadSceneFromDrive({ silent: true }).then(ok => {
+      if (!ok) bootSceneLocal();
+    });
+    return;
+  }
+  bootSceneLocal();
+}
+
+function bootSceneLocal() {
   // 1) Si el usuario ya tiene su propio modelo guardado, se restaura ese.
   if (STATE.glbData && STATE.glbData.data) {
     STATE._pendingCameraView = STATE.cameraView;   // conservar el encuadre guardado
@@ -3684,7 +3795,18 @@ function bootScene() {
 
 function loadGLB(url, name) {
   document.getElementById('drop-zone').classList.add('hidden');
-  if (STATE.model) { STATE.scene.remove(STATE.model); STATE.meshes = []; }
+  if (STATE.model) {
+    STATE.scene.remove(STATE.model);
+    STATE.meshes = [];
+    // Limpiar referencias al modelo anterior: si no, quedan rótulos y
+    // objetos de agua apuntando a mallas que ya no existen en la escena.
+    STATE.waterMeshes = [];
+    STATE._iconEls = {};
+    STATE.selectedObject = null;
+    const capa = document.getElementById('sensor-icons-layer');
+    if (capa) capa.innerHTML = '';
+    hideObjCommands();
+  }
 
   const loader = new THREE.GLTFLoader();
 
@@ -5309,7 +5431,9 @@ function copyCoords() {
    que luego sincroniza los datos automáticamente desde el servidor.
    Ámbito usado: drive.file → sólo ve los archivos creados por esta app.
 ══════════════════════════════════════════════════════ */
-const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.file';
+// drive.file: solo los archivos que crea esta app.
+// profile/email: para mostrar nombre y foto del usuario en la interfaz.
+const GOOGLE_SCOPES = 'https://www.googleapis.com/auth/drive.file profile email';
 
 function gasCfg() {
   const d = (STATE.config && STATE.config.drive) || {};
@@ -5321,33 +5445,157 @@ function gasCfg() {
   };
 }
 
+/* ── Perfil del usuario (nombre y foto) ── */
+async function fetchGoogleProfile() {
+  if (!googleReady()) return null;
+  try {
+    const r = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+      headers: { Authorization: 'Bearer ' + STATE.gToken }
+    });
+    if (!r.ok) return null;
+    const p = await r.json();
+    STATE.gProfile = { name: p.name || '', email: p.email || '', picture: p.picture || '' };
+    saveLocal('gProfile', STATE.gProfile);
+    renderUserCard();
+    return STATE.gProfile;
+  } catch (e) { return null; }
+}
+
+// Dibuja la tarjeta de cuenta del panel izquierdo
+function renderUserCard() {
+  const out = document.getElementById('user-signed-out');
+  const inn = document.getElementById('user-signed-in');
+  if (!out || !inn) return;
+
+  if (!googleReady()) {
+    out.style.display = '';
+    inn.style.display = 'none';
+    return;
+  }
+  out.style.display = 'none';
+  inn.style.display = '';
+
+  const p = STATE.gProfile || loadLocal('gProfile', null) || {};
+  const nameEl = document.getElementById('user-name');
+  const mailEl = document.getElementById('user-email');
+  const imgEl = document.getElementById('user-photo');
+  const iniEl = document.getElementById('user-initial');
+
+  if (nameEl) nameEl.textContent = p.name || 'Cuenta de Google';
+  if (mailEl) mailEl.textContent = p.email || '';
+
+  // Foto si la hay; si no, la inicial del nombre
+  if (p.picture && imgEl) {
+    imgEl.src = p.picture;
+    imgEl.style.display = '';
+    if (iniEl) iniEl.style.display = 'none';
+    imgEl.onerror = () => {   // si la foto no carga, volver a la inicial
+      imgEl.style.display = 'none';
+      if (iniEl) iniEl.style.display = 'flex';
+    };
+  } else {
+    if (imgEl) imgEl.style.display = 'none';
+    if (iniEl) {
+      iniEl.style.display = 'flex';
+      iniEl.textContent = (p.name || p.email || '?').trim().charAt(0).toUpperCase();
+    }
+  }
+}
+
 /* ── OAuth con Google Identity Services ── */
-function googleConnect() {
+// El token se guarda para que al volver a abrir la página la sesión siga
+// activa. Los tokens duran ~1 h; pasado ese tiempo se renuevan en silencio
+// (sin volver a pedir consentimiento, porque el permiso ya fue otorgado).
+function saveGoogleToken(token, expiresIn) {
+  STATE.gToken = token;
+  STATE.gTokenExp = Date.now() + (Number(expiresIn || 3600) - 60) * 1000;
+  try {
+    saveLocal('gAuth', { token: STATE.gToken, exp: STATE.gTokenExp });
+  } catch (e) {}
+}
+
+function restoreGoogleToken() {
+  const a = loadLocal('gAuth', null);
+  if (a && a.token && a.exp && Date.now() < a.exp) {
+    STATE.gToken = a.token;
+    STATE.gTokenExp = a.exp;
+    return true;
+  }
+  return false;
+}
+
+function makeTokenClient(onToken, onError) {
   const cfg = gasCfg();
-  if (!cfg.clientId) {
-    toast('Falta el ID de cliente OAuth (Configuración)', 'err', 5000);
-    return;
-  }
+  if (!cfg.clientId) { if (onError) onError('sin-client-id'); return null; }
   if (!window.google || !google.accounts || !google.accounts.oauth2) {
-    toast('El SDK de Google aún no cargó, probá de nuevo', 'warn');
-    return;
+    if (onError) onError('sdk-no-cargado'); return null;
   }
-  const client = google.accounts.oauth2.initTokenClient({
+  return google.accounts.oauth2.initTokenClient({
     client_id: cfg.clientId,
     scope: GOOGLE_SCOPES,
     callback: (resp) => {
       if (resp && resp.access_token) {
-        STATE.gToken = resp.access_token;
-        STATE.gTokenExp = Date.now() + (Number(resp.expires_in || 3600) - 60) * 1000;
-        toast('Cuenta de Google conectada', 'ok');
-        updateGoogleUI();
-      } else {
-        toast('No se pudo obtener autorización', 'err');
-      }
+        saveGoogleToken(resp.access_token, resp.expires_in);
+        if (onToken) onToken(resp.access_token);
+      } else if (onError) onError('sin-token');
     },
-    error_callback: (err) => toast('Autorización cancelada: ' + (err.type || ''), 'warn')
+    error_callback: (err) => { if (onError) onError((err && err.type) || 'error'); }
   });
-  client.requestAccessToken();
+}
+
+function googleConnect() {
+  const cfg = gasCfg();
+  if (!cfg.clientId) {
+    toast('Primero configurá el ID de cliente de Google en Configuración', 'err', 6000);
+    const tab = Array.from(document.querySelectorAll('.header-tabs .tab'))
+      .find(t => /configuraci/i.test(t.textContent));
+    if (tab) switchTab('settings', tab);
+    return;
+  }
+  const client = makeTokenClient(
+    () => {
+      toast('Cuenta de Google conectada', 'ok');
+      fetchGoogleProfile();
+      renderUserCard();
+      updateGoogleUI();
+      // Al entrar, recuperar la escena guardada en Drive (si existe)
+      loadSceneFromDrive({ silent: true });
+    },
+    (e) => {
+      if (e === 'sdk-no-cargado') toast('El SDK de Google aún no cargó, probá de nuevo', 'warn');
+      else if (e !== 'popup_closed') toast('No se pudo autorizar', 'warn');
+    }
+  );
+  if (client) client.requestAccessToken();
+}
+
+// Renueva el token sin interacción; si no se puede, avisa para reconectar
+function googleSilentRefresh() {
+  return new Promise((resolve) => {
+    const client = makeTokenClient(() => resolve(true), () => resolve(false));
+    if (!client) { resolve(false); return; }
+    try { client.requestAccessToken({ prompt: '' }); } catch (e) { resolve(false); }
+  });
+}
+
+// Asegura que haya un token válido antes de una llamada a Drive
+async function ensureGoogleToken() {
+  if (googleReady()) return true;
+  return await googleSilentRefresh();
+}
+
+function googleDisconnect() {
+  if (STATE.gToken && window.google && google.accounts && google.accounts.oauth2) {
+    try { google.accounts.oauth2.revoke(STATE.gToken); } catch (e) {}
+  }
+  STATE.gToken = null;
+  STATE.gTokenExp = 0;
+  STATE.gProfile = null;
+  saveLocal('gAuth', null);
+  saveLocal('gProfile', null);
+  toast('Sesión de Google cerrada', 'warn');
+  renderUserCard();
+  updateGoogleUI();
 }
 
 function googleReady() {
@@ -5371,6 +5619,8 @@ function updateGoogleUI() {
   if (!googleReady()) {
     st.textContent = 'Sin conectar';
     st.style.color = 'var(--text3)';
+    const bOut0 = document.getElementById('btn-gdisconnect');
+    if (bOut0) bOut0.style.display = 'none';
     if (bC) { bC.style.display = ''; bC.textContent = 'Conectar Google'; }
     [bNew, bOpen, bSync].forEach(b => b && (b.style.display = 'none'));
     if (browser) browser.style.display = 'none';
@@ -5380,6 +5630,8 @@ function updateGoogleUI() {
   st.textContent = '✓ Conectado';
   st.style.color = 'var(--accent)';
   if (bC) bC.style.display = 'none';
+  const bOut = document.getElementById('btn-gdisconnect');
+  if (bOut) bOut.style.display = '';
 
   if (!devId) {
     if (setup) setup.textContent = 'Elegí un dispositivo en la lista para asignarle su hoja de histórico.';
@@ -5595,6 +5847,129 @@ function setDeviceSheet(devId, sheetId) {
   }
   STATE.histData = null;
   updateGoogleUI();
+}
+
+/* ══════════════════════════════════════════════════════
+   ESCENA GUARDADA EN EL DRIVE DEL USUARIO
+   Todo lo que hoy va al archivo demo.json (modelo GLB, diagramas,
+   sensores, comandos, vista 3D) se guarda también en Drive, para que al
+   volver a abrir la plataforma con la sesión activa se restaure solo.
+   Usa el mismo permiso drive.file y la misma cuenta que las hojas.
+══════════════════════════════════════════════════════ */
+const SCENE_FILE_NAME = 'wavesense_plataforma.json';
+
+// Busca el archivo de escena entre los creados por esta app
+async function findSceneFile() {
+  if (STATE.sceneFileId) return STATE.sceneFileId;
+  const cached = loadLocal('sceneFileId', null);
+  if (cached) { STATE.sceneFileId = cached; return cached; }
+  try {
+    const q = encodeURIComponent("name='" + SCENE_FILE_NAME + "' and trashed=false");
+    const r = await fetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&fields=files(id,name,modifiedTime)', {
+      headers: { Authorization: 'Bearer ' + STATE.gToken }
+    });
+    const d = await r.json();
+    if (d.files && d.files.length) {
+      STATE.sceneFileId = d.files[0].id;
+      saveLocal('sceneFileId', STATE.sceneFileId);
+      return STATE.sceneFileId;
+    }
+  } catch (e) {}
+  return null;
+}
+
+// Guarda (crea o actualiza) la escena en Drive
+async function saveSceneToDrive(opts) {
+  opts = opts || {};
+  if (!(await ensureGoogleToken())) {
+    if (!opts.silent) toast('Conectá tu cuenta de Google para guardar', 'warn');
+    return false;
+  }
+  try {
+    const escena = buildSceneObject();
+    escena.savedAt = new Date().toISOString();
+    const contenido = JSON.stringify(escena);
+
+    const fileId = await findSceneFile();
+    const meta = { name: SCENE_FILE_NAME, mimeType: 'application/json' };
+    const limite = '-------wavesense' + Date.now();
+    const cuerpo =
+      '--' + limite + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' +
+      JSON.stringify(meta) + '\r\n' +
+      '--' + limite + '\r\nContent-Type: application/json\r\n\r\n' +
+      contenido + '\r\n--' + limite + '--';
+
+    const url = fileId
+      ? 'https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=multipart'
+      : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+
+    const r = await fetch(url, {
+      method: fileId ? 'PATCH' : 'POST',
+      headers: {
+        Authorization: 'Bearer ' + STATE.gToken,
+        'Content-Type': 'multipart/related; boundary=' + limite
+      },
+      body: cuerpo
+    });
+    const res = await r.json();
+    if (!res.id) throw new Error((res.error && res.error.message) || ('HTTP ' + r.status));
+
+    STATE.sceneFileId = res.id;
+    saveLocal('sceneFileId', res.id);
+    STATE.sceneDirty = false;
+    updateSceneSaveStatus('Guardado en tu Drive · ' + new Date().toLocaleTimeString());
+    if (!opts.silent) toast('Escena guardada en tu Drive', 'ok');
+    return true;
+  } catch (e) {
+    updateSceneSaveStatus('Error al guardar: ' + e.message);
+    if (!opts.silent) toast('Error al guardar: ' + e.message, 'err', 6000);
+    return false;
+  }
+}
+
+// Recupera la escena guardada y la aplica
+async function loadSceneFromDrive(opts) {
+  opts = opts || {};
+  if (!(await ensureGoogleToken())) return false;
+  try {
+    const fileId = await findSceneFile();
+    if (!fileId) {
+      if (!opts.silent) toast('No hay ninguna escena guardada en tu Drive', 'warn');
+      return false;
+    }
+    const r = await fetch('https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media', {
+      headers: { Authorization: 'Bearer ' + STATE.gToken }
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const obj = await r.json();
+    const ok = importSceneObj(obj, { silent: true });
+    if (ok) {
+      STATE.sceneDirty = false;
+      updateSceneSaveStatus('Restaurada desde tu Drive');
+      toast('Escena restaurada desde tu Drive', 'ok');
+    }
+    return ok;
+  } catch (e) {
+    if (!opts.silent) toast('No se pudo cargar: ' + e.message, 'err', 6000);
+    return false;
+  }
+}
+
+// Marca que hay cambios pendientes y programa el guardado automático
+function markSceneDirty() {
+  STATE.sceneDirty = true;
+  if (!googleReady()) return;
+  updateSceneSaveStatus('Cambios sin guardar…');
+  clearTimeout(STATE._sceneSaveT);
+  // Se espera a que el usuario deje de editar para no subir en cada clic
+  STATE._sceneSaveT = setTimeout(() => saveSceneToDrive({ silent: true }), 8000);
+}
+
+function updateSceneSaveStatus(txt) {
+  const el = document.getElementById('scene-save-status');
+  if (el) el.textContent = txt || '';
+  const el2 = document.getElementById('user-save-state');
+  if (el2) el2.textContent = txt || '';
 }
 
 /* ── Llamadas al servicio de sincronización ── */
@@ -7968,6 +8343,20 @@ document.addEventListener('DOMContentLoaded', () => {
       buildRTPanel();
       if (document.getElementById('diagram-overlay').classList.contains('active')) diagFitAll();
     }, 250);
+  });
+
+  // Guardar la escena si quedaron cambios pendientes al cerrar la pestaña
+  window.addEventListener('beforeunload', () => {
+    if (STATE.sceneDirty && googleReady() && STATE.sceneFileId) {
+      // sendBeacon no admite cabeceras: se usa el token en la URL, que es
+      // la vía admitida por Drive para peticiones sin cabeceras.
+      try {
+        const blob = new Blob([JSON.stringify(buildSceneObject())], { type: 'application/json' });
+        navigator.sendBeacon(
+          'https://www.googleapis.com/upload/drive/v3/files/' + STATE.sceneFileId +
+          '?uploadType=media&access_token=' + encodeURIComponent(STATE.gToken), blob);
+      } catch (e) {}
+    }
   });
 
   // Check online status
