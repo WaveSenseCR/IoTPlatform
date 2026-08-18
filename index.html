@@ -1358,6 +1358,7 @@
           <a class="btn-sm" id="btn-gsheet-open" href="#" target="_blank" rel="noopener" style="display:none;text-decoration:none;line-height:22px;">↗ Abrir hoja</a>
           <button class="btn-sm" id="btn-gsheet-sync" onclick="forceHistorySync()" style="display:none;">⟳ Sincronizar ahora</button>
           <button class="btn-sm" id="btn-hist-toggle" onclick="toggleHistoryArchiving()" style="display:none;"></button>
+          <button class="btn-sm" id="btn-gsheet-change" onclick="changeHistorySheet()" style="display:none;">⇄ Cambiar hoja</button>
         </div>
 
         <div id="hist-browser" style="display:none;">
@@ -5388,6 +5389,7 @@ function updateGoogleUI() {
   }
 
   const bTog = document.getElementById('btn-hist-toggle');
+  const bChg = document.getElementById('btn-gsheet-change');
   if (sheetId) {
     const arch = !!(dev.meta && dev.meta.historyEnabled);
     if (setup) setup.textContent = arch
@@ -5402,12 +5404,13 @@ function updateGoogleUI() {
       bTog.style.color = arch ? 'var(--warn)' : 'var(--accent)';
       bTog.style.borderColor = arch ? 'var(--warn)' : 'var(--accent)';
     }
+    if (bChg) bChg.style.display = '';
     if (browser) browser.style.display = '';
     loadHistoryTabs();
   } else {
     if (setup) setup.textContent = 'El dispositivo "' + (dev.name || devId) + '" todavía no tiene hoja de histórico.';
     if (bNew) bNew.style.display = '';
-    [bOpen, bSync, bTog].forEach(b => b && (b.style.display = 'none'));
+    [bOpen, bSync, bTog, bChg].forEach(b => b && (b.style.display = 'none'));
     if (browser) browser.style.display = 'none';
   }
 }
@@ -5515,6 +5518,83 @@ async function createHistorySheet() {
     setMsg('');
     toast('Error: ' + e.message, 'err', 6000);
   }
+}
+
+// Cambia la hoja vinculada: permite crear una nueva, usar una existente
+// (pegando su ID o enlace) o desvincular sin borrar nada.
+function changeHistorySheet() {
+  const devId = STATE.selectedDevice;
+  if (!devId) return;
+  const dev = STATE.devices[devId] || {};
+  const actual = (dev.meta && dev.meta.sheetId) || '';
+
+  const opcion = prompt(
+    'Hoja actual:\n' + actual +
+    '\n\n¿Qué querés hacer?\n' +
+    '  1 = Crear una hoja nueva\n' +
+    '  2 = Usar una hoja existente (pegar su ID o enlace)\n' +
+    '  3 = Desvincular (deja de archivar)\n\n' +
+    'Escribí 1, 2 o 3:', '1');
+  if (!opcion) return;
+
+  if (opcion.trim() === '1') {
+    // Se desvincula y se crea una nueva. Los datos de la hoja anterior
+    // quedan intactos en tu Drive; solo deja de usarse.
+    setDeviceSheet(devId, '');
+    createHistorySheet();
+    return;
+  }
+
+  if (opcion.trim() === '2') {
+    const entrada = prompt(
+      'Pegá el ID de la hoja o su enlace completo.\n\n' +
+      'El ID es la parte larga del enlace, entre /d/ y /edit', '');
+    if (!entrada) return;
+    // Acepta el enlace completo o el ID pelado
+    const m = entrada.match(/\/d\/([a-zA-Z0-9_-]{20,})/);
+    const nuevoId = m ? m[1] : entrada.trim();
+    if (nuevoId.length < 20) { toast('El ID no parece válido', 'err'); return; }
+
+    setDeviceSheet(devId, nuevoId);
+    // Verificar que el servicio pueda escribir en ella
+    gasPost({ action: 'register', sheetId: nuevoId, deviceId: devId })
+      .then(res => {
+        if (res && res.ok) toast('Hoja vinculada: ' + (res.name || nuevoId), 'ok');
+        else toast('Vinculada, pero el servicio no puede escribir: ' +
+                   ((res && res.error) || '—') +
+                   ' · compartila con la cuenta del servicio', 'warn', 8000);
+      })
+      .catch(e => toast('No se pudo verificar: ' + e.message, 'warn', 6000));
+    return;
+  }
+
+  if (opcion.trim() === '3') {
+    if (!confirm('¿Desvincular la hoja? El equipo dejará de archivar.\n' +
+                 'Los datos ya guardados no se borran.')) return;
+    setDeviceSheet(devId, '');
+    // Pausar el archivado en el equipo: sin hoja no tiene sentido encolar
+    const prev = STATE.actionsDevice;
+    STATE.actionsDevice = devId;
+    sendAction('setHistory', { enabled: false }, null, 'Pausar archivado');
+    STATE.actionsDevice = prev;
+    toast('Hoja desvinculada', 'warn');
+  }
+}
+
+// Escribe (o limpia) el ID de hoja del dispositivo, local y en la nube
+function setDeviceSheet(devId, sheetId) {
+  const dev = STATE.devices[devId] || (STATE.devices[devId] = {});
+  dev.meta = Object.assign({}, dev.meta || {}, { sheetId: sheetId || null });
+  if (!sheetId) dev.meta.historyEnabled = false;
+  persistAll();
+  if (STATE.db) {
+    const basePath = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
+    const upd = { sheetId: sheetId || null };
+    STATE.db.ref(basePath + '/' + devId + '/meta').update(upd);
+    if (!sheetId) STATE.db.ref(basePath + '/' + devId + '/config').update({ historyEnabled: false });
+  }
+  STATE.histData = null;
+  updateGoogleUI();
 }
 
 /* ── Llamadas al servicio de sincronización ── */
