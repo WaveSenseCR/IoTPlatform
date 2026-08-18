@@ -2160,6 +2160,8 @@ function saveFirebaseConfig() {
   };
   persistAll();
   initFirebase();
+  // Queda también en el Drive del usuario para recuperarla al volver
+  if (googleReady()) saveSceneToDrive({ silent: true });
 }
 
 function initFirebase() {
@@ -3678,6 +3680,13 @@ function buildSceneObject() {
     sensorDefs: STATE.sensorDefs,
     channels: STATE.channels,
     devices: STATE.devices,
+    // Configuración del usuario (servicio de históricos y conexión).
+    // Viaja en SU archivo de Drive, no en el HTML: así cada cuenta trae
+    // sus propios valores al iniciar sesión.
+    userConfig: {
+      drive: STATE.config.drive || {},
+      firebase: STATE.config.firebase || {}
+    },
     liveData: STATE.liveData   // instantánea de valores para que el demo se vea "vivo"
   };
 }
@@ -3714,6 +3723,24 @@ function importSceneObj(obj, opts) {
   if (obj.liveData) STATE.liveData = obj.liveData;
   STATE.glbData = obj.glb || null;
   STATE.cameraView = obj.cameraView || null;
+
+  // La configuración solo se aplica cuando viene del Drive del propio
+  // usuario (opts.withConfig). Nunca desde un demo.json público, para que
+  // un visitante no herede credenciales ajenas.
+  if (opts.withConfig && obj.userConfig) {
+    if (obj.userConfig.drive) {
+      STATE.config.drive = Object.assign({}, STATE.config.drive || {}, obj.userConfig.drive);
+    }
+    if (obj.userConfig.firebase) {
+      STATE.config.firebase = Object.assign({}, STATE.config.firebase || {}, obj.userConfig.firebase);
+    }
+    saveLocal('config', STATE.config);
+    if (typeof populateSettings === 'function') populateSettings();
+    // Reconectar con los datos recuperados
+    if (STATE.config.firebase && STATE.config.firebase.databaseURL && !STATE.db) {
+      try { initFirebase(); } catch (e) {}
+    }
+  }
   if (obj.demoConfig) STATE.demoConfig = obj.demoConfig;
   if (!opts.noPersist) { persistAll(); persistGlb(); saveLocal('cameraView', STATE.cameraView); }
 
@@ -5951,7 +5978,8 @@ async function loadSceneFromDrive(opts) {
     });
     if (!r.ok) throw new Error('HTTP ' + r.status);
     const obj = await r.json();
-    const ok = importSceneObj(obj, { silent: true });
+    // withConfig: viene del Drive del propio usuario → se aplican sus ajustes
+    const ok = importSceneObj(obj, { silent: true, withConfig: true });
     if (ok) {
       STATE.sceneDirty = false;
       updateSceneSaveStatus('Restaurada desde tu Drive');
@@ -7685,6 +7713,8 @@ function saveDriveConfig() {
   persistAll();
   toast('Configuración guardada', 'ok');
   updateGoogleUI();
+  // Queda también en el Drive del usuario para recuperarla al volver
+  if (googleReady()) saveSceneToDrive({ silent: true });
 }
 
 function scheduleAutoExport() {
