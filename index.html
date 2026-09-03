@@ -1311,6 +1311,9 @@
           <span id="user-save-state" style="flex:1;font-size:9px;color:var(--text3);"></span>
           <button class="btn-sm" style="padding:2px 8px;min-height:0;font-size:9px;" onclick="googleDisconnect()">Salir</button>
         </div>
+        <button class="btn-sm accent" style="width:100%;margin-top:6px;" onclick="openPairDevice()">
+          + Vincular dispositivo
+        </button>
       </div>
     </div>
 
@@ -1376,6 +1379,7 @@
           <button class="vc-btn" onclick="updateSensorIcons();refreshSensorIconAnchors();toast('Iconos actualizados','ok');">Actualizar Iconos</button>
           <button class="vc-btn" onclick="saveCurrentView()" title="Guardar este encuadre como vista inicial de la escena">📌 Fijar Vista</button>
           <button class="vc-btn" onclick="changeModelGLB()" title="Cargar otro archivo .glb en lugar del actual">🔄 Cambiar Modelo</button>
+          <button class="vc-btn" onclick="copySceneFromDevice()" title="Copiar el modelo y diagrama de otro dispositivo">⧉ Copiar de otro</button>
         </div>
       </div>
 
@@ -1505,6 +1509,54 @@
         </div>
         <button class="btn-sm accent" style="margin-top:12px;" onclick="saveFirebaseConfig()">Guardar y Conectar</button>
         <span id="fb-status" style="font-size:10px;color:var(--text3);margin-left:10px;"></span>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-title">Modbus RTU (RS-485)</div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:12px;line-height:1.6;">
+          Comunicación con PLC por RS-485. El equipo actúa como maestro: lee los
+          registros definidos y permite escribirlos desde las acciones.<br>
+          Conexión del transceptor: TX→GPIO17, RX→GPIO16, DE/RE→GPIO4.
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="field-group" style="margin:0;">
+            <label>Velocidad (baudios)</label>
+            <select id="cfg-mb-baud">
+              <option value="4800">4800</option>
+              <option value="9600" selected>9600</option>
+              <option value="19200">19200</option>
+              <option value="38400">38400</option>
+              <option value="57600">57600</option>
+              <option value="115200">115200</option>
+            </select>
+          </div>
+          <div class="field-group" style="margin:0;">
+            <label>Formato</label>
+            <select id="cfg-mb-format">
+              <option value="0">8N1 (sin paridad)</option>
+              <option value="1">8E1 (par)</option>
+              <option value="2">8O1 (impar)</option>
+              <option value="3">8N2 (2 bits parada)</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">
+          <div class="field-group" style="margin:0;">
+            <label>Intervalo de lectura (ms)</label>
+            <input type="number" id="cfg-mb-poll" value="5000">
+          </div>
+          <div class="field-group" style="margin:0;">
+            <label>Tiempo de espera (ms)</label>
+            <input type="number" id="cfg-mb-timeout" value="300">
+          </div>
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;color:var(--text2);">
+          <input type="checkbox" id="cfg-mb-enabled" style="width:auto;"> Habilitar comunicación Modbus
+        </label>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+          <button class="btn-sm accent" onclick="openModbusConfig()">⚙ Configurar registros</button>
+          <button class="btn-sm" onclick="saveModbusConfig()">Guardar y enviar al equipo</button>
+        </div>
       </div>
 
       <div class="settings-section">
@@ -1654,6 +1706,54 @@
   </div>
 
 </div><!-- /diagram-overlay -->
+
+<!-- ─── MODAL: Vincular dispositivo ─── -->
+<div class="modal-overlay" id="pair-modal">
+  <div class="modal" style="max-width:520px;">
+    <button class="modal-close" onclick="closeModal('pair-modal')">✕</button>
+    <div class="modal-title">Vincular dispositivo</div>
+    <div class="modal-sub">Escribí el código que muestra la pantalla del equipo.</div>
+
+    <div class="field-group">
+      <label>Código de vinculación</label>
+      <input type="text" id="pair-code" maxlength="6" autocomplete="off"
+        style="font-size:26px;letter-spacing:7px;text-align:center;text-transform:uppercase;padding:12px;">
+    </div>
+    <button class="btn-sm accent" style="width:100%;margin-top:8px;" onclick="claimDevice()">Vincular a mi cuenta</button>
+    <div id="pair-msg" style="font-size:11px;color:var(--text3);margin-top:10px;min-height:16px;"></div>
+
+    <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px;">
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Mis dispositivos</div>
+      <div id="pair-devices" style="font-size:11px;color:var(--text3);">—</div>
+      <button class="btn-sm" style="width:100%;margin-top:8px;" onclick="loadMyDevices()">⟳ Actualizar lista</button>
+    </div>
+
+    <div style="font-size:9px;color:var(--text3);margin-top:12px;line-height:1.6;">
+      ¿No ves el código? Conectate a la red WiFi del equipo (<b>WaveSense-XXXX</b>)
+      desde el teléfono: se abre una página con el código y la configuración de red.
+    </div>
+  </div>
+</div>
+
+<!-- ─── MODAL: Registros Modbus ─── -->
+<div class="modal-overlay" id="modbus-modal">
+  <div class="modal" style="max-width:900px;width:96vw;max-height:88vh;overflow-y:auto;">
+    <button class="modal-close" onclick="closeModal('modbus-modal')">✕</button>
+    <div class="modal-title">Registros Modbus</div>
+    <div class="modal-sub">Definí qué registros del PLC querés leer y controlar. Se envían al equipo al guardar.</div>
+    <div id="modbus-list"></div>
+    <button class="btn-sm" style="width:100%;margin-top:8px;" onclick="addModbusReg()">+ Agregar registro</button>
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+      <button class="btn-sm accent" style="flex:2;" onclick="saveModbusConfig()">Guardar y enviar al equipo</button>
+      <button class="btn-sm" style="flex:1;" onclick="sendAction('modbusRead',{},null,'Leer Modbus')">⟳ Leer ahora</button>
+    </div>
+    <div style="font-size:9px;color:var(--text3);margin-top:10px;line-height:1.6;">
+      <b>Función:</b> 3 = registros holding (lectura/escritura) · 4 = registros de entrada (solo lectura) ·
+      1 = bobinas (salidas digitales) · 2 = entradas discretas.<br>
+      <b>Escala:</b> el valor mostrado es el crudo multiplicado por este factor (ej. 0.1 si el PLC envía décimas).
+    </div>
+  </div>
+</div>
 
 <!-- ─── MODAL: Mapa de Pines ─── -->
 <div class="modal-overlay" id="pinmap-modal">
@@ -2181,6 +2281,11 @@ function persistAll() {
   saveLocal('channels', STATE.channels);
   saveLocal('diagCommands', STATE.diagCommands || []);
   saveLocal('demoConfig', STATE.demoConfig || null);
+  saveLocal('modbusCfg', STATE.modbusCfg || null);
+  // El trabajo en curso pertenece al dispositivo seleccionado
+  if (STATE.currentSceneDev) scenesStore()[STATE.currentSceneDev] = captureCurrentScene();
+  saveLocal('scenes', STATE.scenes || {});
+  saveLocal('currentSceneDev', STATE.currentSceneDev || null);
   if (typeof markSceneDirty === 'function') markSceneDirty();
 }
 
@@ -2198,6 +2303,9 @@ function loadPersisted() {
   STATE.diagCommands = loadLocal('diagCommands', []);
   STATE.cameraView = loadLocal('cameraView', null);
   STATE.demoConfig = loadLocal('demoConfig', null);
+  STATE.modbusCfg = loadLocal('modbusCfg', null);
+  STATE.scenes = loadLocal('scenes', {});
+  STATE.currentSceneDev = loadLocal('currentSceneDev', null);
   STATE.glbData = loadLocal('glbData', null);
 }
 
@@ -2287,6 +2395,11 @@ function processRTDBData(data) {
       STATE.devices[devId].loc = devData.meta.ubicacion || STATE.devices[devId].loc;
     }
     if (devData.sdFiles) STATE.devices[devId].sdFiles = devData.sdFiles;
+    if (devData.modbus) {
+      STATE.devices[devId].modbus = devData.modbus;
+      const mm = document.getElementById('modbus-modal');
+      if (mm && mm.classList.contains('open')) renderModbusList();
+    }
     if (devData.pines) {
       STATE.devices[devId].pines = devData.pines;
       const pm = document.getElementById('pinmap-modal');
@@ -2718,7 +2831,8 @@ function renderDevices() {
           <button class="device-del-btn" title="Eliminar dispositivo" data-dev-id="${id}">✕</button>
         </span>
       </div>
-      <div class="device-id">${id} · ${dev.loc || '—'}${seen}</div>
+      <div class="device-id">${id} · ${dev.loc || '—'}${seen}${
+        (STATE.scenes && STATE.scenes[id] && STATE.scenes[id].glb) ? ' · 🧊 modelo' : ''}</div>
     `;
     card.onclick = () => selectDevice(id);
     const mapBtn = card.querySelector('.device-map-btn');
@@ -2767,8 +2881,142 @@ function deleteDevice(id) {
   toast('Dispositivo ' + id + ' eliminado', 'warn');
 }
 
+/* ══════════════════════════════════════════════════════
+   ESCENAS POR DISPOSITIVO
+   Cada equipo tiene su propio modelo 3D y su diagrama 2D. Al seleccionar
+   un dispositivo se guarda la escena en curso y se carga la suya, de modo
+   que el trabajo de cada uno queda separado.
+══════════════════════════════════════════════════════ */
+function scenesStore() {
+  if (!STATE.scenes) STATE.scenes = {};
+  return STATE.scenes;
+}
+
+// Toma el estado de trabajo actual y lo devuelve como objeto de escena
+function captureCurrentScene() {
+  return {
+    glb: STATE.glbData || null,
+    cameraView: STATE.cameraView || null,
+    diagMachines: STATE.diagMachines || [],
+    diagConnections: STATE.diagConnections || [],
+    diagPanels: STATE.diagPanels || [],
+    diagCapsules: STATE.diagCapsules || [],
+    objectLinks: STATE.objectLinks || {},
+    diagCommands: STATE.diagCommands || []
+  };
+}
+
+// Vuelca un objeto de escena al estado de trabajo
+function applySceneObject(sc, opts) {
+  opts = opts || {};
+  sc = sc || {};
+  // Si Three.js todavía no inicializó, se aplica al estar listo
+  if (!STATE.scene) {
+    window.addEventListener('three-ready', () => applySceneObject(sc, opts), { once: true });
+  }
+  STATE.diagMachines    = sc.diagMachines || [];
+  STATE.diagConnections = sc.diagConnections || [];
+  STATE.diagPanels      = sc.diagPanels || [];
+  STATE.diagCapsules    = sc.diagCapsules || [];
+  STATE.objectLinks     = sc.objectLinks || {};
+  STATE.diagCommands    = sc.diagCommands || [];
+  STATE.cameraView      = sc.cameraView || null;
+
+  const glbAnterior = STATE.glbData && STATE.glbData.data;
+  const glbNuevo = sc.glb && sc.glb.data;
+  STATE.glbData = sc.glb || null;
+
+  // Recargar el modelo solo si realmente cambió: es la operación cara
+  if (glbNuevo && glbNuevo !== glbAnterior) {
+    STATE._pendingCameraView = STATE.cameraView;
+    loadGLB(base64ToBlobUrl(glbNuevo), (sc.glb && sc.glb.name) || 'modelo.glb');
+  } else if (!glbNuevo && glbAnterior) {
+    // El dispositivo nuevo no tiene modelo: se limpia el visor
+    limpiarModelo3D();
+  }
+
+  if (!opts.silent) {
+    renderDiagram();
+    updateHighlights();
+    updateSensorIcons();
+  }
+}
+
+// Quita el modelo actual de la escena 3D
+function limpiarModelo3D() {
+  if (STATE.model && STATE.scene) {
+    STATE.scene.remove(STATE.model);
+    STATE.model = null;
+    STATE.meshes = [];
+    STATE.waterMeshes = [];
+    STATE._iconEls = {};
+    const capa = document.getElementById('sensor-icons-layer');
+    if (capa) capa.innerHTML = '';
+    hideObjCommands();
+  }
+  const dz = document.getElementById('drop-zone');
+  if (dz) dz.classList.remove('hidden');
+  const badge = document.getElementById('model-name-badge');
+  if (badge) badge.textContent = 'Sin modelo';
+}
+
+// Cambia a la escena del dispositivo indicado
+function switchDeviceScene(devId) {
+  if (!devId) return;
+  const store = scenesStore();
+
+  // Guardar lo que había en curso, atribuido a su dispositivo
+  if (STATE.currentSceneDev && STATE.currentSceneDev !== devId) {
+    store[STATE.currentSceneDev] = captureCurrentScene();
+  } else if (!STATE.currentSceneDev) {
+    // Primera vez: lo que ya estaba cargado pertenece a este dispositivo
+    const actual = captureCurrentScene();
+    const tieneAlgo = actual.glb || (actual.diagMachines && actual.diagMachines.length);
+    if (tieneAlgo && !store[devId]) store[devId] = actual;
+  }
+
+  if (STATE.currentSceneDev === devId) return;   // ya estamos en la suya
+
+  STATE.currentSceneDev = devId;
+  applySceneObject(store[devId] || {});
+  persistAll();
+
+  const dev = STATE.devices[devId] || {};
+  const badge = document.getElementById('model-name-badge');
+  if (badge) {
+    badge.textContent = STATE.glbData
+      ? ((dev.name || devId) + ' · ' + (STATE.glbData.name || 'modelo'))
+      : ((dev.name || devId) + ' · sin modelo');
+  }
+}
+
+// Copia el modelo y diagrama de otro dispositivo al actual. Útil cuando
+// varias instalaciones son idénticas: se configura una y se replica.
+function copySceneFromDevice() {
+  const destino = STATE.selectedDevice;
+  if (!destino) { toast('Elegí un dispositivo primero', 'err'); return; }
+  const store = scenesStore();
+  const origenes = Object.keys(store).filter(d => d !== destino && store[d] && store[d].glb);
+  if (!origenes.length) { toast('No hay otras escenas para copiar', 'warn'); return; }
+
+  const lista = origenes.map((d, i) =>
+    '  ' + (i + 1) + ' = ' + ((STATE.devices[d] && STATE.devices[d].name) || d)).join('\n');
+  const op = prompt('Copiar la escena de:\n\n' + lista + '\n\nEscribí el número:', '1');
+  if (!op) return;
+  const idx = parseInt(op, 10) - 1;
+  if (!(idx >= 0 && idx < origenes.length)) { toast('Opción inválida', 'err'); return; }
+
+  const copia = JSON.parse(JSON.stringify(store[origenes[idx]]));
+  store[destino] = copia;
+  STATE.currentSceneDev = null;      // fuerza la recarga
+  switchDeviceScene(destino);
+  persistAll();
+  toast('Escena copiada · revisá los vínculos de sensores', 'ok', 5000);
+}
+
 function selectDevice(id) {
   STATE.selectedDevice = id;
+  switchDeviceScene(id);              // trae el modelo y diagrama de ese equipo
   if (typeof updateGoogleUI === 'function') updateGoogleUI();
   renderDevices();
   renderSensors();
@@ -3662,7 +3910,13 @@ function loadGLBFile(event) {
   const file = event.target.files[0];
   if (!file) return;
   const url = URL.createObjectURL(file);
-  fileToBase64(file).then(b64 => { STATE.glbData = { name: file.name, data: b64 }; persistGlb(); }).catch(() => {});
+  fileToBase64(file).then(b64 => {
+    STATE.glbData = { name: file.name, data: b64 };
+    // El modelo queda asociado al dispositivo seleccionado
+    if (!STATE.currentSceneDev && STATE.selectedDevice) STATE.currentSceneDev = STATE.selectedDevice;
+    persistGlb();
+    persistAll();
+  }).catch(() => {});
   loadGLB(url, file.name);
 }
 
@@ -3732,6 +3986,11 @@ function buildSceneObject() {
     glb: STATE.glbData || null,
     cameraView: STATE.cameraView || captureCameraView(),   // posición de la vista 3D
     demoConfig: STATE.demoConfig || null,                  // sensores simulados del demo
+    scenes: (function () {   // una escena por dispositivo
+      if (STATE.currentSceneDev) scenesStore()[STATE.currentSceneDev] = captureCurrentScene();
+      return STATE.scenes || {};
+    })(),
+    currentSceneDev: STATE.currentSceneDev || null,
     diagMachines: STATE.diagMachines,
     diagConnections: STATE.diagConnections,
     diagPanels: STATE.diagPanels,
@@ -3803,6 +4062,10 @@ function importSceneObj(obj, opts) {
     }
   }
   if (obj.demoConfig) STATE.demoConfig = obj.demoConfig;
+  if (obj.scenes) {
+    STATE.scenes = obj.scenes;
+    STATE.currentSceneDev = obj.currentSceneDev || null;
+  }
   if (!opts.noPersist) { persistAll(); persistGlb(); saveLocal('cameraView', STATE.cameraView); }
 
   if (STATE.glbData && STATE.glbData.data) {
@@ -3860,6 +4123,14 @@ function bootScene() {
 }
 
 function bootSceneLocal() {
+  // 0) Si hay escenas por dispositivo, se restaura la del último activo.
+  const store = scenesStore();
+  const dev = STATE.currentSceneDev;
+  if (dev && store[dev]) {
+    applySceneObject(store[dev], { silent: true });
+    return;
+  }
+
   // 1) Si el usuario ya tiene su propio modelo guardado, se restaura ese.
   if (STATE.glbData && STATE.glbData.data) {
     STATE._pendingCameraView = STATE.cameraView;   // conservar el encuadre guardado
@@ -4882,6 +5153,12 @@ const CMD_CATALOG = {
                       { id:'pin', label:'Pin', type:'number', def:2 },
                       { id:'mode', label:'Modo', type:'select', options:[['output','Salida'],['input','Entrada'],['input_pullup','Entrada + pull-up'],['free','Libre']] } ] },
   readPins:       { label: 'Leer estado de pines', params: [] },
+  modbusWrite:    { label: 'Escribir registro Modbus', params: [
+                      { id:'slave', label:'Esclavo', type:'number', def:1 },
+                      { id:'addr', label:'Dirección', type:'number', def:0 },
+                      { id:'value', label:'Valor', type:'number', def:1 },
+                      { id:'fc', label:'Función', type:'select', options:[['6','Registro (06)'],['5','Bobina (05)']] } ] },
+  modbusRead:     { label: 'Leer registros Modbus', params: [] },
   setMotor:       { label: 'Motor (estado y RPM)', params: [
                       { id:'estado', label:'Estado', type:'select', options:[['1','Encendido'],['0','Apagado']] },
                       { id:'rpm', label:'RPM', type:'number', def:0 } ] },
@@ -4918,6 +5195,282 @@ function diagCommands() {
 
 // Abre el panel de comandos. Si se pasa un nodo, los comandos quedan
 // asociados a ese elemento del diagrama.
+/* ══════════════════════════════════════════════════════
+   VINCULACIÓN DE DISPOSITIVOS
+   El equipo muestra un código; el usuario lo escribe acá estando con su
+   cuenta iniciada y queda como propietario. Después puede compartirlo.
+══════════════════════════════════════════════════════ */
+function ownerId() {
+  const p = STATE.gProfile || loadLocal('gProfile', null) || {};
+  return (p.email || '').toLowerCase();
+}
+
+function openPairDevice() {
+  if (!googleReady()) { toast('Iniciá sesión con Google primero', 'warn'); googleConnect(); return; }
+  document.getElementById('pair-code').value = '';
+  document.getElementById('pair-msg').textContent = '';
+  openModal('pair-modal');
+  loadMyDevices();
+  setTimeout(() => { const i = document.getElementById('pair-code'); if (i) i.focus(); }, 150);
+}
+
+function claimDevice() {
+  const code = (document.getElementById('pair-code').value || '').trim().toUpperCase();
+  const msg = document.getElementById('pair-msg');
+  if (code.length !== 6) { msg.textContent = 'El código tiene 6 caracteres.'; return; }
+  if (!ownerId()) { msg.textContent = 'No se pudo determinar tu cuenta. Reiniciá sesión.'; return; }
+
+  msg.textContent = 'Verificando…';
+  gasPost({ action: 'pairClaim', code, owner: ownerId() })
+    .then(res => {
+      if (res && res.ok) {
+        msg.style.color = 'var(--accent)';
+        msg.textContent = '✓ Equipo ' + res.device + ' vinculado a tu cuenta. ' +
+                          'El equipo lo confirmará en unos segundos.';
+        document.getElementById('pair-code').value = '';
+        loadMyDevices();
+      } else {
+        msg.style.color = 'var(--err)';
+        msg.textContent = '✗ ' + ((res && res.error) || 'No se pudo vincular');
+      }
+    })
+    .catch(e => { msg.style.color = 'var(--err)'; msg.textContent = '✗ ' + e.message; });
+}
+
+function loadMyDevices() {
+  const cont = document.getElementById('pair-devices');
+  if (!cont) return;
+  if (!ownerId()) { cont.textContent = 'Iniciá sesión para ver tus equipos.'; return; }
+  cont.textContent = 'Cargando…';
+
+  gasPost({ action: 'pairList', owner: ownerId() })
+    .then(res => {
+      if (!res || !res.ok) { cont.textContent = (res && res.error) || 'No se pudo consultar'; return; }
+      const list = res.devices || [];
+      if (!list.length) { cont.textContent = 'Todavía no tenés equipos vinculados.'; return; }
+      cont.innerHTML = list.map(d => `
+        <div style="border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:6px;background:var(--bg2);">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
+            <div style="min-width:0;">
+              <div style="font-size:11px;color:var(--text);font-weight:600;">${chEsc(d.device)}</div>
+              <div style="font-size:9px;color:var(--text3);">
+                ${d.role === 'owner' ? 'Propietario' : 'Compartido por ' + chEsc(d.owner)}
+                ${(d.members && d.members.length) ? ' · ' + d.members.length + ' invitado(s)' : ''}
+              </div>
+            </div>
+            ${d.role === 'owner' ? `<div style="display:flex;gap:4px;flex-shrink:0;">
+              <button class="btn-sm" style="font-size:9px;padding:3px 7px;min-height:0;"
+                onclick="shareDevice('${chEsc(d.device)}')">+ Compartir</button>
+              <button class="btn-sm" style="font-size:9px;padding:3px 7px;min-height:0;color:var(--err);border-color:var(--err);"
+                onclick="unlinkDevice('${chEsc(d.device)}')">Liberar</button>
+            </div>` : ''}
+          </div>
+          ${(d.members && d.members.length) ? `<div style="font-size:9px;color:var(--text3);margin-top:5px;">
+            ${d.members.map(m => chEsc(m) + ` <a href="#" onclick="event.preventDefault();shareDevice('${chEsc(d.device)}','${chEsc(m)}',true)" style="color:var(--err);">✕</a>`).join(' · ')}
+          </div>` : ''}
+        </div>`).join('');
+    })
+    .catch(e => { cont.textContent = e.message; });
+}
+
+// Comparte el acceso con otra cuenta (o se lo quita)
+function shareDevice(device, member, remove) {
+  let quien = member;
+  if (!quien) {
+    quien = prompt('Correo de Google de la persona con quien compartir "' + device + '":', '');
+    if (!quien) return;
+  } else if (remove) {
+    if (!confirm('¿Quitar el acceso de ' + quien + '?')) return;
+  }
+  gasPost({ action: 'pairShare', device, owner: ownerId(),
+            member: quien.trim().toLowerCase(), remove: !!remove })
+    .then(res => {
+      if (res && res.ok) { toast(remove ? 'Acceso retirado' : 'Acceso compartido', 'ok'); loadMyDevices(); }
+      else toast((res && res.error) || 'No se pudo', 'err');
+    })
+    .catch(e => toast(e.message, 'err'));
+}
+
+function unlinkDevice(device) {
+  if (!confirm('¿Liberar "' + device + '"?\n\nDejará de pertenecer a tu cuenta y podrá vincularse a otra.')) return;
+  gasPost({ action: 'pairUnlink', device, owner: ownerId() })
+    .then(res => {
+      if (res && res.ok) {
+        toast('Equipo liberado', 'warn');
+        loadMyDevices();
+        // Avisar al equipo para que borre su credencial y vuelva a ofrecer código
+        if (STATE.db) {
+          const prev = STATE.actionsDevice;
+          STATE.actionsDevice = device;
+          sendAction('unpair', {}, null, 'Desvincular equipo');
+          STATE.actionsDevice = prev;
+        }
+      } else toast((res && res.error) || 'No se pudo', 'err');
+    })
+    .catch(e => toast(e.message, 'err'));
+}
+
+/* ══════════════════════════════════════════════════════
+   MODBUS RTU — configuración de registros del PLC
+══════════════════════════════════════════════════════ */
+const MB_FUNCS = [
+  ['3', 'Holding (03) · lectura/escritura'],
+  ['4', 'Entrada (04) · solo lectura'],
+  ['1', 'Bobina (01) · salida digital'],
+  ['2', 'Discreta (02) · entrada digital']
+];
+const MB_TYPES = [
+  ['0', 'Entero sin signo (16 bits)'],
+  ['1', 'Entero con signo (16 bits)'],
+  ['2', 'Decimal float (32 bits)'],
+  ['3', 'Booleano (0/1)']
+];
+
+function modbusRegs() {
+  if (!STATE.modbusCfg) STATE.modbusCfg = { enabled: false, baud: 9600, format: 0, pollMs: 5000, timeoutMs: 300, regs: [] };
+  if (!Array.isArray(STATE.modbusCfg.regs)) STATE.modbusCfg.regs = [];
+  return STATE.modbusCfg.regs;
+}
+
+function openModbusConfig() {
+  modbusRegs();
+  renderModbusList();
+  openModal('modbus-modal');
+}
+
+function renderModbusList() {
+  const cont = document.getElementById('modbus-list');
+  if (!cont) return;
+  const regs = modbusRegs();
+  const dev = STATE.devices[STATE.actionsDevice || STATE.selectedDevice] || {};
+  const vivo = dev.modbus || {};
+
+  if (!regs.length) {
+    cont.innerHTML = '<div style="font-size:11px;color:var(--text3);text-align:center;padding:20px;">' +
+      'Sin registros definidos. Agregá el primero abajo.</div>';
+    return;
+  }
+
+  const IS = 'padding:5px 7px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);font-size:11px;width:100%;';
+  cont.innerHTML = regs.map((r, i) => {
+    const v = vivo['r' + i];
+    const lectura = v && v.ok ? (Number(v.value).toFixed(2) + ' ' + (r.unit || '')) : (v ? '⚠ sin respuesta' : '—');
+    const colorLect = v && v.ok ? 'var(--accent)' : 'var(--text3)';
+    return `
+    <div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;background:var(--bg2);">
+      <div style="display:grid;grid-template-columns:1.5fr 0.7fr 0.7fr 0.9fr;gap:8px;">
+        <div class="field-group" style="margin:0;"><label style="font-size:9px;">Nombre</label>
+          <input type="text" id="mb_${i}_name" style="${IS}" value="${chEsc(r.name || '')}" placeholder="Marcha bomba"></div>
+        <div class="field-group" style="margin:0;"><label style="font-size:9px;">Esclavo</label>
+          <input type="number" id="mb_${i}_slave" style="${IS}" value="${r.slave != null ? r.slave : 1}"></div>
+        <div class="field-group" style="margin:0;"><label style="font-size:9px;">Dirección</label>
+          <input type="number" id="mb_${i}_addr" style="${IS}" value="${r.addr != null ? r.addr : 0}"></div>
+        <div class="field-group" style="margin:0;"><label style="font-size:9px;">Unidad</label>
+          <input type="text" id="mb_${i}_unit" style="${IS}" value="${chEsc(r.unit || '')}" placeholder="bar"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1.4fr 1.4fr 0.7fr auto;gap:8px;margin-top:8px;align-items:end;">
+        <div class="field-group" style="margin:0;"><label style="font-size:9px;">Función</label>
+          <select id="mb_${i}_fc" style="${IS}">${MB_FUNCS.map(f =>
+            `<option value="${f[0]}"${String(r.fc) === f[0] ? ' selected' : ''}>${f[1]}</option>`).join('')}</select></div>
+        <div class="field-group" style="margin:0;"><label style="font-size:9px;">Tipo de dato</label>
+          <select id="mb_${i}_type" style="${IS}">${MB_TYPES.map(t =>
+            `<option value="${t[0]}"${String(r.type) === t[0] ? ' selected' : ''}>${t[1]}</option>`).join('')}</select></div>
+        <div class="field-group" style="margin:0;"><label style="font-size:9px;">Escala</label>
+          <input type="number" step="any" id="mb_${i}_scale" style="${IS}" value="${r.scale != null ? r.scale : 1}"></div>
+        <button class="btn-sm" style="color:var(--err);border-color:var(--err);" onclick="removeModbusReg(${i})">✕</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;gap:8px;flex-wrap:wrap;">
+        <label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text2);">
+          <input type="checkbox" id="mb_${i}_wr" style="width:auto;"${r.writable ? ' checked' : ''}> Permitir escritura
+        </label>
+        <span style="font-size:11px;color:${colorLect};font-weight:600;">Lectura: ${chEsc(lectura)}</span>
+        ${r.writable ? `<button class="btn-sm accent" style="font-size:10px;" onclick="writeModbusReg(${i})">✎ Escribir valor</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// Lee el formulario a la configuración
+function readModbusForm() {
+  const regs = modbusRegs();
+  regs.forEach((r, i) => {
+    const g = id => { const el = document.getElementById('mb_' + i + '_' + id); return el ? el.value : ''; };
+    const c = id => { const el = document.getElementById('mb_' + i + '_' + id); return el ? el.checked : false; };
+    r.name = g('name').trim() || ('reg' + i);
+    r.unit = g('unit').trim();
+    r.slave = parseInt(g('slave'), 10) || 1;
+    r.addr = parseInt(g('addr'), 10) || 0;
+    r.fc = parseInt(g('fc'), 10) || 3;
+    r.type = parseInt(g('type'), 10) || 0;
+    r.scale = parseFloat(g('scale'));
+    if (!isFinite(r.scale) || r.scale === 0) r.scale = 1;
+    r.writable = c('wr');
+    r.enabled = true;
+  });
+  return STATE.modbusCfg;
+}
+
+function addModbusReg() {
+  readModbusForm();
+  modbusRegs().push({ name: 'Nuevo registro', unit: '', slave: 1, addr: 0, fc: 3, type: 0, scale: 1, writable: false, enabled: true });
+  renderModbusList();
+}
+
+function removeModbusReg(i) {
+  readModbusForm();
+  modbusRegs().splice(i, 1);
+  renderModbusList();
+}
+
+// Guarda la configuración y la envía al equipo
+function saveModbusConfig() {
+  const cfg = readModbusForm();
+  const gv = (id, def) => { const el = document.getElementById(id); return el ? el.value : def; };
+  cfg.enabled   = (document.getElementById('cfg-mb-enabled') || {}).checked || false;
+  cfg.baud      = parseInt(gv('cfg-mb-baud', 9600), 10);
+  cfg.format    = parseInt(gv('cfg-mb-format', 0), 10);
+  cfg.pollMs    = parseInt(gv('cfg-mb-poll', 5000), 10);
+  cfg.timeoutMs = parseInt(gv('cfg-mb-timeout', 300), 10);
+  STATE.modbusCfg = cfg;
+  persistAll();
+
+  const devId = STATE.actionsDevice || STATE.selectedDevice;
+  if (!devId) { toast('Elegí un dispositivo', 'err'); return; }
+  if (!STATE.db) { toast('Guardado local · sin conexión al servidor', 'warn'); return; }
+
+  const basePath = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
+  STATE.db.ref(basePath + '/' + devId + '/config/modbus').set(cfg)
+    .then(() => {
+      toast('Configuración Modbus enviada · ' + cfg.regs.length + ' registros', 'ok');
+      const prev = STATE.actionsDevice;
+      STATE.actionsDevice = devId;
+      sendAction('syncModbus', {}, null, 'Aplicar configuración Modbus');
+      STATE.actionsDevice = prev;
+    })
+    .catch(e => toast('Error: ' + e.message, 'err'));
+}
+
+// Escribe un valor en un registro del PLC
+function writeModbusReg(i) {
+  readModbusForm();
+  const r = modbusRegs()[i];
+  if (!r) return;
+  const esBool = r.fc === 1 || r.type === 3;
+  const entrada = prompt(
+    'Escribir en "' + r.name + '"\n' +
+    'Esclavo ' + r.slave + ' · dirección ' + r.addr + '\n\n' +
+    (esBool ? 'Ingresá 1 (activar) o 0 (desactivar):' : 'Ingresá el valor:'), esBool ? '1' : '0');
+  if (entrada === null) return;
+  const val = parseFloat(entrada);
+  if (!isFinite(val)) { toast('Valor inválido', 'err'); return; }
+
+  // Función de escritura: 5 para bobinas, 6 para registros
+  const fcEscritura = (r.fc === 1) ? 5 : 6;
+  sendAction('modbusWrite',
+    { slave: r.slave, addr: r.addr, value: val, fc: fcEscritura, type: r.type },
+    null, 'Escribir ' + r.name);
+}
+
 /* ══════════════════════════════════════════════════════
    MAPA DE PINES GPIO
 ══════════════════════════════════════════════════════ */
@@ -8177,6 +8730,13 @@ function populateSettings() {
   setValue('cfg-gas-token', dr.gasToken);
   setValue('cfg-google-client', dr.googleClientId);
   setValue('cfg-service-email', dr.serviceEmail);
+  const mb = STATE.modbusCfg || {};
+  setValue('cfg-mb-baud', mb.baud || 9600);
+  setValue('cfg-mb-format', mb.format || 0);
+  setValue('cfg-mb-poll', mb.pollMs || 5000);
+  setValue('cfg-mb-timeout', mb.timeoutMs || 300);
+  const mbEn = document.getElementById('cfg-mb-enabled');
+  if (mbEn) mbEn.checked = !!mb.enabled;
 }
 function setValue(id, val) {
   const el = document.getElementById(id);
@@ -8636,6 +9196,14 @@ function renderActionsPanel() {
       btn('Aplicar salida', `sendAction('setOutput',{pin:actNum('act_pin'),state:parseInt(actVal('act_pin_st'))})`) +
       btn('🔢 Ver mapa de pines', `openPinMap()`, '')
     ),
+    card('Modbus / PLC',
+      `<div style="font-size:11px;color:var(--text2);">${
+        (STATE.modbusCfg && STATE.modbusCfg.regs && STATE.modbusCfg.regs.length)
+          ? STATE.modbusCfg.regs.length + ' registros configurados'
+          : 'Sin registros configurados'}</div>` +
+      btn('⚙ Registros del PLC', `openModbusConfig()`) +
+      btn('⟳ Leer ahora', `sendAction('modbusRead',{},null,'Leer Modbus')`, '')
+    ),
     card('Motor',
       fld('Estado', `<select id="act_mot_st" style="${IS}"><option value="1">ON</option><option value="0">OFF</option></select>`) +
       fld('RPM', `<input id="act_mot_rpm" type="number" style="${IS}width:90px;" value="0">`) +
@@ -8710,7 +9278,11 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
     if (file && (file.name.endsWith('.glb') || file.name.endsWith('.gltf'))) {
-      fileToBase64(file).then(b64 => { STATE.glbData = { name: file.name, data: b64 }; persistGlb(); }).catch(() => {});
+      fileToBase64(file).then(b64 => {
+        STATE.glbData = { name: file.name, data: b64 };
+        if (!STATE.currentSceneDev && STATE.selectedDevice) STATE.currentSceneDev = STATE.selectedDevice;
+        persistGlb(); persistAll();
+      }).catch(() => {});
       loadGLB(URL.createObjectURL(file), file.name);
     } else {
       toast('Archivo no soportado. Usa .glb o .gltf', 'err');
