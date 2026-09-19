@@ -20,24 +20,43 @@
 }
 </script>
 <script type="module">
-  import * as THREE from 'three';
-  import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-  import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-  import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js';
-  import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
-  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-
-  // El namespace de un módulo ES es de solo lectura (no extensible): no se le pueden
-  // agregar propiedades. Hacemos una copia mutable y sobre ESA exponemos los loaders.
-  const THREE_GLOBAL = Object.assign({}, THREE);
-  THREE_GLOBAL.GLTFLoader = GLTFLoader;
-  THREE_GLOBAL.DRACOLoader = DRACOLoader;
-  THREE_GLOBAL.KTX2Loader = KTX2Loader;
-  THREE_GLOBAL.MeshoptDecoder = MeshoptDecoder;
-  THREE_GLOBAL.OrbitControls = OrbitControls;
-  window.THREE = THREE_GLOBAL;
-  window.__THREE_READY__ = true;
-  window.dispatchEvent(new Event('three-ready'));
+  /* Three.js se descarga BAJO DEMANDA, solo cuando hace falta el visor 3D.
+     Antes se importaba de forma estática: el navegador no disparaba
+     DOMContentLoaded hasta bajar ~1,5 MB de librería (three + loaders), así
+     que con conexión lenta la plataforma entera quedaba congelada esperando
+     algo que en modo básico ni siquiera se usa. Ahora este módulo no tiene
+     imports estáticos: se ejecuta al instante y solo define el cargador. */
+  let promesa = null;
+  window.__cargarThree = function () {
+    if (window.__THREE_READY__) return Promise.resolve(window.THREE);
+    if (promesa) return promesa;
+    promesa = Promise.all([
+      import('three'),
+      import('three/addons/loaders/GLTFLoader.js'),
+      import('three/addons/loaders/DRACOLoader.js'),
+      import('three/addons/loaders/KTX2Loader.js'),
+      import('three/addons/libs/meshopt_decoder.module.js'),
+      import('three/addons/controls/OrbitControls.js'),
+    ]).then(function (m) {
+      // El namespace de un módulo ES es de solo lectura: se hace una copia
+      // mutable y sobre ESA se exponen los loaders.
+      const THREE_GLOBAL = Object.assign({}, m[0]);
+      THREE_GLOBAL.GLTFLoader     = m[1].GLTFLoader;
+      THREE_GLOBAL.DRACOLoader    = m[2].DRACOLoader;
+      THREE_GLOBAL.KTX2Loader     = m[3].KTX2Loader;
+      THREE_GLOBAL.MeshoptDecoder = m[4].MeshoptDecoder;
+      THREE_GLOBAL.OrbitControls  = m[5].OrbitControls;
+      window.THREE = THREE_GLOBAL;
+      window.__THREE_READY__ = true;
+      window.dispatchEvent(new Event('three-ready'));
+      return THREE_GLOBAL;
+    }).catch(function (e) {
+      promesa = null;               // permite reintentar más tarde
+      throw e;
+    });
+    return promesa;
+  };
+  window.dispatchEvent(new Event('three-loader-ready'));
 </script>
 
 <!-- Chart.js -->
@@ -101,6 +120,26 @@
     flex-shrink: 0;
   }
   .panel-toggle.active { color: var(--accent); border-color: var(--accent); }
+
+  /* ─── MODO BÁSICO ───
+     Deja a la vista el diagrama y el gráfico; oculta el 3D y la edición. */
+  body.modo-basico #viewport,
+  body.modo-basico .drop-zone,
+  body.modo-basico .viewport-controls,
+  body.modo-basico #diag-edit-tools,
+  body.modo-basico #btn-edit-toggle,
+  body.modo-basico .fab-charts,
+  body.modo-basico #toolbar-sep-add,
+  body.modo-basico #diag-hint { display: none !important; }
+
+  /* El diagrama ocupa el área principal. Sigue siendo el mismo overlay fijo
+     (posición heredada de #diagram-overlay), pero sin borde ni botón de
+     cierre: en modo básico ES la vista de Tiempo Real, no una ventana. */
+  body.modo-basico #diagram-overlay { border: none; }
+  body.modo-basico .diag-close { display: none; }
+  /* Pestañas que no aplican en modo básico (Cola Offline, Diagrama 2D:
+     el diagrama ya se ve dentro de Tiempo Real) */
+  body.modo-basico .tab[data-adv="1"] { display: none; }
 
   /* ─── Tarjeta de cuenta del usuario ─── */
   .user-card { background: var(--bg3); }
@@ -1153,6 +1192,91 @@
   }
   .sensor-icon.entering { animation: iconPop .3s ease forwards; }
 
+  /* ─── BARRA DE CARGA ───
+     Se muestra mientras se descarga la escena (JSON) o el modelo 3D, para
+     que nunca haya una pantalla quieta sin explicación. */
+  #carga-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 3000;
+    background: var(--bg);
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  #carga-overlay.show { display: flex; }
+  /* Variante discreta: barra fina arriba, sin tapar la plataforma */
+  #carga-overlay.inline {
+    inset: 0 0 auto 0;
+    background: transparent;
+    padding: 0;
+    pointer-events: none;
+  }
+  #carga-overlay.inline .carga-caja {
+    width: 100%;
+    max-width: none;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    border-radius: 0;
+    background: var(--bg2);
+    padding: 8px 16px;
+  }
+  #carga-overlay.inline .carga-logo { display: none; }
+  #carga-overlay.inline .carga-titulo { font-size: 10px; margin-bottom: 6px; }
+
+  .carga-caja {
+    width: 100%;
+    max-width: 380px;
+    background: var(--panel);
+    border: 1px solid var(--border2);
+    border-radius: var(--radius2);
+    padding: 22px 24px;
+  }
+  .carga-logo {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+  .carga-logo .logo-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  .carga-titulo { font-size: 12px; color: var(--text); margin-bottom: 10px; }
+  .carga-track {
+    height: 5px;
+    border-radius: 3px;
+    background: var(--bg3);
+    overflow: hidden;
+    position: relative;
+  }
+  .carga-barra {
+    height: 100%;
+    width: 0%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent2), var(--accent));
+    transition: width .18s linear;
+  }
+  /* Sin Content-Length no se puede saber el porcentaje: barra en movimiento */
+  .carga-barra.indeterminada {
+    width: 35% !important;
+    animation: cargaVaiven 1.1s ease-in-out infinite;
+  }
+  @keyframes cargaVaiven {
+    0%   { transform: translateX(-100%); }
+    100% { transform: translateX(340%); }
+  }
+  .carga-pie {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 8px;
+    font-size: 10px;
+    color: var(--text3);
+  }
+
   /* ─── MISC ─── */
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -1235,14 +1359,15 @@
   <header>
     <button class="panel-toggle" id="tgl-left" onclick="toggleSidebar('left')" title="Dispositivos y sensores">☰</button>
     <div class="logo">
-      <div class="logo-dot"></div>
-      <span class="logo-text">IoT PLATFORM</span>
+      <img id="brand-logo" style="display:none;height:26px;max-width:120px;object-fit:contain;" alt="">
+      <div class="logo-dot" id="brand-dot"></div>
+      <span class="logo-text" id="brand-name">IoT PLATFORM</span>
     </div>
     <div class="header-tabs">
       <button class="tab active" onclick="switchTab('realtime',this)">Tiempo Real</button>
       <button class="tab" onclick="switchTab('history',this)">Histórico</button>
-      <button class="tab" onclick="switchTab('diagram',this)">Diagrama 2D</button>
-      <button class="tab" onclick="switchTab('offline',this)">Cola Offline</button>
+      <button class="tab" data-adv="1" onclick="switchTab('diagram',this)">Diagrama 2D</button>
+      <button class="tab" data-adv="1" onclick="switchTab('offline',this)">Cola Offline</button>
       <button class="tab" onclick="switchTab('settings',this)">Configuración</button>
     </div>
     <div class="header-right">
@@ -1327,6 +1452,12 @@
       <div id="sensors-list"></div>
       <button class="btn-sm accent" style="width:100%;margin-top:8px;" onclick="openChannelConfig()">⚙ Configurar Canales / Sensores</button>
       <button class="btn-sm" style="width:100%;margin-top:6px;" onclick="openActionsPanel()">🎛 Enviar Comandos</button>
+      <button class="btn-sm" style="width:100%;margin-top:6px;" onclick="openMaintenance()">🛠 Análisis y Mantenimiento</button>
+    </div>
+    <!-- Marca del fabricante de la solución -->
+    <div style="padding:10px 14px;border-top:1px solid var(--border);text-align:center;flex-shrink:0;">
+      <div style="font-size:8px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;">Tecnología</div>
+      <div style="font-size:12px;color:var(--accent);font-weight:700;letter-spacing:.08em;margin-top:2px;">WaveSense</div>
     </div>
   </aside>
 
@@ -1512,6 +1643,86 @@
       </div>
 
       <div class="settings-section">
+        <div class="settings-title">Modo de Visualización</div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:12px;line-height:1.6;">
+          El modo básico deja a la vista solo lo esencial: el diagrama del sistema
+          y un gráfico principal. Se ocultan el modelo 3D y las herramientas de edición.
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button class="btn-sm accent" id="btn-modo-avanzado" onclick="setModoBasico(false)"
+            style="flex:1;min-width:150px;">🔬 Avanzado (3D + diagrama)</button>
+          <button class="btn-sm" id="btn-modo-basico" onclick="setModoBasico(true)"
+            style="flex:1;min-width:150px;">📊 Básico (simple)</button>
+        </div>
+        <div style="font-size:9px;color:var(--text3);margin-top:10px;line-height:1.6;">
+          En modo básico el usuario ve directamente el diagrama con los valores en vivo
+          y su gráfico. Podés volver al modo avanzado en cualquier momento.
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-title">Identidad y Colores</div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:12px;line-height:1.6;">
+          Personalizá la plataforma con el nombre y el logo de tu empresa.
+          Se guarda con tu cuenta y se aplica al iniciar sesión.
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div class="field-group" style="margin:0;">
+            <label>Nombre a mostrar</label>
+            <input type="text" id="cfg-brand-name" placeholder="IoT PLATFORM">
+          </div>
+          <div class="field-group" style="margin:0;">
+            <label>Logo (PNG o SVG)</label>
+            <input type="file" id="cfg-brand-logo" accept="image/*" onchange="cargarLogo(event)"
+              style="font-size:10px;padding:4px;">
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;align-items:center;margin-top:10px;">
+          <img id="cfg-logo-preview" style="display:none;height:34px;max-width:140px;object-fit:contain;
+            background:var(--bg3);border:1px solid var(--border2);border-radius:4px;padding:3px;">
+          <button class="btn-sm" id="cfg-logo-del" style="display:none;font-size:10px;" onclick="quitarLogo()">Quitar logo</button>
+        </div>
+
+        <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px;">Colores</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;">
+          <div class="field-group" style="margin:0;"><label>Principal</label>
+            <input type="color" id="cfg-c-accent" value="#00e5a0" style="height:30px;padding:2px;"></div>
+          <div class="field-group" style="margin:0;"><label>Secundario</label>
+            <input type="color" id="cfg-c-accent2" value="#00b4ff" style="height:30px;padding:2px;"></div>
+          <div class="field-group" style="margin:0;"><label>Fondo</label>
+            <input type="color" id="cfg-c-bg" value="#0a0c10" style="height:30px;padding:2px;"></div>
+          <div class="field-group" style="margin:0;"><label>Paneles</label>
+            <input type="color" id="cfg-c-panel" value="#1c1f28" style="height:30px;padding:2px;"></div>
+          <div class="field-group" style="margin:0;"><label>Texto</label>
+            <input type="color" id="cfg-c-text" value="#e8eaf0" style="height:30px;padding:2px;"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+          <button class="btn-sm accent" onclick="saveBranding()">Aplicar y guardar</button>
+          <button class="btn-sm" onclick="resetBranding()">Restaurar</button>
+          <button class="btn-sm" onclick="exportBranding()">⬇ Exportar tema</button>
+          <input type="file" id="brand-import" accept=".json" style="display:none" onchange="importBranding(event)">
+          <button class="btn-sm" onclick="document.getElementById('brand-import').click()">⬆ Importar tema</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <div class="settings-title">Muestreo Acelerado</div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:12px;line-height:1.6;">
+          Para ver el efecto inmediato de un cambio. Consume más recursos, así que
+          se desactiva solo al cumplirse el plazo.
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <div class="field-group" style="margin:0;"><label>Muestreo (ms)</label>
+            <input type="number" id="cfg-boost-sample" value="1000"></div>
+          <div class="field-group" style="margin:0;"><label>Publicación (ms)</label>
+            <input type="number" id="cfg-boost-publish" value="2000"></div>
+          <div class="field-group" style="margin:0;"><label>Duración (min, máx 60)</label>
+            <input type="number" id="cfg-boost-min" value="10" min="1" max="60"></div>
+        </div>
+        <button class="btn-sm accent" style="margin-top:12px;" onclick="saveBoostConfig()">Guardar</button>
+      </div>
+
+      <div class="settings-section">
         <div class="settings-title">Modbus RTU (RS-485)</div>
         <div style="font-size:10px;color:var(--text3);margin-bottom:12px;line-height:1.6;">
           Comunicación con PLC por RS-485. El equipo actúa como maestro: lee los
@@ -1671,8 +1882,23 @@
     <span id="diag-zoom-ind" style="font-size:10px;color:var(--text3);min-width:34px;text-align:center;">100%</span>
     <button class="btn-sm" onclick="diagZoomIn()" title="Acercar">+</button>
     <button class="btn-sm accent" onclick="diagFitAll()" title="Encuadrar todo el diagrama">⛶ Ajustar</button>
+    <button class="btn-sm" id="btn-diag-chart" onclick="toggleDiagChart()" title="Mostrar un gráfico fijo junto al diagrama">📈 Gráfico</button>
     <span id="diag-hint" style="font-size:9px;color:var(--text3);margin-left:4px;">rueda: zoom · arrastrar fondo: mover</span>
     <div class="conn-legend" id="conn-legend"></div>
+  </div>
+
+  <!-- Gráfico fijo del diagrama (lateral derecho) -->
+  <div id="diag-chart-panel" style="display:none;position:absolute;right:0;top:46px;bottom:0;width:290px;
+       background:var(--bg2);border-left:1px solid var(--border);z-index:30;padding:12px;overflow-y:auto;">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:8px;">
+      <span style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;">Gráfico fijo</span>
+      <button class="btn-sm" style="padding:2px 8px;min-height:0;font-size:9px;" onclick="toggleDiagChart()">✕</button>
+    </div>
+    <select id="diag-chart-sel" onchange="STATE.diagChartKey=this.value;renderDiagChart()"
+      style="width:100%;font-size:11px;margin-bottom:8px;"></select>
+    <div id="diag-chart-val" style="font-size:22px;font-weight:700;color:var(--accent);margin-bottom:8px;"></div>
+    <div style="position:relative;height:160px;"><canvas id="diag-chart"></canvas></div>
+    <div id="diag-chart-extra" style="margin-top:12px;"></div>
   </div>
 
   <!-- Canvas -->
@@ -1706,6 +1932,32 @@
   </div>
 
 </div><!-- /diagram-overlay -->
+
+<!-- ─── MODAL: Análisis y Mantenimiento ─── -->
+<div class="modal-overlay" id="maint-modal">
+  <div class="modal" style="max-width:960px;width:96vw;max-height:90vh;overflow-y:auto;">
+    <button class="modal-close" onclick="closeModal('maint-modal')">✕</button>
+    <div class="modal-title">Análisis y Mantenimiento</div>
+    <div class="modal-sub">Ficha técnica, plan del fabricante y cronograma calculado según horas de marcha y estado real.</div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:center;">
+      <select id="maint-asset" onchange="renderMaintTab()" style="min-width:190px;"></select>
+      <button class="btn-sm" onclick="addAsset()">+ Nuevo equipo</button>
+      <div style="flex:1"></div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;" id="maint-tabs">
+        <button class="btn-sm accent" data-tab="todos" onclick="setMaintTab('todos')">🏭 Todos</button>
+        <button class="btn-sm" data-tab="cal" onclick="setMaintTab('cal')">🗓 Calendario</button>
+        <button class="btn-sm" data-tab="cron" onclick="setMaintTab('cron')">📅 Cronograma</button>
+        <button class="btn-sm" data-tab="diag" onclick="setMaintTab('diag')">📈 Diagnóstico</button>
+        <button class="btn-sm" data-tab="ficha" onclick="setMaintTab('ficha')">🔧 Ficha</button>
+        <button class="btn-sm" data-tab="plan" onclick="setMaintTab('plan')">📋 Plan</button>
+        <button class="btn-sm" data-tab="hist" onclick="setMaintTab('hist')">🗂 Historial</button>
+      </div>
+    </div>
+
+    <div id="maint-body"></div>
+  </div>
+</div>
 
 <!-- ─── MODAL: Vincular dispositivo ─── -->
 <div class="modal-overlay" id="pair-modal">
@@ -1895,6 +2147,22 @@
       <label style="display:flex;align-items:center;gap:6px;margin-top:10px;font-size:11px;color:var(--text2);">
         <input type="checkbox" id="dcmd-confirm" style="width:auto;"> Pedir confirmación antes de ejecutar
       </label>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:6px;font-size:11px;color:var(--text2);">
+        <input type="checkbox" id="dcmd-ask" style="width:auto;" onchange="toggleAskFields()">
+        Pedir el valor al ejecutar (consigna, referencia…)
+      </label>
+      <div id="dcmd-ask-box" style="display:none;margin-top:8px;">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:8px;">
+          <div class="field-group" style="margin:0;"><label style="font-size:9px;">Texto de la pregunta</label>
+            <input type="text" id="dcmd-ask-label" placeholder="Nueva presión de consigna"></div>
+          <div class="field-group" style="margin:0;"><label style="font-size:9px;">Unidad</label>
+            <input type="text" id="dcmd-ask-unit" placeholder="bar"></div>
+          <div class="field-group" style="margin:0;"><label style="font-size:9px;">Mínimo</label>
+            <input type="number" step="any" id="dcmd-ask-min"></div>
+          <div class="field-group" style="margin:0;"><label style="font-size:9px;">Máximo</label>
+            <input type="number" step="any" id="dcmd-ask-max"></div>
+        </div>
+      </div>
       <div style="display:flex;gap:8px;margin-top:12px;">
         <button class="btn-sm accent" style="flex:1;" onclick="saveDiagCommand()">Guardar botón</button>
         <button class="btn-sm" style="flex:1;" onclick="hideCmdEditor()">Cancelar</button>
@@ -1912,6 +2180,7 @@
     <div class="modal-title">Enviar Comandos al Dispositivo</div>
     <div class="modal-sub">El equipo ejecuta el comando y responde con el resultado (se muestra abajo).</div>
     <div id="actions-device-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;"></div>
+    <div id="actions-chart"></div>
     <div id="actions-list"></div>
     <div style="margin-top:12px;padding:10px 12px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);">
       <div style="font-size:10px;color:var(--text3);margin-bottom:4px;">Último resultado del equipo</div>
@@ -1987,6 +2256,7 @@
       <button class="btn-sm" style="width:100%;margin-top:6px;" onclick="openDiagCommands(DIAG.editingMachineId)">
         ⚡ Comandos de esta máquina
       </button>
+      <div id="mach-maint" style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;"></div>
       <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:10px;">
         <label style="font-size:10px;">Color según estado de un pin</label>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px;">
@@ -2208,6 +2478,22 @@
   </div>
 </div>
 
+<!-- ─── Barra de carga (descarga de la escena / modelo) ─── -->
+<div id="carga-overlay">
+  <div class="carga-caja">
+    <div class="carga-logo">
+      <span class="logo-dot"></span>
+      <span id="carga-marca">IoT PLATFORM</span>
+    </div>
+    <div id="carga-titulo" class="carga-titulo">Cargando…</div>
+    <div class="carga-track"><div id="carga-barra" class="carga-barra"></div></div>
+    <div class="carga-pie">
+      <span id="carga-detalle">—</span>
+      <span id="carga-pct">0%</span>
+    </div>
+  </div>
+</div>
+
 <!-- Toast container -->
 <div id="toast-container"></div>
 
@@ -2256,10 +2542,190 @@ const STATE = {
 };
 
 /* ══════════════════════════════════════════════════════
+   BARRA DE CARGA
+   Muestra el avance real de la descarga (escena JSON, modelo 3D) para que
+   el usuario sepa que la plataforma está trabajando y cuánto le falta.
+══════════════════════════════════════════════════════ */
+const CARGA = { activa: false, t0: 0, bytes: 0 };
+
+function fmtBytes(n) {
+  if (!n || n < 0) return '—';
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(0) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+
+// modo 'inline' = barra fina arriba, no tapa la plataforma
+function cargaMostrar(titulo, modo) {
+  const ov = document.getElementById('carga-overlay');
+  if (!ov) return;
+  CARGA.activa = true;
+  CARGA.t0 = performance.now();
+  CARGA.bytes = 0;
+  const marca = document.getElementById('carga-marca');
+  if (marca) marca.textContent = (STATE.branding && STATE.branding.nombre) || 'IoT PLATFORM';
+  const tEl = document.getElementById('carga-titulo');
+  if (tEl) tEl.textContent = titulo || 'Cargando…';
+  ov.classList.toggle('inline', modo === 'inline');
+  ov.classList.add('show');
+  cargaProgreso(0, 0, 0);
+}
+
+// recibidos / total en bytes. total = 0 → barra indeterminada
+function cargaProgreso(recibidos, total, pct) {
+  const barra = document.getElementById('carga-barra');
+  const det = document.getElementById('carga-detalle');
+  const pEl = document.getElementById('carga-pct');
+  if (!barra) return;
+  CARGA.bytes = recibidos || 0;
+
+  if (total > 0) {
+    const p = (pct != null) ? pct : Math.min(100, (recibidos / total) * 100);
+    barra.classList.remove('indeterminada');
+    barra.style.width = p.toFixed(1) + '%';
+    if (pEl) pEl.textContent = p.toFixed(0) + '%';
+    if (det) det.textContent = fmtBytes(recibidos) + ' de ' + fmtBytes(total);
+  } else {
+    barra.classList.add('indeterminada');
+    if (pEl) pEl.textContent = '';
+    if (det) det.textContent = recibidos ? fmtBytes(recibidos) + ' descargados' : 'Conectando…';
+  }
+}
+
+function cargaOcultar() {
+  const ov = document.getElementById('carga-overlay');
+  if (ov) ov.classList.remove('show');
+  CARGA.activa = false;
+}
+
+/* Descarga con progreso. Devuelve el texto y, de paso, mide la velocidad
+   real de la conexión: es la medición más honesta que tenemos, porque usa
+   el archivo que la plataforma necesita de verdad. */
+async function fetchConProgreso(url, opts, titulo, modo) {
+  opts = opts || {};
+  cargaMostrar(titulo, modo);
+  const t0 = performance.now();
+  try {
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+
+    const lenHdr = r.headers.get('Content-Length');
+    const total = lenHdr ? parseInt(lenHdr, 10) : 0;
+
+    // Sin streaming (navegador viejo o respuesta sin cuerpo legible):
+    // se descarga de una y la barra queda indeterminada.
+    if (!r.body || !r.body.getReader) {
+      cargaProgreso(0, 0);
+      const txt = await r.text();
+      registrarVelocidad(txt.length, performance.now() - t0);
+      cargaOcultar();
+      return txt;
+    }
+
+    const reader = r.body.getReader();
+    const trozos = [];
+    let recibidos = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      trozos.push(value);
+      recibidos += value.length;
+      cargaProgreso(recibidos, total);
+    }
+    const buf = new Uint8Array(recibidos);
+    let off = 0;
+    trozos.forEach(function (c) { buf.set(c, off); off += c.length; });
+    const txt = new TextDecoder('utf-8').decode(buf);
+
+    registrarVelocidad(recibidos, performance.now() - t0);
+    cargaOcultar();
+    return txt;
+  } catch (e) {
+    cargaOcultar();
+    throw e;
+  }
+}
+
+/* ══════════════════════════════════════════════════════
+   CONEXIÓN LENTA → MODO BÁSICO AUTOMÁTICO
+   El modo básico existe justamente para conexiones y equipos flojos.
+   Si la conexión es lenta se activa solo, sin esperar a que el usuario
+   sufra el 3D. Si el usuario eligió un modo a mano, se respeta.
+══════════════════════════════════════════════════════ */
+const UMBRAL_KBPS = 180;          // por debajo de esto, la escena tarda demasiado
+const UMBRAL_SEG  = 6;            // o si la descarga pasa de 6 s
+
+/* Umbrales deliberadamente conservadores: es peor degradar la vista de
+   alguien con buena conexión que tardar una descarga en detectarlo. La
+   medición real de fetchConProgreso es la que decide en los casos dudosos. */
+function conexionLentaPorAPI() {
+  const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (!c) return false;
+  if (c.saveData) return true;                       // el usuario pidió ahorrar datos
+  const t = c.effectiveType || '';
+  const dl = (typeof c.downlink === 'number') ? c.downlink : null;   // Mbps
+  if (t === 'slow-2g' || t === '2g') return true;
+  if (t === '3g' && dl !== null && dl > 0 && dl < 1.0) return true;
+  if (dl !== null && dl > 0 && dl < 0.7) return true;
+  if (typeof c.rtt === 'number' && c.rtt > 900) return true;         // ms
+  return false;
+}
+
+// Mide con una descarga real ya hecha
+function registrarVelocidad(bytes, ms) {
+  if (!bytes || !ms || ms <= 0) return;
+  const kbps = (bytes / 1024) / (ms / 1000);
+  STATE._kbps = kbps;
+  // Solo se juzga con descargas de tamaño suficiente: con 3 KB la medida
+  // es todo latencia y no dice nada de la velocidad real.
+  if (bytes < 60000) return;
+  if (kbps < UMBRAL_KBPS || (ms / 1000) > UMBRAL_SEG) {
+    activarBasicoPorConexion('la descarga fue de ' + kbps.toFixed(0) + ' KB/s');
+  }
+}
+
+function activarBasicoPorConexion(motivo) {
+  if (STATE.modoManual) return;      // el usuario ya decidió: no se le cambia
+  if (esModoBasico()) return;        // ya está
+  setModoBasico(true, { auto: true, silent: true });
+  toast('Conexión lenta detectada (' + motivo + ') · modo básico activado', 'warn', 8000);
+  setTimeout(function () {
+    toast('Podés volver al modo avanzado en Configuración › Modo de Visualización', 'ok', 8000);
+  }, 1500);
+}
+
+// Chequeo al arrancar y cuando la red cambia de calidad
+function vigilarConexion() {
+  if (conexionLentaPorAPI()) {
+    const c = navigator.connection || {};
+    activarBasicoPorConexion(c.saveData ? 'ahorro de datos activo' : (c.effectiveType || 'red lenta'));
+  }
+  const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+  if (c && c.addEventListener && !STATE._connWatch) {
+    STATE._connWatch = true;
+    c.addEventListener('change', function () {
+      if (conexionLentaPorAPI()) {
+        activarBasicoPorConexion(c.effectiveType || 'red lenta');
+      }
+    });
+  }
+}
+
+/* ══════════════════════════════════════════════════════
    PERSISTENCE (localStorage)
 ══════════════════════════════════════════════════════ */
+// Última cadena escrita por clave: si el valor no cambió, se evita la
+// escritura. localStorage.setItem es SÍNCRONO y bloquea el hilo principal,
+// así que cada escritura ahorrada es un tirón menos en la interfaz.
+const _lastSaved = {};
+
 function saveLocal(key, val) {
-  try { localStorage.setItem('iot_' + key, JSON.stringify(val)); } catch(e) {}
+  try {
+    const s = JSON.stringify(val);
+    if (_lastSaved[key] === s) return;      // sin cambios: no se escribe
+    localStorage.setItem('iot_' + key, s);
+    _lastSaved[key] = s;
+  } catch(e) {}
 }
 function loadLocal(key, def) {
   try {
@@ -2268,7 +2734,44 @@ function loadLocal(key, def) {
   } catch(e) { return def; }
 }
 
+/* ── Guardado diferido ──────────────────────────────────────────────
+   persistAll() se llamaba en CADA dato que llegaba del equipo. Como
+   serializa la escena completa (incluido el modelo 3D en base64, varios
+   MB) y escribe ~18 claves de localStorage de forma síncrona, la página
+   se congelaba con cada muestra. Ahora persistAll() solo programa el
+   guardado y persistAllNow() lo ejecuta, agrupando ráfagas de cambios. */
+let _persistT = null;
+
 function persistAll() {
+  if (_persistT) return;                     // ya hay uno programado
+  _persistT = setTimeout(function () {
+    _persistT = null;
+    persistAllNow();
+  }, 1500);
+}
+
+// Guarda solo lo que puede cambiar con los datos entrantes. Es el camino
+// caliente: no toca la escena ni el modelo 3D.
+let _persistDataT = null;
+function persistData() {
+  if (_persistDataT) return;
+  _persistDataT = setTimeout(function () {
+    _persistDataT = null;
+    saveLocal('devices', STATE.devices);
+    saveLocal('sensorDefs', STATE.sensorDefs);
+    saveLocal('channels', STATE.channels);
+    saveLocal('offlineQueue', STATE.offlineQueue);
+  }, 4000);
+}
+
+// Fuerza el guardado pendiente (al cerrar la pestaña o al ocultarla)
+function persistFlush() {
+  if (_persistT) { clearTimeout(_persistT); _persistT = null; }
+  if (_persistDataT) { clearTimeout(_persistDataT); _persistDataT = null; }
+  persistAllNow();
+}
+
+function persistAllNow() {
   saveLocal('config', STATE.config);
   saveLocal('devices', STATE.devices);
   saveLocal('diagMachines', STATE.diagMachines);
@@ -2285,6 +2788,13 @@ function persistAll() {
   // El trabajo en curso pertenece al dispositivo seleccionado
   if (STATE.currentSceneDev) scenesStore()[STATE.currentSceneDev] = captureCurrentScene();
   saveLocal('scenes', STATE.scenes || {});
+  saveLocal('assets', STATE.assets || {});
+  saveLocal('branding', STATE.branding || null);
+  saveLocal('boostCfg', STATE.boostCfg || null);
+  saveLocal('modoBasico', !!STATE.modoBasico);
+  saveLocal('modoManual', !!STATE.modoManual);
+  saveLocal('diagChartKey', STATE.diagChartKey || null);
+  saveLocal('diagChartOn', !!STATE.diagChartOn);
   saveLocal('currentSceneDev', STATE.currentSceneDev || null);
   if (typeof markSceneDirty === 'function') markSceneDirty();
 }
@@ -2305,6 +2815,13 @@ function loadPersisted() {
   STATE.demoConfig = loadLocal('demoConfig', null);
   STATE.modbusCfg = loadLocal('modbusCfg', null);
   STATE.scenes = loadLocal('scenes', {});
+  STATE.assets = loadLocal('assets', {});
+  STATE.branding = loadLocal('branding', null);
+  STATE.boostCfg = loadLocal('boostCfg', null);
+  STATE.modoBasico = loadLocal('modoBasico', false);
+  STATE.modoManual = loadLocal('modoManual', false);
+  STATE.diagChartKey = loadLocal('diagChartKey', null);
+  STATE.diagChartOn = loadLocal('diagChartOn', false);
   STATE.currentSceneDev = loadLocal('currentSceneDev', null);
   STATE.glbData = loadLocal('glbData', null);
 }
@@ -2355,18 +2872,86 @@ function initFirebase() {
   }
 }
 
+/* ── Suscripción a la base de datos ─────────────────────────────────
+   CAUSA DEL LAG "DE REPENTE": la plataforma escucha TODO /dispositivos con
+   un único 'value'. Ahí también vive la cola historial/ que el equipo llena
+   en cada muestreo. Cada 5 minutos el Apps Script traslada esa cola a la
+   hoja y BORRA LOS REGISTROS UNO POR UNO: cada borrado es un cambio, y cada
+   cambio disparaba el procesamiento completo (convertir canales, redibujar
+   dispositivos, sensores, gráficos, diagrama y 3D). Resultado: decenas de
+   redibujados seguidos, cada 5 minutos → la plataforma iba fluida y de
+   pronto se trababa. Además cada evento agregaba al gráfico un punto
+   repetido, porque los canales no habían cambiado.
+
+   AHORA:
+   · Los eventos se agrupan: como máximo un procesamiento cada 700 ms,
+     siempre con la foto más reciente.
+   · Solo se extraen las ramas que la plataforma usa; historial/,
+     sdUpload/ y demás colas ni se convierten a objeto.
+   · Si esas ramas no cambiaron (lo típico en un borrado de la cola), no
+     se procesa ni se redibuja nada.                                     */
+const RTDB_RAMAS = ['meta', 'canales', 'hardware', 'sensorDefs', 'horas', 'pines',
+                    'modbus', 'calibracion', 'last_action_result', 'sdFiles',
+                    'motores', 'sensores'];
+let _rtdbRef = null, _rtdbSnap = null, _rtdbT = null, _rtdbUlt = 0, _rtdbFirma = '';
+
 function subscribeRTDB() {
   if (!STATE.db) return;
   const basePath = STATE.config.firebase.basePath || '/dispositivos';
-  STATE.db.ref(basePath).on('value', snap => {
-    const data = snap.val();
-    if (!data) return;
-    setOnline(true);
-    processRTDBData(data);
+  // Evitar suscripciones duplicadas si se reconecta o se guarda la config
+  if (_rtdbRef) _rtdbRef.off('value');
+  _rtdbFirma = '';
+  _rtdbRef = STATE.db.ref(basePath);
+  _rtdbRef.on('value', snap => {
+    _rtdbSnap = snap;              // solo se guarda; se procesa agrupado
+    programarProcesoRTDB();
   }, err => {
     setOnline(false);
     toast('Error del servidor: ' + err.message, 'err');
   });
+}
+
+function programarProcesoRTDB() {
+  if (_rtdbT) return;
+  const espera = Math.max(0, 700 - (Date.now() - _rtdbUlt));
+  _rtdbT = setTimeout(procesarRTDB, espera);
+}
+
+function procesarRTDB() {
+  _rtdbT = null;
+  _rtdbUlt = Date.now();
+  const snap = _rtdbSnap;
+  _rtdbSnap = null;
+  if (!snap || !snap.exists()) return;
+  setOnline(true);
+
+  const data = {};
+  snap.forEach(dev => {
+    const o = {};
+    RTDB_RAMAS.forEach(k => {
+      const c = dev.child(k);
+      if (c.exists()) o[k] = c.val();
+    });
+    // Nodos sin ninguna rama conocida (manual_upload, colas) no son equipos
+    if (Object.keys(o).length) data[dev.key] = o;
+  });
+
+  const firma = JSON.stringify(data);
+  if (firma === _rtdbFirma) return;          // no cambió nada visible
+  _rtdbFirma = firma;
+  processRTDBData(data);
+}
+
+// Agrega un punto al historial en memoria, salvo que sea la MISMA lectura
+// (mismo ts): un evento de la base que no trae medición nueva no debe
+// duplicar puntos en el gráfico.
+function pushHistorial(fullKey, ts, val) {
+  let h = STATE.history[fullKey];
+  if (!h) h = STATE.history[fullKey] = [];
+  const ult = h[h.length - 1];
+  if (ult && ult.ts === ts) { ult.val = val; return; }
+  h.push({ ts: ts, val: val });
+  if (h.length > 500) h.splice(0, h.length - 500);
 }
 
 function processRTDBData(data) {
@@ -2395,6 +2980,12 @@ function processRTDBData(data) {
       STATE.devices[devId].loc = devData.meta.ubicacion || STATE.devices[devId].loc;
     }
     if (devData.sdFiles) STATE.devices[devId].sdFiles = devData.sdFiles;
+    // Horas de marcha publicadas por el equipo → fichas de mantenimiento
+    if (devData.calibracion) STATE.devices[devId].calibracion = devData.calibracion;
+    if (devData.horas) {
+      STATE.devices[devId].horas = devData.horas;
+      syncAssetHours(devId, devData.horas);
+    }
     if (devData.modbus) {
       STATE.devices[devId].modbus = devData.modbus;
       const mm = document.getElementById('modbus-modal');
@@ -2419,10 +3010,7 @@ function processRTDBData(data) {
         const fullKey = devId + '/' + sKey;
         STATE.liveData[fullKey] = sVal;
         // Append to history
-        if (!STATE.history[fullKey]) STATE.history[fullKey] = [];
-        STATE.history[fullKey].push({ ts: sVal.ts || Date.now()/1000, val: sVal.valor });
-        // Keep last 500 points
-        if (STATE.history[fullKey].length > 500) STATE.history[fullKey].shift();
+        pushHistorial(fullKey, sVal.ts || Date.now()/1000, sVal.valor);
       });
     }
     if (devData.motores) {
@@ -2464,9 +3052,7 @@ function processRTDBData(data) {
           name: (def && def.name) || chanKey
         };
         if (!falla && typeof valor === 'number' && isFinite(valor)) {
-          if (!STATE.history[fullKey]) STATE.history[fullKey] = [];
-          STATE.history[fullKey].push({ ts: c.ts || Date.now() / 1000, val: valor });
-          if (STATE.history[fullKey].length > 500) STATE.history[fullKey].shift();
+          pushHistorial(fullKey, c.ts || Date.now() / 1000, valor);
         }
       });
     }
@@ -2475,7 +3061,7 @@ function processRTDBData(data) {
       // Already handled by device; just display
     }
   });
-  persistAll();
+  persistData();      // camino caliente: solo lo que cambia con el dato
   renderDevices();
   renderSensors();
   updateRTPanel();
@@ -2617,7 +3203,7 @@ function simulateTick() {
   renderSensors();
   updateRTPanel();
   updateSensorIconValues();
-  if (document.getElementById('diagram-overlay').classList.contains('active')) renderDiagram();
+  if (document.getElementById('diagram-overlay').classList.contains('active')) scheduleRenderDiagram();
 
   const histView = document.getElementById('view-history');
   if (histView && histView.style.display !== 'none' && STATE.selectedSensor) {
@@ -2767,6 +3353,10 @@ function saveDemoConfig() {
   renderSensors();
   buildRTPanel();
   renderUserCard();
+  applyBranding();
+  fillBrandingForm();
+  fillBoostForm();
+  aplicarModo();
   fitHeader();
   window.addEventListener('orientationchange', () => setTimeout(fitHeader, 300));
   closeModal('demo-config-modal');
@@ -2877,7 +3467,7 @@ function deleteDevice(id) {
   renderSensors();
   updateRTPanel();
   updateSensorIcons();
-  if (document.getElementById('diagram-overlay').classList.contains('active')) renderDiagram();
+  if (document.getElementById('diagram-overlay').classList.contains('active')) scheduleRenderDiagram();
   toast('Dispositivo ' + id + ' eliminado', 'warn');
 }
 
@@ -2887,6 +3477,1216 @@ function deleteDevice(id) {
    un dispositivo se guarda la escena en curso y se carga la suya, de modo
    que el trabajo de cada uno queda separado.
 ══════════════════════════════════════════════════════ */
+/* ── Horas de marcha reportadas por el equipo ───────────────────────
+   El firmware publica las horas por índice de canal. Acá se traducen a
+   la clave del canal y se vuelcan a la ficha del equipo que lo usa, para
+   que el cronograma se calcule con horas reales y no estimadas.        */
+function syncAssetHours(devId, horas) {
+  const hw = STATE.channels[devId] || {};
+  // índice de canal → clave (t70_c2_a48_ch0)
+  const porIndice = {};
+  Object.keys(hw).forEach(function (k) {
+    if (hw[k] && typeof hw[k].index === 'number') porIndice[hw[k].index] = k;
+  });
+
+  let cambio = false;
+  Object.keys(horas).forEach(function (ck) {
+    const r = horas[ck];
+    if (!r || typeof r.horas !== 'number') return;
+    const chanKey = porIndice[r.canal];
+    if (!chanKey) return;
+    const fullKey = devId + '/' + chanKey;
+
+    Object.values(assets()).forEach(function (a) {
+      if (a.sensorKey !== fullKey) return;
+      // Solo se actualiza si el equipo reporta más horas que las guardadas:
+      // así una carga manual mayor (equipo usado antes de instalarlo) no se
+      // pierde, y el contador del equipo solo puede sumar.
+      const nuevas = Math.round(r.horas * 10) / 10;
+      if (nuevas > (a.horas || 0)) { a.horas = nuevas; cambio = true; }
+      a.enMarcha = !!r.activo;
+    });
+  });
+
+  if (cambio) {
+    // Solo se guarda localmente. Antes llamaba a persistAll(), que marca la
+    // escena como modificada y a los 8 s la sube COMPLETA a Drive (con el
+    // modelo 3D en base64: varios MB de JSON). Con una bomba en marcha las
+    // horas avanzan cada 6 minutos → otro tirón periódico. Las horas las
+    // vuelve a informar el equipo, no hace falta subirlas a Drive.
+    clearTimeout(STATE._assetsT);
+    STATE._assetsT = setTimeout(() => saveLocal('assets', STATE.assets || {}), 5000);
+    const mm = document.getElementById('maint-modal');
+    if (mm && mm.classList.contains('open')) renderMaintTab();
+    if (document.getElementById('diagram-overlay').classList.contains('active')) scheduleRenderDiagram();
+  }
+}
+
+/* ── Vínculo entre el diagrama 2D y el mantenimiento ────────────────
+   El usuario elige en el diagrama qué máquinas entran al plan. Solo esas
+   aparecen en el cronograma, y su nodo muestra el estado de mantenimiento.
+                                                                      */
+function assetOfMachine(m) {
+  if (!m || !m.assetId) return null;
+  return assets()[m.assetId] || null;
+}
+
+// Estado de mantenimiento de una máquina: null si no está en el plan
+function estadoMantenimiento(m) {
+  const a = assetOfMachine(m);
+  if (!a) return null;
+  const items = cronogramaDe(a);
+  if (!items.length) return { estado: 'sin-plan', texto: 'Sin tareas cargadas' };
+
+  const venc = items.filter(function (i) { return i.estado === 'vencido'; });
+  const prox = items.filter(function (i) { return i.estado === 'proximo'; });
+  if (venc.length) return { estado: 'vencido', texto: venc.length + ' tarea(s) vencida(s)', tarea: venc[0] };
+  if (prox.length) return { estado: 'proximo', texto: prox[0].tarea.tarea + ' en ' + prox[0].diasRestantes + ' días', tarea: prox[0] };
+  return { estado: 'ok', texto: 'Al día · próxima en ' + items[0].diasRestantes + ' días', tarea: items[0] };
+}
+
+// Agrega la máquina del diagrama al plan de mantenimiento (o abre el suyo)
+function addMachineToMaintenance() {
+  const m = STATE.diagMachines.find(function (x) { return x.id === DIAG.editingMachineId; });
+  if (!m) return;
+
+  if (m.assetId && assets()[m.assetId]) {
+    STATE.maintAsset = m.assetId;
+    STATE.maintTab = 'cron';
+    closeModal('machine-detail-modal');
+    openMaintenance();
+    return;
+  }
+
+  // Crear la ficha tomando lo que ya se sabe de la máquina
+  const id = 'a_' + Date.now().toString(36);
+  const sensorKey = (m.sensorKeys && m.sensorKeys[0]) || '';
+  assets()[id] = {
+    id: id,
+    nombre: m.label || 'Equipo',
+    deviceId: sensorKey ? sensorKey.split('/')[0] : (STATE.selectedDevice || ''),
+    sensorKey: sensorKey,
+    placa: { potenciaKW: '', caudal: '', presion: '', corrienteNom: '' },
+    horas: 0, horasPorDia: 8,
+    plan: [], historial: [],
+    machineId: m.id
+  };
+  m.assetId = id;
+  persistAll();
+  renderDiagram();
+
+  STATE.maintAsset = id;
+  STATE.maintTab = 'plan';        // lo primero es cargar el plan del fabricante
+  closeModal('machine-detail-modal');
+  openMaintenance();
+  toast('"' + (m.label || 'Equipo') + '" agregado al plan · cargá las tareas del fabricante', 'ok', 5000);
+}
+
+function removeMachineFromMaintenance() {
+  const m = STATE.diagMachines.find(function (x) { return x.id === DIAG.editingMachineId; });
+  if (!m || !m.assetId) return;
+  const a = assets()[m.assetId];
+  if (!confirm('¿Quitar "' + (a ? a.nombre : m.label) + '" del plan de mantenimiento?\n\nSe borra su plan e historial.')) return;
+  delete assets()[m.assetId];
+  delete m.assetId;
+  persistAll();
+  renderDiagram();
+  renderMachineMaintSection();
+  toast('Quitado del plan', 'warn');
+}
+
+// Sección de mantenimiento dentro del modal de la máquina
+function renderMachineMaintSection() {
+  const cont = document.getElementById('mach-maint');
+  if (!cont) return;
+  const m = STATE.diagMachines.find(function (x) { return x.id === DIAG.editingMachineId; });
+  if (!m) { cont.innerHTML = ''; return; }
+
+  const a = assetOfMachine(m);
+  if (!a) {
+    cont.innerHTML =
+      '<div style="font-size:10px;color:var(--text3);margin-bottom:6px;line-height:1.6;">' +
+        'Agregá esta máquina al plan para llevar su mantenimiento y ver avisos en el diagrama.</div>' +
+      '<button class="btn-sm accent" style="width:100%;" onclick="addMachineToMaintenance()">' +
+        '🛠 Agregar al plan de mantenimiento</button>';
+    return;
+  }
+
+  const est = estadoMantenimiento(m);
+  const color = est && est.estado === 'vencido' ? 'var(--err)'
+              : est && est.estado === 'proximo' ? 'var(--warn)'
+              : est && est.estado === 'ok' ? 'var(--accent)' : 'var(--text3)';
+  cont.innerHTML =
+    '<div style="font-size:11px;color:' + color + ';font-weight:600;margin-bottom:4px;">' +
+      '🛠 ' + chEsc(est ? est.texto : '') + '</div>' +
+    '<div style="font-size:10px;color:var(--text3);margin-bottom:8px;">' +
+      (a.horas || 0).toFixed(0) + ' h de marcha · ' + (a.plan || []).length + ' tareas' +
+      (a.enMarcha ? ' · <span style="color:var(--accent);">en marcha</span>' : '') + '</div>' +
+    '<div style="display:flex;gap:6px;">' +
+      '<button class="btn-sm accent" style="flex:2;" onclick="addMachineToMaintenance()">Ver mantenimiento</button>' +
+      '<button class="btn-sm" style="flex:1;color:var(--err);border-color:var(--err);" onclick="removeMachineFromMaintenance()">Quitar</button>' +
+    '</div>';
+}
+
+/* ══════════════════════════════════════════════════════
+   ANÁLISIS Y MANTENIMIENTO
+   El plan del fabricante es la base: define QUÉ tareas y CADA CUÁNTO.
+   El sistema calcula cuándo toca cada una según horas de marcha y fecha,
+   y el análisis de tendencias sugiere adelantar o posponer.
+   Todo el cálculo es determinista: no depende de un modelo de IA.
+══════════════════════════════════════════════════════ */
+function assets() {
+  if (!STATE.assets) STATE.assets = {};
+  return STATE.assets;
+}
+
+function currentAsset() {
+  const sel = document.getElementById('maint-asset');
+  const id = sel ? sel.value : null;
+  return id ? assets()[id] : null;
+}
+
+function addAsset() {
+  const nombre = prompt('Nombre del equipo (ej: Bomba pozo 1):', '');
+  if (!nombre) return;
+  const id = 'a_' + Date.now().toString(36);
+  assets()[id] = {
+    id: id, nombre: nombre.trim(),
+    deviceId: STATE.selectedDevice || '',
+    sensorKey: '',
+    placa: { potenciaKW: '', caudal: '', presion: '', corrienteNom: '' },
+    horas: 0, horasPorDia: 8,
+    plan: [], historial: []
+  };
+  STATE.maintTab = 'ficha';
+  persistAll();
+  fillAssetSelect(id);
+  renderMaintTab();
+}
+
+function fillAssetSelect(seleccionar) {
+  const sel = document.getElementById('maint-asset');
+  if (!sel) return;
+  const lista = Object.values(assets());
+  sel.innerHTML = lista.length
+    ? lista.map(a => '<option value="' + a.id + '">' + chEsc(a.nombre) + '</option>').join('')
+    : '<option value="">(sin equipos)</option>';
+  if (seleccionar) sel.value = seleccionar;
+}
+
+function openMaintenance() {
+  fillAssetSelect(STATE.maintAsset);
+  if (!STATE.maintTab) STATE.maintTab = 'todos';
+  setMaintTab(STATE.maintTab);
+  openModal('maint-modal');
+}
+
+function setMaintTab(t) {
+  STATE.maintTab = t;
+  document.querySelectorAll('#maint-tabs .btn-sm').forEach(function (b) {
+    b.classList.toggle('accent', b.dataset.tab === t);
+  });
+  renderMaintTab();
+}
+
+/* ── Cálculo del cronograma ────────────────────────────────────────── */
+// Cada tarea puede vencer por horas de marcha o por calendario; se toma
+// lo que ocurra primero, que es el criterio habitual de los fabricantes.
+function calcularVencimiento(a, t) {
+  const hoy = new Date();
+  const res = { tarea: t, porHoras: null, vence: null, motivo: '', estado: 'ok' };
+
+  if (t.cadaHoras > 0) {
+    const transcurridas = Math.max(0, (Number(a.horas) || 0) - (Number(t.ultimasHoras) || 0));
+    const restantes = t.cadaHoras - transcurridas;
+    res.porHoras = restantes;
+    const usoDia = Number(a.horasPorDia) || 8;
+    if (usoDia > 0) {
+      const f = new Date(hoy);
+      f.setDate(f.getDate() + Math.round(restantes / usoDia));
+      res.vence = f; res.motivo = 'horas de marcha';
+    }
+  }
+
+  if (t.cadaMeses > 0) {
+    const base = t.ultimaFecha ? new Date(t.ultimaFecha) : hoy;
+    const f = new Date(base);
+    f.setMonth(f.getMonth() + Number(t.cadaMeses));
+    if (!res.vence || f < res.vence) { res.vence = f; res.motivo = 'calendario'; }
+  }
+
+  if (res.vence) {
+    const dias = Math.round((res.vence - hoy) / 86400000);
+    res.diasRestantes = dias;
+    res.estado = dias < 0 ? 'vencido' : (dias <= 15 ? 'proximo' : 'ok');
+  }
+  return res;
+}
+
+function cronogramaDe(a) {
+  if (!a || !a.plan) return [];
+  return a.plan.map(function (t) { return calcularVencimiento(a, t); })
+    .sort(function (x, y) {
+      const dx = x.diasRestantes === undefined ? 9e9 : x.diasRestantes;
+      const dy = y.diasRestantes === undefined ? 9e9 : y.diasRestantes;
+      return dx - dy;
+    });
+}
+
+/* ── Análisis de tendencias (determinista) ─────────────────────────── */
+// Regresión lineal simple sobre el historial: pendiente por día
+function tendencia(puntos) {
+  const n = puntos.length;
+  if (n < 5) return null;
+  const t0 = puntos[0].ts;
+  let sx = 0, sy = 0, sxy = 0, sxx = 0;
+  puntos.forEach(function (p) {
+    const x = (p.ts - t0) / 86400;
+    sx += x; sy += p.val; sxy += x * p.val; sxx += x * x;
+  });
+  const den = n * sxx - sx * sx;
+  if (Math.abs(den) < 1e-9) return null;
+  return {
+    pendienteDia: (n * sxy - sx * sy) / den,
+    media: sy / n,
+    muestras: n,
+    dias: (puntos[n - 1].ts - t0) / 86400
+  };
+}
+
+function diagnosticarAsset(a) {
+  const out = { hallazgos: [], datos: null };
+  if (!a || !a.sensorKey) {
+    out.hallazgos.push({ nivel: 'info', texto: 'Asigná un canal de corriente en la Ficha para habilitar el análisis.' });
+    return out;
+  }
+  const hist = STATE.history[a.sensorKey] || [];
+  if (hist.length < 10) {
+    out.hallazgos.push({ nivel: 'info', texto: 'Historial insuficiente (' + hist.length + ' muestras). El análisis mejora con semanas de datos.' });
+    return out;
+  }
+
+  const tend = tendencia(hist);
+  out.datos = tend;
+  const nom = parseFloat(a.placa && a.placa.corrienteNom);
+
+  if (tend) {
+    const cambioPct = tend.media !== 0 ? (tend.pendienteDia * 30 / Math.abs(tend.media)) * 100 : 0;
+    if (Math.abs(cambioPct) >= 5) {
+      out.hallazgos.push({
+        nivel: cambioPct > 0 ? 'alerta' : 'aviso',
+        texto: (cambioPct > 0 ? 'Consumo en aumento: ' : 'Consumo en descenso: ') +
+               cambioPct.toFixed(1) + '% por mes (' + tend.dias.toFixed(1) + ' días analizados).',
+        causa: cambioPct > 0
+          ? 'Un consumo creciente con caudal estable suele indicar desgaste de impulsor, rodamientos o mayor fricción mecánica.'
+          : 'Un consumo decreciente puede indicar pérdida de carga, fuga o cavitación.'
+      });
+    } else {
+      out.hallazgos.push({ nivel: 'ok', texto: 'Consumo estable (' + cambioPct.toFixed(1) + '% mensual). Sin deriva significativa.' });
+    }
+  }
+
+  if (isFinite(nom) && nom > 0 && tend) {
+    const carga = (tend.media / nom) * 100;
+    if (carga > 105) {
+      out.hallazgos.push({ nivel: 'alerta',
+        texto: 'Trabajando al ' + carga.toFixed(0) + '% de la corriente nominal.',
+        causa: 'Por encima de placa: revisar sobrecarga mecánica, tensión de alimentación o punto de operación.' });
+    } else if (carga < 40) {
+      out.hallazgos.push({ nivel: 'aviso',
+        texto: 'Carga baja: ' + carga.toFixed(0) + '% de la nominal.',
+        causa: 'Puede indicar marcha en vacío, válvula cerrada o pérdida de succión.' });
+    } else {
+      out.hallazgos.push({ nivel: 'ok', texto: 'Carga normal: ' + carga.toFixed(0) + '% de la nominal.' });
+    }
+  }
+  return out;
+}
+
+/* ── Render de las pestañas ────────────────────────────────────────── */
+var IS_M = 'padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);font-size:11px;width:100%;';
+
+function renderMaintTab() {
+  const cont = document.getElementById('maint-body');
+  if (!cont) return;
+  const a = currentAsset();
+  STATE.maintAsset = a ? a.id : null;
+
+  const t = STATE.maintTab || 'cron';
+  if (t === 'todos') return renderTodosTab(cont);   // no necesita selección
+  if (t === 'cal')   return renderCalendario(cont, null);   // todos los equipos
+
+  if (!a) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:40px;line-height:1.7;">' +
+      'Todavía no hay equipos en el plan.<br><br>' +
+      'La forma más simple de agregarlos es desde el <b>Diagrama 2D</b>: abrí una máquina ' +
+      'y tocá <b>🛠 Agregar al plan de mantenimiento</b>.<br>' +
+      'También podés crear uno suelto con <b>+ Nuevo equipo</b>.</div>';
+    return;
+  }
+  if (t === 'ficha') return renderFichaTab(cont, a);
+  if (t === 'plan')  return renderPlanTab(cont, a);
+  if (t === 'hist')  return renderHistTab(cont, a);
+  if (t === 'diag')  return renderDiagTab(cont, a);
+  return renderCronTab(cont, a);
+}
+
+// Vista general: todos los equipos del plan ordenados por urgencia
+/* ── Vista de calendario ────────────────────────────────────────────
+   Muestra el mes con las tareas programadas (según el cálculo) y las ya
+   realizadas (del historial), de todos los equipos o de uno solo.      */
+function calMes() {
+  if (!STATE.calRef) STATE.calRef = new Date();
+  return STATE.calRef;
+}
+
+function calMover(delta) {
+  const d = new Date(calMes());
+  d.setDate(1);
+  d.setMonth(d.getMonth() + delta);
+  STATE.calRef = d;
+  renderMaintTab();
+}
+
+function calHoy() { STATE.calRef = new Date(); renderMaintTab(); }
+
+// Reúne los eventos del mes: programados y realizados
+function eventosDelMes(soloAsset) {
+  const ref = calMes();
+  const y = ref.getFullYear(), mth = ref.getMonth();
+  const lista = soloAsset ? [soloAsset] : Object.values(assets());
+  const ev = {};   // 'YYYY-MM-DD' → [eventos]
+
+  const push = function (fecha, e) {
+    if (!fecha) return;
+    if (fecha.getFullYear() !== y || fecha.getMonth() !== mth) return;
+    const k = fecha.toISOString().slice(0, 10);
+    if (!ev[k]) ev[k] = [];
+    ev[k].push(e);
+  };
+
+  lista.forEach(function (a) {
+    // Programadas (del cálculo del cronograma)
+    cronogramaDe(a).forEach(function (it) {
+      if (!it.vence) return;
+      push(it.vence, {
+        tipo: 'prog', estado: it.estado,
+        equipo: a.nombre, tarea: it.tarea.tarea || 'Tarea',
+        duracion: it.tarea.duracion || 1, prioridad: it.tarea.prioridad || 'media',
+        assetId: a.id
+      });
+    });
+    // Realizadas (del historial)
+    (a.historial || []).forEach(function (h) {
+      if (!h.fecha) return;
+      push(new Date(h.fecha + 'T12:00:00'), {
+        tipo: 'hecho', equipo: a.nombre, tarea: h.tarea,
+        notas: h.notas || '', assetId: a.id
+      });
+    });
+  });
+  return ev;
+}
+
+function renderCalendario(cont, soloAsset) {
+  const ref = calMes();
+  const y = ref.getFullYear(), mth = ref.getMonth();
+  const ev = eventosDelMes(soloAsset);
+
+  const primero = new Date(y, mth, 1);
+  const diasMes = new Date(y, mth + 1, 0).getDate();
+  // Semana que arranca en lunes
+  let offset = primero.getDay() - 1; if (offset < 0) offset = 6;
+
+  const hoyStr = new Date().toISOString().slice(0, 10);
+  const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio',
+                 'Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+  const dias = ['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+
+  const colorEv = function (e) {
+    if (e.tipo === 'hecho') return 'var(--accent2)';
+    return e.estado === 'vencido' ? 'var(--err)'
+         : e.estado === 'proximo' ? 'var(--warn)' : 'var(--accent)';
+  };
+
+  let celdas = '';
+  for (let i = 0; i < offset; i++) celdas += '<div style="min-height:74px;"></div>';
+
+  for (let d = 1; d <= diasMes; d++) {
+    const fecha = new Date(y, mth, d);
+    const k = fecha.toISOString().slice(0, 10);
+    const lista = ev[k] || [];
+    const esHoy = k === hoyStr;
+    const finde = fecha.getDay() === 0 || fecha.getDay() === 6;
+
+    celdas += '<div style="min-height:74px;border:1px solid ' + (esHoy ? 'var(--accent)' : 'var(--border)') +
+      ';border-radius:5px;padding:4px 5px;background:' + (finde ? 'var(--bg)' : 'var(--bg2)') + ';overflow:hidden;">' +
+      '<div style="font-size:10px;color:' + (esHoy ? 'var(--accent)' : 'var(--text3)') +
+        ';font-weight:' + (esHoy ? '700' : '400') + ';">' + d + '</div>' +
+      lista.slice(0, 3).map(function (e) {
+        const c = colorEv(e);
+        const titulo = (e.tipo === 'hecho' ? '✓ ' : '') + e.equipo + ' · ' + e.tarea +
+                       (e.tipo === 'prog' ? ' (' + e.duracion + ' h)' : '');
+        return '<div title="' + chEsc(titulo) + '" onclick="STATE.maintAsset=\'' + e.assetId +
+          '\';fillAssetSelect(\'' + e.assetId + '\');setMaintTab(\'cron\')" ' +
+          'style="font-size:8px;line-height:1.35;margin-top:2px;padding:1px 3px;border-radius:3px;cursor:pointer;' +
+          'background:' + c + '22;color:' + c + ';border-left:2px solid ' + c + ';' +
+          'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+          (e.tipo === 'hecho' ? '✓ ' : '') + chEsc(e.tarea) + '</div>';
+      }).join('') +
+      (lista.length > 3 ? '<div style="font-size:8px;color:var(--text3);margin-top:2px;">+' + (lista.length - 3) + ' más</div>' : '') +
+      '</div>';
+  }
+
+  cont.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">' +
+      '<div style="display:flex;gap:6px;align-items:center;">' +
+        '<button class="btn-sm" onclick="calMover(-1)">‹</button>' +
+        '<span style="font-size:12px;color:var(--text);font-weight:600;min-width:130px;text-align:center;">' +
+          meses[mth] + ' ' + y + '</span>' +
+        '<button class="btn-sm" onclick="calMover(1)">›</button>' +
+        '<button class="btn-sm" onclick="calHoy()">Hoy</button>' +
+      '</div>' +
+      '<div style="display:flex;gap:10px;font-size:9px;color:var(--text3);flex-wrap:wrap;">' +
+        '<span style="color:var(--err);">■ Vencida</span>' +
+        '<span style="color:var(--warn);">■ Próxima</span>' +
+        '<span style="color:var(--accent);">■ Programada</span>' +
+        '<span style="color:var(--accent2);">■ Realizada</span>' +
+      '</div>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px;">' +
+      dias.map(function (d) {
+        return '<div style="font-size:9px;color:var(--text3);text-align:center;padding:2px;">' + d + '</div>';
+      }).join('') +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;">' + celdas + '</div>' +
+    '<div style="font-size:9px;color:var(--text3);margin-top:10px;line-height:1.6;">' +
+      (soloAsset ? 'Mostrando solo "' + chEsc(soloAsset.nombre) + '". ' : 'Mostrando todos los equipos del plan. ') +
+      'Tocá una tarea para ir a su cronograma.</div>';
+}
+
+function renderTodosTab(cont) {
+  const lista = Object.values(assets());
+  if (!lista.length) {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:40px;line-height:1.7;">' +
+      'Todavía no hay equipos en el plan.<br><br>' +
+      'La forma más simple de agregarlos es desde el <b>Diagrama 2D</b>: abrí una máquina ' +
+      'y tocá <b>🛠 Agregar al plan de mantenimiento</b>.</div>';
+    return;
+  }
+
+  // Calcular el estado de cada equipo y ordenar por urgencia
+  const filas = lista.map(function (a) {
+    const items = cronogramaDe(a);
+    const venc = items.filter(function (i) { return i.estado === 'vencido'; });
+    const prox = items.filter(function (i) { return i.estado === 'proximo'; });
+    let estado = 'ok', detalle = 'Sin tareas', urgencia = 3;
+    if (!items.length) { estado = 'sin-plan'; detalle = 'Sin tareas cargadas'; urgencia = 2; }
+    else if (venc.length) { estado = 'vencido'; detalle = venc.length + ' vencida(s): ' + (venc[0].tarea.tarea || ''); urgencia = 0; }
+    else if (prox.length) { estado = 'proximo'; detalle = prox[0].tarea.tarea + ' en ' + prox[0].diasRestantes + ' días'; urgencia = 1; }
+    else { detalle = 'Próxima: ' + (items[0].tarea.tarea || '') + ' en ' + items[0].diasRestantes + ' días'; }
+    return { a: a, estado: estado, detalle: detalle, urgencia: urgencia, items: items };
+  }).sort(function (x, y) { return x.urgencia - y.urgencia; });
+
+  const color = function (e) {
+    return e === 'vencido' ? 'var(--err)' : (e === 'proximo' ? 'var(--warn)' :
+           (e === 'sin-plan' ? 'var(--text3)' : 'var(--accent)'));
+  };
+  const icono = function (e) {
+    return e === 'vencido' ? '⚠' : (e === 'proximo' ? '△' : (e === 'sin-plan' ? 'ℹ' : '✓'));
+  };
+
+  const nVenc = filas.filter(function (f) { return f.estado === 'vencido'; }).length;
+  const nProx = filas.filter(function (f) { return f.estado === 'proximo'; }).length;
+
+  cont.innerHTML =
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;">' +
+      '<div class="metric-box" style="flex:1;min-width:110px;"><div class="metric-box-label">Equipos</div>' +
+        '<div class="metric-box-val" style="font-size:20px;">' + filas.length + '</div></div>' +
+      '<div class="metric-box" style="flex:1;min-width:110px;"><div class="metric-box-label">Vencidos</div>' +
+        '<div class="metric-box-val" style="font-size:20px;color:' + (nVenc ? 'var(--err)' : 'var(--text2)') + ';">' + nVenc + '</div></div>' +
+      '<div class="metric-box" style="flex:1;min-width:110px;"><div class="metric-box-label">Próximos</div>' +
+        '<div class="metric-box-val" style="font-size:20px;color:' + (nProx ? 'var(--warn)' : 'var(--text2)') + ';">' + nProx + '</div></div>' +
+    '</div>' +
+    filas.map(function (f) {
+      const c = color(f.estado);
+      return '<div style="border-left:3px solid ' + c + ';background:var(--bg2);border-radius:6px;padding:10px 12px;margin-bottom:8px;cursor:pointer;"' +
+        ' onclick="STATE.maintAsset=\'' + f.a.id + '\';fillAssetSelect(\'' + f.a.id + '\');setMaintTab(\'cron\')">' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;">' +
+          '<div style="font-size:12px;color:var(--text);font-weight:600;">' + icono(f.estado) + ' ' + chEsc(f.a.nombre) + '</div>' +
+          '<div style="font-size:10px;color:var(--text3);">' + (f.a.horas || 0).toFixed(0) + ' h' +
+            (f.a.enMarcha ? ' · <span style="color:var(--accent);">en marcha</span>' : '') + '</div></div>' +
+        '<div style="font-size:10px;color:' + c + ';margin-top:4px;">' + chEsc(f.detalle) + '</div>' +
+        '</div>';
+    }).join('') +
+    '<div style="font-size:9px;color:var(--text3);margin-top:12px;line-height:1.6;">' +
+      'Los equipos se agregan desde el Diagrama 2D, eligiendo qué máquinas entran al plan. ' +
+      'Tocá cualquiera para ver su cronograma.</div>';
+}
+
+function renderFichaTab(cont, a) {
+  const canales = Object.keys(STATE.liveData).filter(function (k) {
+    const d = STATE.liveData[k];
+    return d && (typeof d.valor === 'number' || d.mA !== undefined);
+  });
+  cont.innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">' +
+      '<div class="field-group" style="margin:0;"><label>Nombre del equipo</label>' +
+        '<input id="mf_nombre" style="' + IS_M + '" value="' + chEsc(a.nombre) + '"></div>' +
+      '<div class="field-group" style="margin:0;"><label>Canal de corriente (para el análisis)</label>' +
+        '<select id="mf_sensor" style="' + IS_M + '"><option value="">— ninguno —</option>' +
+        canales.map(function (k) {
+          return '<option value="' + chEsc(k) + '"' + (a.sensorKey === k ? ' selected' : '') + '>' +
+                 chEsc(sensorDisplayName(k)) + chEsc(pinSuffix(k)) + '</option>';
+        }).join('') + '</select></div>' +
+    '</div>' +
+    '<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin:16px 0 8px;">Datos de placa</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px;">' +
+      '<div class="field-group" style="margin:0;"><label>Potencia (kW)</label>' +
+        '<input id="mf_pot" type="number" step="any" style="' + IS_M + '" value="' + chEsc(a.placa.potenciaKW) + '"></div>' +
+      '<div class="field-group" style="margin:0;"><label>Corriente nominal (A)</label>' +
+        '<input id="mf_inom" type="number" step="any" style="' + IS_M + '" value="' + chEsc(a.placa.corrienteNom) + '"></div>' +
+      '<div class="field-group" style="margin:0;"><label>Caudal nominal</label>' +
+        '<input id="mf_caudal" style="' + IS_M + '" value="' + chEsc(a.placa.caudal) + '"></div>' +
+      '<div class="field-group" style="margin:0;"><label>Presión nominal</label>' +
+        '<input id="mf_pres" style="' + IS_M + '" value="' + chEsc(a.placa.presion) + '"></div>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;">' +
+      '<div class="field-group" style="margin:0;"><label>Horas de marcha acumuladas</label>' +
+        '<input id="mf_horas" type="number" step="any" style="' + IS_M + '" value="' + (a.horas || 0) + '"></div>' +
+      '<div class="field-group" style="margin:0;"><label>Horas de uso por día (estimado)</label>' +
+        '<input id="mf_hdia" type="number" step="any" style="' + IS_M + '" value="' + (a.horasPorDia || 8) + '"></div>' +
+    '</div>' +
+    '<div style="font-size:9px;color:var(--text3);margin-top:8px;line-height:1.6;">' +
+      'La corriente nominal permite comparar el consumo real contra el de placa. ' +
+      'Las horas por día sirven para estimar en qué fecha se alcanzarán las horas de cada tarea.</div>' +
+    '<div style="display:flex;gap:8px;margin-top:14px;">' +
+      '<button class="btn-sm accent" style="flex:2;" onclick="saveFicha()">Guardar ficha</button>' +
+      '<button class="btn-sm" style="flex:1;color:var(--err);border-color:var(--err);" onclick="deleteAsset()">Eliminar equipo</button>' +
+    '</div>';
+}
+
+function saveFicha() {
+  const a = currentAsset(); if (!a) return;
+  const g = function (id) { const el = document.getElementById(id); return el ? el.value : ''; };
+  a.nombre = g('mf_nombre').trim() || a.nombre;
+  a.sensorKey = g('mf_sensor');
+  a.placa = { potenciaKW: g('mf_pot'), corrienteNom: g('mf_inom'),
+              caudal: g('mf_caudal'), presion: g('mf_pres') };
+  a.horas = parseFloat(g('mf_horas')) || 0;
+  a.horasPorDia = parseFloat(g('mf_hdia')) || 8;
+  persistAll();
+  fillAssetSelect(a.id);
+  toast('Ficha guardada', 'ok');
+}
+
+function deleteAsset() {
+  const a = currentAsset(); if (!a) return;
+  if (!confirm('¿Eliminar "' + a.nombre + '" y todo su plan e historial?')) return;
+  delete assets()[a.id];
+  persistAll();
+  fillAssetSelect();
+  renderMaintTab();
+  toast('Equipo eliminado', 'warn');
+}
+
+function renderPlanTab(cont, a) {
+  cont.innerHTML =
+    '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.6;">' +
+      'Cargá las tareas del manual del fabricante. Cada una puede vencer por horas de marcha, ' +
+      'por calendario, o por lo que ocurra primero.</div>' +
+    (a.plan || []).map(function (t, i) {
+      return '<div style="border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:8px;background:var(--bg2);">' +
+        '<div style="display:grid;grid-template-columns:2fr 0.8fr 0.8fr 0.8fr auto;gap:8px;align-items:end;">' +
+          '<div class="field-group" style="margin:0;"><label style="font-size:9px;">Tarea</label>' +
+            '<input id="mp_' + i + '_t" style="' + IS_M + '" value="' + chEsc(t.tarea || '') + '" placeholder="Cambio de rodamientos"></div>' +
+          '<div class="field-group" style="margin:0;"><label style="font-size:9px;">Cada (horas)</label>' +
+            '<input id="mp_' + i + '_h" type="number" style="' + IS_M + '" value="' + (t.cadaHoras || '') + '"></div>' +
+          '<div class="field-group" style="margin:0;"><label style="font-size:9px;">Cada (meses)</label>' +
+            '<input id="mp_' + i + '_m" type="number" style="' + IS_M + '" value="' + (t.cadaMeses || '') + '"></div>' +
+          '<div class="field-group" style="margin:0;"><label style="font-size:9px;">Duración (h)</label>' +
+            '<input id="mp_' + i + '_d" type="number" step="any" style="' + IS_M + '" value="' + (t.duracion || 1) + '"></div>' +
+          '<button class="btn-sm" style="color:var(--err);border-color:var(--err);" onclick="removePlanTask(' + i + ')">✕</button>' +
+        '</div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;">' +
+          '<div class="field-group" style="margin:0;"><label style="font-size:9px;">Prioridad</label>' +
+            '<select id="mp_' + i + '_p" style="' + IS_M + '">' +
+              '<option value="alta"' + (t.prioridad === 'alta' ? ' selected' : '') + '>Alta</option>' +
+              '<option value="media"' + ((!t.prioridad || t.prioridad === 'media') ? ' selected' : '') + '>Media</option>' +
+              '<option value="baja"' + (t.prioridad === 'baja' ? ' selected' : '') + '>Baja</option>' +
+            '</select></div>' +
+          '<div class="field-group" style="margin:0;"><label style="font-size:9px;">Última vez (fecha)</label>' +
+            '<input id="mp_' + i + '_uf" type="date" style="' + IS_M + '" value="' + (t.ultimaFecha || '') + '"></div>' +
+          '<div class="field-group" style="margin:0;"><label style="font-size:9px;">Última vez (horas)</label>' +
+            '<input id="mp_' + i + '_uh" type="number" style="' + IS_M + '" value="' + (t.ultimasHoras || 0) + '"></div>' +
+        '</div></div>';
+    }).join('') +
+    '<button class="btn-sm" style="width:100%;margin-top:6px;" onclick="addPlanTask()">+ Agregar tarea</button>' +
+    '<button class="btn-sm accent" style="width:100%;margin-top:8px;" onclick="savePlan()">Guardar plan</button>';
+}
+
+function readPlan(a) {
+  (a.plan || []).forEach(function (t, i) {
+    const g = function (id) { const el = document.getElementById('mp_' + i + '_' + id); return el ? el.value : ''; };
+    t.tarea = g('t').trim();
+    t.cadaHoras = parseFloat(g('h')) || 0;
+    t.cadaMeses = parseFloat(g('m')) || 0;
+    t.duracion = parseFloat(g('d')) || 1;
+    t.prioridad = g('p') || 'media';
+    t.ultimaFecha = g('uf');
+    t.ultimasHoras = parseFloat(g('uh')) || 0;
+  });
+}
+
+function addPlanTask() {
+  const a = currentAsset(); if (!a) return;
+  readPlan(a);
+  if (!a.plan) a.plan = [];
+  a.plan.push({ tarea: '', cadaHoras: 0, cadaMeses: 6, duracion: 1,
+                prioridad: 'media', ultimasHoras: a.horas || 0 });
+  renderMaintTab();
+}
+
+function removePlanTask(i) {
+  const a = currentAsset(); if (!a) return;
+  readPlan(a);
+  a.plan.splice(i, 1);
+  persistAll();
+  renderMaintTab();
+}
+
+function savePlan() {
+  const a = currentAsset(); if (!a) return;
+  readPlan(a);
+  persistAll();
+  toast('Plan guardado · ' + (a.plan || []).length + ' tareas', 'ok');
+  setMaintTab('cron');
+}
+
+function renderCronTab(cont, a) {
+  const items = cronogramaDe(a);
+  const diag = diagnosticarAsset(a);
+  const alerta = diag.hallazgos.filter(function (h) { return h.nivel === 'alerta'; })[0];
+
+  // Sin tareas: el calendario igual puede mostrar el historial realizado
+  if (!items.length && STATE.cronVista !== 'cal') {
+    cont.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:30px;line-height:1.7;">' +
+      'Este equipo no tiene tareas cargadas.<br>Andá a <b>📋 Plan</b> y cargá el plan del fabricante.</div>';
+    return;
+  }
+
+  const color = function (e) { return e === 'vencido' ? 'var(--err)' : (e === 'proximo' ? 'var(--warn)' : 'var(--accent)'); };
+  const etiqueta = function (e) { return e === 'vencido' ? 'VENCIDO' : (e === 'proximo' ? 'PRÓXIMO' : 'AL DÍA'); };
+
+  // Vista de calendario del equipo, si el usuario la eligió
+  if (STATE.cronVista === 'cal') {
+    cont.innerHTML = '<div style="display:flex;gap:6px;margin-bottom:12px;">' +
+      '<button class="btn-sm" onclick="STATE.cronVista=\'lista\';renderMaintTab()">☰ Lista</button>' +
+      '<button class="btn-sm accent" onclick="STATE.cronVista=\'cal\';renderMaintTab()">🗓 Calendario</button></div>' +
+      '<div id="cron-cal"></div>';
+    renderCalendario(document.getElementById('cron-cal'), a);
+    return;
+  }
+
+  cont.innerHTML =
+    '<div style="display:flex;gap:6px;margin-bottom:12px;">' +
+      '<button class="btn-sm accent" onclick="STATE.cronVista=\'lista\';renderMaintTab()">☰ Lista</button>' +
+      '<button class="btn-sm" onclick="STATE.cronVista=\'cal\';renderMaintTab()">🗓 Calendario</button></div>' +
+    (alerta ? '<div style="border:1px solid var(--warn);border-radius:6px;padding:10px 12px;margin-bottom:12px;background:rgba(255,184,0,0.07);">' +
+      '<div style="font-size:11px;color:var(--warn);font-weight:600;">⚠ El análisis sugiere adelantar tareas</div>' +
+      '<div style="font-size:10px;color:var(--text2);margin-top:4px;line-height:1.6;">' + chEsc(alerta.texto) + ' ' + chEsc(alerta.causa || '') + '</div></div>' : '') +
+    '<div style="font-size:10px;color:var(--text3);margin-bottom:10px;">Horas de marcha: ' +
+      '<b style="color:var(--text);">' + (a.horas || 0).toFixed(0) + ' h</b> · uso estimado ' + (a.horasPorDia || 8) + ' h/día</div>' +
+    items.map(function (it) {
+      const t = it.tarea;
+      const c = color(it.estado);
+      const fecha = it.vence ? it.vence.toLocaleDateString() : '—';
+      const dias = it.diasRestantes;
+      return '<div style="border-left:3px solid ' + c + ';background:var(--bg2);border-radius:6px;padding:10px 12px;margin-bottom:8px;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap;">' +
+          '<div style="font-size:12px;color:var(--text);font-weight:600;">' + chEsc(t.tarea || 'Tarea') + '</div>' +
+          '<div style="font-size:10px;color:' + c + ';font-weight:700;">' + etiqueta(it.estado) + '</div></div>' +
+        '<div style="font-size:10px;color:var(--text3);margin-top:5px;line-height:1.6;">Vence: ' +
+          '<b style="color:var(--text2);">' + fecha + '</b>' +
+          (dias !== undefined ? (' · ' + (dias < 0 ? Math.abs(dias) + ' días de atraso' : 'en ' + dias + ' días')) : '') +
+          (it.motivo ? ' · por ' + it.motivo : '') +
+          (it.porHoras !== null ? ' · faltan ' + Math.max(0, it.porHoras).toFixed(0) + ' h de marcha' : '') +
+          ' · prioridad ' + chEsc(t.prioridad || 'media') + ' · ' + (t.duracion || 1) + ' h de trabajo</div>' +
+        '<button class="btn-sm" style="margin-top:8px;font-size:10px;" onclick="registrarIntervencion(' +
+          JSON.stringify(t.tarea || '').replace(/"/g, '&quot;') + ')">✓ Registrar como hecha</button>' +
+        '</div>';
+    }).join('') +
+    '<div style="font-size:9px;color:var(--text3);margin-top:12px;line-height:1.6;">' +
+      'Las fechas por horas de marcha se estiman con el uso diario declarado en la Ficha. ' +
+      'Cuando el equipo reporte horas reales, el cálculo se ajusta solo.</div>';
+}
+
+function registrarIntervencion(tarea) {
+  const a = currentAsset(); if (!a) return;
+  const notas = prompt('Registrar "' + tarea + '" como realizada.\n\nObservaciones (opcional):', '');
+  if (notas === null) return;
+  const hoy = new Date().toISOString().slice(0, 10);
+  if (!a.historial) a.historial = [];
+  a.historial.unshift({ fecha: hoy, tarea: tarea, notas: notas || '', horas: a.horas || 0 });
+  (a.plan || []).forEach(function (t) {
+    if (t.tarea === tarea) { t.ultimaFecha = hoy; t.ultimasHoras = a.horas || 0; }
+  });
+  persistAll();
+  renderMaintTab();
+  toast('Intervención registrada', 'ok');
+}
+
+function renderHistTab(cont, a) {
+  const h = a.historial || [];
+  cont.innerHTML = h.length ? h.map(function (r, i) {
+    return '<div style="border:1px solid var(--border);border-radius:6px;padding:10px 12px;margin-bottom:8px;background:var(--bg2);">' +
+      '<div style="display:flex;justify-content:space-between;gap:8px;">' +
+        '<div style="font-size:12px;color:var(--text);font-weight:600;">' + chEsc(r.tarea) + '</div>' +
+        '<div style="font-size:10px;color:var(--text3);">' + chEsc(r.fecha) + ' · ' + (r.horas || 0).toFixed(0) + ' h</div></div>' +
+      (r.notas ? '<div style="font-size:10px;color:var(--text2);margin-top:5px;">' + chEsc(r.notas) + '</div>' : '') +
+      '<button class="btn-sm" style="margin-top:6px;font-size:9px;color:var(--err);border-color:var(--err);" onclick="borrarIntervencion(' + i + ')">Eliminar</button>' +
+      '</div>';
+  }).join('') : '<div style="font-size:12px;color:var(--text3);text-align:center;padding:30px;">Sin intervenciones registradas.</div>';
+}
+
+function borrarIntervencion(i) {
+  const a = currentAsset(); if (!a) return;
+  a.historial.splice(i, 1);
+  persistAll();
+  renderMaintTab();
+}
+
+function renderDiagTab(cont, a) {
+  const d = diagnosticarAsset(a);
+  const colorNivel = function (n) {
+    return n === 'alerta' ? 'var(--err)' : (n === 'aviso' ? 'var(--warn)' : (n === 'ok' ? 'var(--accent)' : 'var(--text3)'));
+  };
+  const icono = function (n) { return n === 'alerta' ? '⚠' : (n === 'aviso' ? '△' : (n === 'ok' ? '✓' : 'ℹ')); };
+
+  cont.innerHTML =
+    '<div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.6;">' +
+      'Análisis calculado sobre el historial del canal asignado. Los resultados son ' +
+      'determinísticos: tendencia lineal y comparación contra los datos de placa.</div>' +
+    d.hallazgos.map(function (h) {
+      return '<div style="border-left:3px solid ' + colorNivel(h.nivel) + ';background:var(--bg2);border-radius:6px;padding:10px 12px;margin-bottom:8px;">' +
+        '<div style="font-size:12px;color:' + colorNivel(h.nivel) + ';font-weight:600;">' + icono(h.nivel) + ' ' + chEsc(h.texto) + '</div>' +
+        (h.causa ? '<div style="font-size:10px;color:var(--text2);margin-top:5px;line-height:1.6;">' + chEsc(h.causa) + '</div>' : '') +
+        '</div>';
+    }).join('') +
+    (d.datos ? '<div style="font-size:10px;color:var(--text3);margin-top:12px;line-height:1.7;"><b>Datos del análisis:</b><br>' +
+      'Muestras: ' + d.datos.muestras + ' · Periodo: ' + d.datos.dias.toFixed(1) + ' días<br>' +
+      'Valor medio: ' + d.datos.media.toFixed(2) + ' · Pendiente: ' + d.datos.pendienteDia.toFixed(4) + ' por día</div>' : '');
+}
+
+/* ══════════════════════════════════════════════════════
+   IDENTIDAD VISUAL (colores y logo del cliente)
+   Se guarda con la cuenta del usuario y se aplica al iniciar sesión.
+══════════════════════════════════════════════════════ */
+var BRAND_DEFAULT = {
+  nombre: 'IoT PLATFORM', logo: '',
+  accent: '#00e5a0', accent2: '#00b4ff',
+  bg: '#0a0c10', panel: '#1c1f28', text: '#e8eaf0'
+};
+
+function branding() {
+  if (!STATE.branding) STATE.branding = Object.assign({}, BRAND_DEFAULT);
+  return STATE.branding;
+}
+
+// Aclara u oscurece un color para derivar los tonos intermedios
+function mezclar(hex, destino, factor) {
+  const p = function (h) { return [parseInt(h.substr(1,2),16), parseInt(h.substr(3,2),16), parseInt(h.substr(5,2),16)]; };
+  const a = p(hex), b = p(destino);
+  const c = a.map(function (v, i) { return Math.round(v + (b[i] - v) * factor); });
+  return '#' + c.map(function (v) { return ('0' + Math.max(0, Math.min(255, v)).toString(16)).slice(-2); }).join('');
+}
+
+function applyBranding() {
+  const b = branding();
+  const r = document.documentElement.style;
+  r.setProperty('--accent', b.accent);
+  r.setProperty('--accent2', b.accent2);
+  r.setProperty('--ok', b.accent);
+  r.setProperty('--bg', b.bg);
+  // Los tonos intermedios se derivan del fondo para mantener la coherencia
+  r.setProperty('--bg2', mezclar(b.bg, '#ffffff', 0.04));
+  r.setProperty('--bg3', mezclar(b.bg, '#ffffff', 0.08));
+  r.setProperty('--panel', b.panel);
+  r.setProperty('--text', b.text);
+  r.setProperty('--text2', mezclar(b.text, b.bg, 0.45));
+  r.setProperty('--text3', mezclar(b.text, b.bg, 0.68));
+
+  const nom = document.getElementById('brand-name');
+  if (nom) nom.textContent = b.nombre || 'IoT PLATFORM';
+  const img = document.getElementById('brand-logo');
+  const dot = document.getElementById('brand-dot');
+  if (img && dot) {
+    if (b.logo) {
+      img.src = b.logo; img.style.display = ''; dot.style.display = 'none';
+    } else {
+      img.style.display = 'none'; dot.style.display = '';
+    }
+  }
+}
+
+function fillBrandingForm() {
+  const b = branding();
+  const sv = function (id, v) { const e = document.getElementById(id); if (e) e.value = v; };
+  sv('cfg-brand-name', b.nombre || '');
+  sv('cfg-c-accent', b.accent); sv('cfg-c-accent2', b.accent2);
+  sv('cfg-c-bg', b.bg); sv('cfg-c-panel', b.panel); sv('cfg-c-text', b.text);
+  const pv = document.getElementById('cfg-logo-preview');
+  const del = document.getElementById('cfg-logo-del');
+  if (pv && del) {
+    if (b.logo) { pv.src = b.logo; pv.style.display = ''; del.style.display = ''; }
+    else { pv.style.display = 'none'; del.style.display = 'none'; }
+  }
+}
+
+function cargarLogo(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  if (file.size > 500000) { toast('El logo debe pesar menos de 500 KB', 'err'); return; }
+  const r = new FileReader();
+  r.onload = function () {
+    branding().logo = r.result;     // data URI: viaja con la configuración
+    fillBrandingForm();
+    applyBranding();
+    toast('Logo cargado · tocá Aplicar para guardarlo', 'ok');
+  };
+  r.readAsDataURL(file);
+}
+
+function quitarLogo() {
+  branding().logo = '';
+  fillBrandingForm();
+  applyBranding();
+}
+
+function saveBranding() {
+  const g = function (id) { const e = document.getElementById(id); return e ? e.value : ''; };
+  const b = branding();
+  b.nombre = g('cfg-brand-name').trim() || 'IoT PLATFORM';
+  b.accent = g('cfg-c-accent'); b.accent2 = g('cfg-c-accent2');
+  b.bg = g('cfg-c-bg'); b.panel = g('cfg-c-panel'); b.text = g('cfg-c-text');
+  STATE.branding = b;
+  persistAll();
+  applyBranding();
+  if (googleReady()) saveSceneToDrive({ silent: true });
+  toast('Identidad aplicada', 'ok');
+}
+
+function resetBranding() {
+  if (!confirm('¿Restaurar los colores y el logo por defecto?')) return;
+  STATE.branding = Object.assign({}, BRAND_DEFAULT);
+  persistAll();
+  fillBrandingForm();
+  applyBranding();
+  toast('Restaurado', 'warn');
+}
+
+function exportBranding() {
+  const blob = new Blob([JSON.stringify(branding(), null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tema.json';
+  a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+  toast('Tema exportado', 'ok');
+}
+
+function importBranding(ev) {
+  const file = ev.target.files[0];
+  if (!file) return;
+  const r = new FileReader();
+  r.onload = function () {
+    try {
+      const obj = JSON.parse(r.result);
+      STATE.branding = Object.assign({}, BRAND_DEFAULT, obj);
+      persistAll();
+      fillBrandingForm();
+      applyBranding();
+      toast('Tema importado', 'ok');
+    } catch (e) { toast('Archivo inválido', 'err'); }
+  };
+  r.readAsText(file);
+  ev.target.value = '';
+}
+
+/* ══════════════════════════════════════════════════════
+   MUESTREO ACELERADO
+══════════════════════════════════════════════════════ */
+function boostCfg() {
+  if (!STATE.boostCfg) STATE.boostCfg = { sampleMs: 1000, publishMs: 2000, minutos: 10 };
+  return STATE.boostCfg;
+}
+
+function saveBoostConfig() {
+  const g = function (id) { const e = document.getElementById(id); return e ? parseInt(e.value, 10) : 0; };
+  const c = boostCfg();
+  c.sampleMs = Math.max(200, g('cfg-boost-sample') || 1000);
+  c.publishMs = Math.max(1000, g('cfg-boost-publish') || 2000);
+  c.minutos = Math.min(60, Math.max(1, g('cfg-boost-min') || 10));   // tope de 60 min
+  persistAll();
+  toast('Muestreo acelerado: ' + c.sampleMs + ' ms por ' + c.minutos + ' min', 'ok');
+}
+
+function fillBoostForm() {
+  const c = boostCfg();
+  const sv = function (id, v) { const e = document.getElementById(id); if (e) e.value = v; };
+  sv('cfg-boost-sample', c.sampleMs);
+  sv('cfg-boost-publish', c.publishMs);
+  sv('cfg-boost-min', c.minutos);
+}
+
+// Activa o desactiva el muestreo rápido en el equipo
+function toggleBoost() {
+  const devId = STATE.actionsDevice || STATE.selectedDevice;
+  if (!devId) { toast('Elegí un dispositivo', 'err'); return; }
+  const dev = STATE.devices[devId] || {};
+  const activo = !!(dev.meta && dev.meta.boost);
+  const c = boostCfg();
+
+  const prev = STATE.actionsDevice;
+  STATE.actionsDevice = devId;
+  if (activo) {
+    sendAction('setBoost', { enabled: false }, null, 'Muestreo normal');
+  } else {
+    sendAction('setBoost', {
+      enabled: true, sampleMs: c.sampleMs, publishMs: c.publishMs,
+      durationMs: c.minutos * 60000
+    }, null, 'Muestreo acelerado ' + c.minutos + ' min');
+  }
+  STATE.actionsDevice = prev;
+}
+
+/* ══════════════════════════════════════════════════════
+   GRÁFICO DE REFERENCIA EN EL PANEL DE COMANDOS
+   Permite ver el efecto de una acción sobre la variable elegida.
+══════════════════════════════════════════════════════ */
+function renderActionChart() {
+  const cont = document.getElementById('actions-chart');
+  if (!cont) return;
+  const devId = STATE.actionsDevice;
+  const claves = Object.keys(STATE.liveData).filter(function (k) {
+    const d = STATE.liveData[k];
+    return d && (typeof d.valor === 'number' || typeof d.rpm === 'number') &&
+           (!devId || k.indexOf(devId + '/') === 0);
+  });
+
+  if (!claves.length) { cont.innerHTML = ''; return; }
+  if (!STATE.actionChartKey || claves.indexOf(STATE.actionChartKey) < 0) {
+    STATE.actionChartKey = claves[0];
+  }
+
+  const k = STATE.actionChartKey;
+  const d = STATE.liveData[k] || {};
+  const val = d.falla ? 'FALLA' : (d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : '—'));
+  const unidad = d.falla ? '' : (d.unidad || (d.rpm !== undefined ? 'rpm' : ''));
+
+  cont.innerHTML =
+    '<div style="border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:14px;background:var(--bg2);">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">' +
+        '<select id="act-chart-sel" onchange="STATE.actionChartKey=this.value;renderActionChart()" ' +
+          'style="flex:1;min-width:150px;font-size:11px;">' +
+          claves.map(function (c) {
+            return '<option value="' + chEsc(c) + '"' + (c === k ? ' selected' : '') + '>' +
+                   chEsc(sensorDisplayName(c)) + chEsc(pinSuffix(c)) + '</option>';
+          }).join('') +
+        '</select>' +
+        '<div style="font-size:17px;font-weight:700;color:' + (d.falla ? 'var(--err)' : 'var(--accent)') + ';">' +
+          chEsc(String(val)) + ' <span style="font-size:10px;color:var(--text2);font-weight:400;">' + chEsc(unidad) + '</span></div>' +
+      '</div>' +
+      '<div style="position:relative;height:120px;"><canvas id="act-chart"></canvas></div>' +
+      '<div style="font-size:9px;color:var(--text3);margin-top:5px;">' +
+        'Referencia en vivo: observá cómo responde al ejecutar una acción.</div>' +
+    '</div>';
+
+  requestAnimationFrame(function () { renderSensorChart(k, 'act-chart'); });
+}
+
+// Refresca solo el gráfico si el panel de comandos está abierto
+function updateActionChart() {
+  const m = document.getElementById('actions-modal');
+  if (!m || !m.classList.contains('open')) return;
+  if (!STATE.actionChartKey) return;
+  const el = document.getElementById('act-chart');
+  if (el) renderSensorChart(STATE.actionChartKey, 'act-chart');
+}
+
+/* ══════════════════════════════════════════════════════
+   MODO BÁSICO
+   Vista simplificada para usuarios que no necesitan el modelo 3D:
+   el diagrama del sistema ocupa la pantalla y trae su gráfico al lado.
+══════════════════════════════════════════════════════ */
+function esModoBasico() { return !!STATE.modoBasico; }
+
+function setModoBasico(activar, opts) {
+  opts = opts || {};
+  STATE.modoBasico = !!activar;
+  // Si lo eligió el usuario, su decisión manda: la detección automática de
+  // conexión lenta no vuelve a cambiarlo en esta sesión ni en las próximas.
+  if (!opts.auto) {
+    STATE.modoManual = true;
+    saveLocal('modoManual', true);
+  }
+  persistAll();
+  aplicarModo();
+  if (googleReady()) saveSceneToDrive({ silent: true });
+  if (!opts.silent) toast(activar ? 'Modo básico activado' : 'Modo avanzado activado', 'ok');
+}
+
+function aplicarModo() {
+  const basico = esModoBasico();
+  document.body.classList.toggle('modo-basico', basico);
+
+  // Resaltar el botón del modo vigente
+  const bA = document.getElementById('btn-modo-avanzado');
+  const bB = document.getElementById('btn-modo-basico');
+  if (bA) bA.classList.toggle('accent', !basico);
+  if (bB) bB.classList.toggle('accent', basico);
+
+  const ov = document.getElementById('diagram-overlay');
+
+  if (basico) {
+    // La pestaña "Diagrama 2D" desaparece: si estaba en ella, se pasa a
+    // Tiempo Real, que es donde ahora vive el diagrama.
+    if (STATE.currentTab === 'diagram') STATE.currentTab = 'realtime';
+    marcarPestanaActiva(STATE.currentTab || 'realtime');
+    mostrarVista(STATE.currentTab || 'realtime');
+
+    DIAG.editMode = false;              // sin edición accidental
+    if (typeof applyDiagEditMode === 'function') applyDiagEditMode();
+    if (!STATE.diagChartOn) toggleDiagChart(true);
+
+    // El diagrama es la vista de Tiempo Real; en Histórico o Configuración
+    // se aparta para no tapar esas pantallas.
+    const enTiempoReal = (STATE.currentTab || 'realtime') === 'realtime';
+    if (enTiempoReal) openDiagram();
+    else if (ov) ov.classList.remove('active');
+  } else {
+    if (ov && STATE.currentTab !== 'diagram') ov.classList.remove('active');
+    // Recién ahora se descarga/arranca el visor y se carga el modelo pendiente
+    activar3D();
+  }
+  if (typeof fitHeader === 'function') fitHeader();
+}
+
+// Marca visualmente la pestaña del encabezado que corresponde a una vista
+function marcarPestanaActiva(view) {
+  document.querySelectorAll('.header-tabs .tab').forEach(function (t) {
+    const on = (t.getAttribute('onclick') || '').indexOf("'" + view + "'") >= 0;
+    t.classList.toggle('active', on);
+  });
+}
+
+// Muestra el panel de la vista indicada y oculta los demás
+function mostrarVista(view) {
+  ['realtime', 'history', 'offline', 'settings'].forEach(function (v) {
+    const panel = document.getElementById('view-' + v);
+    if (panel) panel.style.display = (v === view) ? 'flex' : 'none';
+  });
+}
+
+/* ── Gráfico fijo junto al diagrama (ambos modos) ─────────────────── */
+function toggleDiagChart(forzarOn) {
+  const panel = document.getElementById('diag-chart-panel');
+  if (!panel) return;
+  STATE.diagChartOn = (forzarOn === true) ? true : !STATE.diagChartOn;
+  panel.style.display = STATE.diagChartOn ? '' : 'none';
+
+  const btn = document.getElementById('btn-diag-chart');
+  if (btn) btn.classList.toggle('accent', !!STATE.diagChartOn);
+
+  if (STATE.diagChartOn) renderDiagChart();
+  // El área del diagrama cambia de ancho: reencuadrar
+  requestAnimationFrame(function () { diagFitAll(); });
+}
+
+function diagChartKeys() {
+  return Object.keys(STATE.liveData).filter(function (k) {
+    const d = STATE.liveData[k];
+    return d && (typeof d.valor === 'number' || typeof d.rpm === 'number');
+  });
+}
+
+function renderDiagChart() {
+  if (!STATE.diagChartOn) return;
+  const sel = document.getElementById('diag-chart-sel');
+  const valEl = document.getElementById('diag-chart-val');
+  if (!sel) return;
+
+  const claves = diagChartKeys();
+  if (!claves.length) {
+    sel.innerHTML = '<option value="">(sin datos)</option>';
+    if (valEl) valEl.textContent = '—';
+    return;
+  }
+  if (!STATE.diagChartKey || claves.indexOf(STATE.diagChartKey) < 0) {
+    STATE.diagChartKey = claves[0];
+  }
+  const k = STATE.diagChartKey;
+
+  // Reconstruir la lista solo si cambió, para no perder el foco al usarla
+  const firma = claves.join('|');
+  if (sel._firma !== firma) {
+    sel._firma = firma;
+    sel.innerHTML = claves.map(function (c) {
+      return '<option value="' + chEsc(c) + '">' + chEsc(sensorDisplayName(c)) + chEsc(pinSuffix(c)) + '</option>';
+    }).join('');
+  }
+  sel.value = k;
+
+  const d = STATE.liveData[k] || {};
+  const def = STATE.sensorDefs[k] || {};
+  if (valEl) {
+    const v = d.falla ? 'FALLA' : (d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : '—'));
+    const u = d.falla ? '' : (d.unidad || (d.rpm !== undefined ? 'rpm' : ''));
+    valEl.innerHTML = chEsc(String(v)) +
+      ' <span style="font-size:11px;color:var(--text2);font-weight:400;">' + chEsc(u) + '</span>';
+    valEl.style.color = d.falla ? 'var(--err)' : 'var(--accent)';
+  }
+
+  renderSensorChart(k, 'diag-chart');
+
+  // En modo básico se agregan los datos que el usuario necesita a mano
+  const extra = document.getElementById('diag-chart-extra');
+  if (extra) {
+    if (!esModoBasico()) { extra.innerHTML = ''; return; }
+    const hist = STATE.history[k] || [];
+    const vals = hist.map(function (p) { return p.val; });
+    const min = vals.length ? Math.min.apply(null, vals).toFixed(2) : '—';
+    const max = vals.length ? Math.max.apply(null, vals).toFixed(2) : '—';
+    const avg = vals.length ? (vals.reduce(function (a, b) { return a + b; }, 0) / vals.length).toFixed(2) : '—';
+    const lim = sensorLimits(k);
+
+    extra.innerHTML =
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;">' +
+        '<div class="metric-box" style="padding:6px;"><div class="metric-box-label">Mín</div>' +
+          '<div class="metric-box-val" style="font-size:13px;color:var(--accent2);">' + min + '</div></div>' +
+        '<div class="metric-box" style="padding:6px;"><div class="metric-box-label">Máx</div>' +
+          '<div class="metric-box-val" style="font-size:13px;color:var(--accent3);">' + max + '</div></div>' +
+        '<div class="metric-box" style="padding:6px;"><div class="metric-box-label">Prom</div>' +
+          '<div class="metric-box-val" style="font-size:13px;color:var(--warn);">' + avg + '</div></div>' +
+      '</div>' +
+      (lim ? '<div style="font-size:9px;color:var(--text3);margin-top:8px;">Límites: ' +
+        (lim.min != null ? 'mín ' + lim.min : '') + (lim.min != null && lim.max != null ? ' · ' : '') +
+        (lim.max != null ? 'máx ' + lim.max : '') + '</div>' : '') +
+      '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap;">' +
+        '<button class="btn-sm" style="flex:1;font-size:10px;" onclick="openSensorModal(STATE.diagChartKey)">Ver detalle</button>' +
+        '<button class="btn-sm" style="flex:1;font-size:10px;" onclick="openActionsPanel()">Comandos</button>' +
+      '</div>';
+  }
+}
+
+// Refresca el gráfico del diagrama con cada dato nuevo
+function updateDiagChart() {
+  if (!STATE.diagChartOn) return;
+  const ov = document.getElementById('diagram-overlay');
+  if (!ov || !ov.classList.contains('active')) return;
+  renderDiagChart();
+}
+
 function scenesStore() {
   if (!STATE.scenes) STATE.scenes = {};
   return STATE.scenes;
@@ -2910,10 +4710,9 @@ function captureCurrentScene() {
 function applySceneObject(sc, opts) {
   opts = opts || {};
   sc = sc || {};
-  // Si Three.js todavía no inicializó, se aplica al estar listo
-  if (!STATE.scene) {
-    window.addEventListener('three-ready', () => applySceneObject(sc, opts), { once: true });
-  }
+  // (Ya no se re-aplica la escena al llegar Three.js: eso pisaba con datos
+  // viejos lo editado mientras tanto. El modelo queda pendiente y lo carga
+  // activar3D() cuando corresponde.)
   STATE.diagMachines    = sc.diagMachines || [];
   STATE.diagConnections = sc.diagConnections || [];
   STATE.diagPanels      = sc.diagPanels || [];
@@ -2922,15 +4721,15 @@ function applySceneObject(sc, opts) {
   STATE.diagCommands    = sc.diagCommands || [];
   STATE.cameraView      = sc.cameraView || null;
 
-  const glbAnterior = STATE.glbData && STATE.glbData.data;
   const glbNuevo = sc.glb && sc.glb.data;
   STATE.glbData = sc.glb || null;
 
-  // Recargar el modelo solo si realmente cambió: es la operación cara
-  if (glbNuevo && glbNuevo !== glbAnterior) {
+  // Recargar el modelo solo si difiere del que está en la escena: es la
+  // operación cara. En modo básico no se carga: queda pendiente.
+  if (glbNuevo && glbNuevo !== STATE._glbEnEscena) {
     STATE._pendingCameraView = STATE.cameraView;
-    loadGLB(base64ToBlobUrl(glbNuevo), (sc.glb && sc.glb.name) || 'modelo.glb');
-  } else if (!glbNuevo && glbAnterior) {
+    loadGLBBase64(glbNuevo, (sc.glb && sc.glb.name) || 'modelo.glb');
+  } else if (!glbNuevo && STATE.model) {
     // El dispositivo nuevo no tiene modelo: se limpia el visor
     limpiarModelo3D();
   }
@@ -2942,10 +4741,35 @@ function applySceneObject(sc, opts) {
   }
 }
 
+// Libera la memoria de GPU de un modelo. scene.remove() solo lo quita del
+// árbol: geometrías, materiales y texturas quedaban ocupando la tarjeta de
+// video, y cada cambio de dispositivo sumaba otro modelo completo.
+function liberarModelo(obj) {
+  if (!obj) return;
+  obj.traverse(function (o) {
+    if (o.geometry) o.geometry.dispose();
+    const mats = o.material ? (Array.isArray(o.material) ? o.material : [o.material]) : [];
+    const orig = o.userData && o.userData.originalMaterial;
+    if (orig) mats.push.apply(mats, Array.isArray(orig) ? orig : [orig]);
+    mats.forEach(function (m) {
+      if (!m) return;
+      Object.keys(m).forEach(function (k) {
+        const v = m[k];
+        if (v && v.isTexture) v.dispose();
+      });
+      m.dispose();
+    });
+  });
+  // Las miniaturas del diagrama son clones de este modelo
+  Object.keys(thumbRenderers).forEach(disposeThumb);
+}
+
 // Quita el modelo actual de la escena 3D
 function limpiarModelo3D() {
+  STATE._glbEnEscena = null;
   if (STATE.model && STATE.scene) {
     STATE.scene.remove(STATE.model);
+    liberarModelo(STATE.model);
     STATE.model = null;
     STATE.meshes = [];
     STATE.waterMeshes = [];
@@ -3187,11 +5011,20 @@ function buildRTPanel() {
 function updateRTPanel() {
   updateNodeCharts();
   updateSensorModal();   // mantener vivo el modal de detalle si está abierto
+  updateActionChart();   // gráfico de referencia del panel de comandos
+  updateDiagChart();     // gráfico fijo junto al diagrama
 
   const keys = panelSensorKeys();
   const sig = keys.join('|') + '#' + (STATE.selectedSensor || '');
   // Si cambió la lista de sensores o la selección, reconstruir; si no, solo refrescar
   if (sig !== STATE._panelKeys) { buildRTPanel(); return; }
+
+  // Los números se actualizan siempre (es barato). Los gráficos, como máximo
+  // una vez por segundo: redibujar N gráficos de Chart.js en cada muestra era
+  // otro de los puntos de atasco con muchos sensores en pantalla.
+  const ahora = Date.now();
+  const redibujar = (ahora - (STATE._lastChartDraw || 0)) > 1000;
+  if (redibujar) STATE._lastChartDraw = ahora;
 
   keys.forEach(k => {
     const safe = 'pc_' + k.replace(/[^\w]/g, '_');
@@ -3201,7 +5034,7 @@ function updateRTPanel() {
       el.textContent = d.falla ? 'FALLA'
         : (d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : '—'));
     }
-    renderSensorChart(k, safe + '_chart');
+    if (redibujar) renderSensorChart(k, safe + '_chart');
   });
 
   const histView = document.getElementById('view-history');
@@ -3361,6 +5194,78 @@ function renderSensorChart(sensorKey, canvasId) {
 /* ══════════════════════════════════════════════════════
    THREE.JS 3D VIEWER
 ══════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════
+   CARGA DIFERIDA DEL 3D
+   En modo básico no se descarga Three.js, no se decodifica el modelo y no
+   se crea el contexto WebGL. Todo eso ocurre recién al pasar a avanzado.
+══════════════════════════════════════════════════════ */
+function asegurarThree() {
+  if (window.__THREE_READY__ && window.THREE) return Promise.resolve(window.THREE);
+  if (typeof window.__cargarThree === 'function') return window.__cargarThree();
+  // El módulo cargador todavía no se ejecutó (caso raro): se espera
+  return new Promise(function (res, rej) {
+    window.addEventListener('three-loader-ready', function () {
+      window.__cargarThree().then(res, rej);
+    }, { once: true });
+  });
+}
+
+let _activando3D = null;
+function activar3D() {
+  if (esModoBasico()) return Promise.resolve(false);
+  if (_activando3D) return _activando3D;
+
+  const bajarLib = !(window.__THREE_READY__ && window.THREE);
+  if (bajarLib) cargaMostrar('Descargando el visor 3D…', 'inline');
+
+  _activando3D = asegurarThree().then(function () {
+    if (bajarLib) cargaOcultar();
+    if (esModoBasico()) return false;          // cambió de modo mientras bajaba
+    if (!STATE.scene) initThree();
+    requestAnimationFrame(onWindowResize);     // el visor pudo estar oculto
+    cargarModeloPendiente();
+    return true;
+  }).catch(function (e) {
+    cargaOcultar();
+    toast('No se pudo descargar el visor 3D (' + ((e && e.message) || 'red') +
+          ') · se vuelve al modo básico', 'warn', 7000);
+    setModoBasico(true, { auto: true, silent: true });
+    return false;
+  }).then(function (r) { _activando3D = null; return r; });
+
+  return _activando3D;
+}
+
+// Carga en el visor el modelo que corresponde a la escena actual, si no es
+// el que ya está. Es el único lugar donde se decodifica el base64 del GLB.
+function cargarModeloPendiente() {
+  if (!STATE.scene || esModoBasico()) return;
+  const g = STATE.glbData;
+  if (g && g.data) {
+    if (STATE._glbEnEscena === g.data) return;           // ya está cargado
+    if (!STATE._pendingCameraView) STATE._pendingCameraView = STATE.cameraView;
+    STATE._glbEnEscena = g.data;
+    loadGLB(base64ToBlobUrl(g.data), g.name || 'modelo.glb');
+  } else if (STATE._demoProcPendiente && !STATE.model) {
+    loadProceduralDemo();
+  }
+}
+
+// Punto de entrada para modelos guardados (escena, Drive, demo.json).
+// En modo básico NO decodifica nada: solo deja el modelo pendiente.
+function loadGLBBase64(b64, name) {
+  if (!b64) return;
+  if (esModoBasico() || !STATE.scene) {
+    // Si había un modelo de otra escena, se libera: no corresponde mostrarlo
+    if (STATE.model && STATE._glbEnEscena !== b64) limpiarModelo3D();
+    if (!esModoBasico()) activar3D();          // avanzado sin visor aún: arrancarlo
+    return;
+  }
+  if (STATE._glbEnEscena === b64) return;      // ya cargado o cargando
+  STATE._glbEnEscena = b64;
+  loadGLB(base64ToBlobUrl(b64), name);
+}
+
 function initThree() {
   const canvas = document.getElementById('three-canvas');
   const vp = document.getElementById('viewport');
@@ -3368,12 +5273,18 @@ function initThree() {
   STATE.scene = new THREE.Scene();
   STATE.scene.background = null;
 
-  STATE.camera = new THREE.PerspectiveCamera(45, vp.clientWidth / vp.clientHeight, 0.01, 1000);
+  // Si el visor está oculto al iniciar (p. ej. se activó el 3D desde
+  // Configuración) mide 0×0: se usa 1 como aspecto y onWindowResize lo
+  // corrige al mostrarse.
+  const vw = vp.clientWidth || 1, vh = vp.clientHeight || 1;
+  STATE.camera = new THREE.PerspectiveCamera(45, vw / vh, 0.01, 1000);
   STATE.camera.position.set(0, 1.5, 4);
 
   STATE.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-  STATE.renderer.setPixelRatio(window.devicePixelRatio);
-  STATE.renderer.setSize(vp.clientWidth, vp.clientHeight);
+  // Tope al pixel ratio: en una pantalla 3x se renderizaban 9 veces los
+  // píxeles necesarios. Con 2 la imagen se ve igual de nítida.
+  STATE.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  STATE.renderer.setSize(vw, vh);
   // three 0.162: outputEncoding/sRGBEncoding fueron reemplazados por outputColorSpace.
   if ('outputColorSpace' in STATE.renderer) STATE.renderer.outputColorSpace = THREE.SRGBColorSpace;
   // Mantener el modelo de iluminación clásico para conservar el brillo original de la escena.
@@ -3536,12 +5447,35 @@ function animateWater(time) {
       }
     }
     pos.needsUpdate = true;
-    geo.computeVertexNormals();     // recalcular normales → los reflejos siguen la onda
+    // computeVertexNormals() recorre toda la geometría: es lo más caro del
+    // bucle. Se recalcula cada 3 frames — el ojo no distingue la diferencia
+    // en un oleaje lento, y el costo baja a la tercera parte.
+    if (_frame % 3 === 0) geo.computeVertexNormals();
   }
 }
 
+/* ── Bucle de render ────────────────────────────────────────────────
+   El visor 3D solo se dibuja cuando realmente está a la vista. Antes se
+   renderizaba a 60 fps siempre: en Histórico, en Configuración, en modo
+   básico y hasta con la pestaña del navegador en segundo plano. Eso, con
+   la simulación de agua encima, era la mitad del lag.                 */
+function viewport3DVisible() {
+  if (document.hidden) return false;                 // pestaña en 2.º plano
+  if (!STATE.model) return false;                    // no hay nada que ver
+  if (esModoBasico()) return false;                  // el 3D está oculto
+  if (STATE.currentTab && STATE.currentTab !== 'realtime') return false;
+  const ov = document.getElementById('diagram-overlay');
+  if (ov && ov.classList.contains('active')) return false;  // diagrama encima
+  return true;
+}
+
+let _frame = 0;
 function animate() {
   requestAnimationFrame(animate);
+  _frame++;
+
+  if (!viewport3DVisible()) return;
+
   if (STATE.controls) STATE.controls.update();
   animateWater(performance.now() * 0.001);
   if (STATE.renderer && STATE.scene && STATE.camera) {
@@ -3745,6 +5679,7 @@ function updateSensorIconValues() {
 function onWindowResize() {
   const vp = document.getElementById('viewport');
   if (!STATE.camera || !STATE.renderer) return;
+  if (!vp.clientWidth || !vp.clientHeight) return;   // oculto: se ajusta al mostrarse
   STATE.camera.aspect = vp.clientWidth / vp.clientHeight;
   STATE.camera.updateProjectionMatrix();
   STATE.renderer.setSize(vp.clientWidth, vp.clientHeight);
@@ -3912,6 +5847,7 @@ function loadGLBFile(event) {
   const url = URL.createObjectURL(file);
   fileToBase64(file).then(b64 => {
     STATE.glbData = { name: file.name, data: b64 };
+    STATE._glbEnEscena = b64;   // ya está en el visor: no recargar
     // El modelo queda asociado al dispositivo seleccionado
     if (!STATE.currentSceneDev && STATE.selectedDevice) STATE.currentSceneDev = STATE.selectedDevice;
     persistGlb();
@@ -3991,6 +5927,11 @@ function buildSceneObject() {
       return STATE.scenes || {};
     })(),
     currentSceneDev: STATE.currentSceneDev || null,
+    assets: STATE.assets || {},   // fichas, planes e historial de mantenimiento
+    branding: STATE.branding || null,   // colores y logo del cliente
+    boostCfg: STATE.boostCfg || null,
+    modoBasico: !!STATE.modoBasico,
+    diagChartKey: STATE.diagChartKey || null,
     diagMachines: STATE.diagMachines,
     diagConnections: STATE.diagConnections,
     diagPanels: STATE.diagPanels,
@@ -4062,6 +6003,11 @@ function importSceneObj(obj, opts) {
     }
   }
   if (obj.demoConfig) STATE.demoConfig = obj.demoConfig;
+  if (obj.assets) STATE.assets = obj.assets;
+  if (obj.branding) { STATE.branding = obj.branding; applyBranding(); }
+  if (obj.boostCfg) STATE.boostCfg = obj.boostCfg;
+  if (obj.modoBasico !== undefined) { STATE.modoBasico = obj.modoBasico; aplicarModo(); }
+  if (obj.diagChartKey) STATE.diagChartKey = obj.diagChartKey;
   if (obj.scenes) {
     STATE.scenes = obj.scenes;
     STATE.currentSceneDev = obj.currentSceneDev || null;
@@ -4072,7 +6018,7 @@ function importSceneObj(obj, opts) {
     // loadGLB reencuadra la cámara al terminar; la vista guardada se aplica
     // después mediante STATE._pendingCameraView (ver final de loadGLB).
     STATE._pendingCameraView = STATE.cameraView;
-    loadGLB(base64ToBlobUrl(STATE.glbData.data), STATE.glbData.name || 'modelo.glb');
+    loadGLBBase64(STATE.glbData.data, STATE.glbData.name || 'modelo.glb');
   } else if (STATE.cameraView) {
     applyCameraView(STATE.cameraView);
   }
@@ -4082,7 +6028,7 @@ function importSceneObj(obj, opts) {
   // Si la escena trae configuración de demo, arrancar la simulación para que
   // el visitante vea datos en vivo sin tener que activarla a mano.
   if (obj.demoConfig && !STATE.simulating) toggleSimulate();
-  if (document.getElementById('diagram-overlay').classList.contains('active')) renderDiagram();
+  if (document.getElementById('diagram-overlay').classList.contains('active')) scheduleRenderDiagram();
   if (!opts.silent) toast('Escena cargada ✓', 'ok');
   return true;
 }
@@ -4098,9 +6044,8 @@ function importSceneFile(event) {
 
 // Intenta cargar demo.json del servidor (misma carpeta que el HTML)
 function tryLoadServerDemo(opts) {
-  return fetch('./demo.json', { cache: 'no-store' })
-    .then(r => r.ok ? r.json() : Promise.reject())
-    .then(obj => importSceneObj(obj, opts))
+  return fetchConProgreso('./demo.json', { cache: 'no-store' }, 'Descargando la escena…')
+    .then(txt => importSceneObj(JSON.parse(txt), opts))
     .catch(() => false);
 }
 
@@ -4134,7 +6079,7 @@ function bootSceneLocal() {
   // 1) Si el usuario ya tiene su propio modelo guardado, se restaura ese.
   if (STATE.glbData && STATE.glbData.data) {
     STATE._pendingCameraView = STATE.cameraView;   // conservar el encuadre guardado
-    loadGLB(base64ToBlobUrl(STATE.glbData.data), STATE.glbData.name || 'modelo.glb');
+    loadGLBBase64(STATE.glbData.data, STATE.glbData.name || 'modelo.glb');
     return;
   }
   const hasLocalScene = (STATE.diagMachines && STATE.diagMachines.length) ||
@@ -4156,9 +6101,17 @@ function bootSceneLocal() {
 }
 
 function loadGLB(url, name) {
+  // Sin visor 3D (modo básico, o Three.js aún no descargado) no se carga:
+  // el modelo guardado queda pendiente y lo toma activar3D().
+  if (esModoBasico()) return;
+  if (!window.THREE || !window.THREE.GLTFLoader || !STATE.scene) {
+    activar3D().then(function (ok) { if (ok && !STATE.model) loadGLB(url, name); });
+    return;
+  }
   document.getElementById('drop-zone').classList.add('hidden');
   if (STATE.model) {
     STATE.scene.remove(STATE.model);
+    liberarModelo(STATE.model);
     STATE.meshes = [];
     // Limpiar referencias al modelo anterior: si no, quedan rótulos y
     // objetos de agua apuntando a mallas que ya no existen en la escena.
@@ -4188,7 +6141,7 @@ function loadGLB(url, name) {
   // Meshopt (EXT_meshopt_compression — modelos optimizados con gltfpack)
   if (THREE.MeshoptDecoder) loader.setMeshoptDecoder(THREE.MeshoptDecoder);
 
-  toast('Cargando modelo…', 'warn');
+  cargaMostrar('Cargando el modelo 3D…', 'inline');
   loader.load(url, gltf => {
     STATE.model = gltf.scene;
     STATE.scene.add(STATE.model);
@@ -4238,14 +6191,20 @@ function loadGLB(url, name) {
       STATE._pendingCameraView = null;
     }
 
+    cargaOcultar();
     document.getElementById('model-name-badge').textContent = name || 'Modelo';
     toast('Modelo cargado · ' + STATE.meshes.length + ' objetos', 'ok');
     updateHighlights();
     // Delay one frame so matrixWorld is updated after first render
     requestAnimationFrame(function() { updateSensorIcons(); });
   }, xhr => {
-    // progress
+    // Avance real de la descarga del .glb. Con blob: URL el total es
+    // conocido; desde un servidor depende de que envíe Content-Length.
+    if (xhr && xhr.lengthComputable) cargaProgreso(xhr.loaded, xhr.total);
+    else if (xhr) cargaProgreso(xhr.loaded || 0, 0);
   }, err => {
+    cargaOcultar();
+    STATE._glbEnEscena = null;       // permite reintentar
     // Mensaje de error más útil: identifica la causa típica (compresión/extensión sin decodificador)
     const msg = (err && (err.message || String(err))) || 'desconocido';
     console.error('[loadGLB] Falló la carga del GLB:', err);
@@ -4271,6 +6230,14 @@ function loadDemoScene() {
 }
 
 function loadProceduralDemo() {
+  // Necesita el visor 3D. En modo básico (o sin Three.js todavía) queda
+  // pendiente y se arma al activar el 3D.
+  if (esModoBasico() || !window.THREE || !STATE.scene) {
+    STATE._demoProcPendiente = true;
+    if (!esModoBasico()) activar3D();
+    return;
+  }
+  STATE._demoProcPendiente = false;
   // Create procedural demo scene
   document.getElementById('drop-zone').classList.add('hidden');
   if (STATE.model) { STATE.scene.remove(STATE.model); STATE.meshes = []; }
@@ -5149,6 +7116,7 @@ const CMD_CATALOG = {
   setOutput:      { label: 'Encender / apagar salida', params: [
                       { id:'pin', label:'Pin', type:'number', def:2 },
                       { id:'state', label:'Estado', type:'select', options:[['1','Encendido'],['0','Apagado']] } ] },
+
   setPinMode:     { label: 'Configurar pin (E/S)', params: [
                       { id:'pin', label:'Pin', type:'number', def:2 },
                       { id:'mode', label:'Modo', type:'select', options:[['output','Salida'],['input','Entrada'],['input_pullup','Entrada + pull-up'],['free','Libre']] } ] },
@@ -5157,7 +7125,8 @@ const CMD_CATALOG = {
                       { id:'slave', label:'Esclavo', type:'number', def:1 },
                       { id:'addr', label:'Dirección', type:'number', def:0 },
                       { id:'value', label:'Valor', type:'number', def:1 },
-                      { id:'fc', label:'Función', type:'select', options:[['6','Registro (06)'],['5','Bobina (05)']] } ] },
+                      { id:'fc', label:'Función', type:'select', options:[['6','Registro (06)'],['5','Bobina (05)']] },
+                      { id:'type', label:'Tipo de dato', type:'select', options:[['0','Entero 16 bits'],['2','Decimal float32']] } ] },
   modbusRead:     { label: 'Leer registros Modbus', params: [] },
   setMotor:       { label: 'Motor (estado y RPM)', params: [
                       { id:'estado', label:'Estado', type:'select', options:[['1','Encendido'],['0','Apagado']] },
@@ -5602,7 +7571,7 @@ function renderDiagCommands() {
         onclick="runDiagCommand(${idx})">${chEsc(c.label)}</button>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;gap:6px;">
         <div style="font-size:9px;color:var(--text3);line-height:1.4;flex:1;min-width:0;">
-          ${chEsc((cat && cat.label) || c.type)}<br>
+          ${chEsc((cat && cat.label) || c.type)}${c.askValue ? ' · <span style="color:var(--accent2);">pide valor</span>' : ''}<br>
           <span style="opacity:.75;">${chEsc(c.deviceId || '—')}${node ? ' · ' + chEsc(node.label || '') : ''}</span>
         </div>
         <div style="display:flex;gap:2px;flex-shrink:0;">
@@ -5686,6 +7655,12 @@ function editDiagCommand(index) {
   document.getElementById('dcmd-type').value = c.type;
   document.getElementById('dcmd-color').value = c.color || 'accent';
   document.getElementById('dcmd-confirm').checked = !!c.confirm;
+  const ak = document.getElementById('dcmd-ask');
+  if (ak) { ak.checked = !!c.askValue; }
+  const sv2 = function (id, v) { const e = document.getElementById(id); if (e) e.value = v || ''; };
+  sv2('dcmd-ask-label', c.askLabel); sv2('dcmd-ask-unit', c.askUnit);
+  sv2('dcmd-ask-min', c.askMin); sv2('dcmd-ask-max', c.askMax);
+  toggleAskFields();
 
   renderCmdParams();
   // Rellenar los parámetros guardados
@@ -5717,10 +7692,18 @@ function saveDiagCommand() {
     params[p.id] = (p.type === 'number' || /^\d+$/.test(v)) ? Number(v) : v;
   });
 
+  const gAsk = function (id) { const e = document.getElementById(id); return e ? e.value : ''; };
+  const askOn = (document.getElementById('dcmd-ask') || {}).checked || false;
+
   const cmd = {
     id: (DIAG.cmdEditIndex != null && diagCommands()[DIAG.cmdEditIndex])
         ? diagCommands()[DIAG.cmdEditIndex].id : 'cmd_' + Date.now(),
     label, deviceId, type, params, color,
+    askValue: askOn,
+    askLabel: gAsk('dcmd-ask-label'),
+    askUnit: gAsk('dcmd-ask-unit'),
+    askMin: gAsk('dcmd-ask-min'),
+    askMax: gAsk('dcmd-ask-max'),
     confirm: confirmar,
     nodeId: (DIAG.cmdEditIndex != null && diagCommands()[DIAG.cmdEditIndex])
         ? diagCommands()[DIAG.cmdEditIndex].nodeId : (DIAG.cmdNodeId || null),
@@ -5757,9 +7740,32 @@ function runDiagCommand(index) {
   const c = diagCommands()[index];
   if (!c) return;
   if (c.confirm && !confirm('¿Ejecutar "' + c.label + '"?')) return;
+
+  const params = Object.assign({}, c.params || {});
+
+  // Si el comando pide un valor al ejecutarse (ej: consigna de un PLC),
+  // se solicita ahora en vez de dejarlo fijo en la configuración.
+  if (c.askValue) {
+    const actual = params.value !== undefined ? params.value : '';
+    const entrada = prompt(
+      c.label + '\n\n' +
+      (c.askLabel || 'Ingresá el valor a enviar') +
+      (c.askUnit ? ' (' + c.askUnit + ')' : '') + ':', String(actual));
+    if (entrada === null) return;
+    const v = parseFloat(String(entrada).replace(',', '.'));
+    if (!isFinite(v)) { toast('Valor inválido', 'err'); return; }
+    if (c.askMin !== undefined && c.askMin !== '' && v < Number(c.askMin)) {
+      toast('El valor mínimo es ' + c.askMin, 'err'); return;
+    }
+    if (c.askMax !== undefined && c.askMax !== '' && v > Number(c.askMax)) {
+      toast('El valor máximo es ' + c.askMax, 'err'); return;
+    }
+    params.value = v;
+  }
+
   const prevDevice = STATE.actionsDevice;
   STATE.actionsDevice = c.deviceId;
-  sendAction(c.type, c.params || {}, null, c.label);
+  sendAction(c.type, params, null, c.label);
   STATE.actionsDevice = prevDevice;
 }
 
@@ -6702,11 +8708,11 @@ async function loadSceneFromDrive(opts) {
       if (!opts.silent) toast('No hay ninguna escena guardada en tu Drive', 'warn');
       return false;
     }
-    const r = await fetch('https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media', {
-      headers: { Authorization: 'Bearer ' + STATE.gToken }
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const obj = await r.json();
+    const txt = await fetchConProgreso(
+      'https://www.googleapis.com/drive/v3/files/' + fileId + '?alt=media',
+      { headers: { Authorization: 'Bearer ' + STATE.gToken } },
+      'Restaurando tu escena desde Drive…');
+    const obj = JSON.parse(txt);
     // withConfig: viene del Drive del propio usuario → se aplican sus ajustes
     const ok = importSceneObj(obj, { silent: true, withConfig: true });
     if (ok) {
@@ -7123,6 +9129,7 @@ function openDiagram() {
   renderDiagram();
   applyDiagTransform();
   // Encuadrar todo el diagrama al abrir (tras el layout, para medir bien)
+  if (STATE.diagChartOn) { toggleDiagChart(true); }   // restaurar el gráfico fijo
   requestAnimationFrame(() => diagFitAll());
   document.addEventListener('keydown', diagKeyHandler);
 }
@@ -7513,6 +9520,7 @@ function renderCapsuleNode(c, inner) {
     + (DIAG.selected === c.id && DIAG.selectedType === 'capsule' ? ' selected' : '')
     + (isMultiSelected(c.id) ? ' multi-selected' : '')
     + (DIAG.pendingConn ? ' conn-target' : '');
+  el.dataset.id = c.id;
   el.style.left = c.x + 'px';
   el.style.top  = c.y + 'px';
 
@@ -7598,24 +9606,7 @@ function renderCapsuleNode(c, inner) {
   inner.appendChild(el);
 }
 
-function makeCapsuleDraggable(el, c) {
-  addTouchDrag(el, () => c, (x, y) => { c.x = x; c.y = y; el.style.left = x + 'px'; el.style.top = y + 'px'; });
-  let dragging = false, ox, oy;
-  el.addEventListener('mousedown', e => {
-    if (!isDiagEditable()) return;
-    if (e.target.classList.contains('port-dot') || e.target.tagName === 'BUTTON') return;
-    dragging = true; ox = e.clientX - c.x * DIAG.zoom; oy = e.clientY - c.y * DIAG.zoom; e.preventDefault();
-  });
-  document.addEventListener('mousemove', e => {
-    if (!dragging) return;
-    const _nx = (e.clientX - ox) / DIAG.zoom, _ny = (e.clientY - oy) / DIAG.zoom;
-    if (isMultiSelected(c.id)) moveMultiSelection(_nx - c.x, _ny - c.y, c.id);
-    c.x = _nx; c.y = _ny;
-    el.style.left = c.x + 'px'; el.style.top = c.y + 'px';
-    renderConnections();
-  });
-  document.addEventListener('mouseup', () => { if (dragging) { dragging = false; persistAll(); } });
-}
+function makeCapsuleDraggable(el, c) { makeNodeDraggable(el, c); }
 
 /* ── Machine detail modal ── */
 function openMachineDetail(machineId) {
@@ -7629,6 +9620,7 @@ function openMachineDetail(machineId) {
 
   populateModelSelect('mach-edit-model');
   loadMachinePinRule(m);
+  renderMachineMaintSection();
   document.getElementById('mach-edit-model').value = m.modelObjectName || '';
 
   // Capsule assignment
@@ -7710,6 +9702,22 @@ function removeMachine() {
 }
 
 /* ── Render ── */
+/* Redibujado agrupado del diagrama: varios avisos de datos en el mismo
+   frame producen UN solo repintado, no uno por sensor. Se usa en el camino
+   de datos; las acciones del usuario siguen llamando a renderDiagram()
+   directamente porque necesitan el DOM ya actualizado. */
+let _diagRenderPend = false;
+function scheduleRenderDiagram() {
+  if (_diagRenderPend) return;
+  if (DIAG.dragging) return;          // no rehacer nodos bajo el mouse
+  _diagRenderPend = true;
+  requestAnimationFrame(function () {
+    _diagRenderPend = false;
+    const ov = document.getElementById('diagram-overlay');
+    if (ov && ov.classList.contains('active')) renderDiagram();
+  });
+}
+
 function renderDiagram() {
   const inner = document.getElementById('diag-canvas-inner');
   if (!inner) return;
@@ -7744,6 +9752,7 @@ function renderMachineNode(m, inner) {
   el.className = 'mach-node' + (DIAG.selected === m.id && DIAG.selectedType === 'machine' ? ' selected' : '')
     + (isMultiSelected(m.id) ? ' multi-selected' : '')
     + (DIAG.pendingConn ? ' conn-target' : '');
+  el.dataset.id = m.id;
   el.style.left = m.x + 'px';
   el.style.top  = m.y + 'px';
 
@@ -7778,6 +9787,24 @@ function renderMachineNode(m, inner) {
   // Footer
   const footer = document.createElement('div');
   footer.className = 'mach-footer';
+  // Aviso de mantenimiento: solo en las máquinas incluidas en el plan
+  const _mant = estadoMantenimiento(m);
+  if (_mant && _mant.estado !== 'ok') {
+    const cM = _mant.estado === 'vencido' ? 'var(--err)'
+             : _mant.estado === 'proximo' ? 'var(--warn)' : 'var(--text3)';
+    const av = document.createElement('div');
+    av.title = 'Mantenimiento: ' + _mant.texto;
+    av.textContent = '🛠';
+    av.style.cssText = 'position:absolute;top:4px;left:6px;font-size:12px;cursor:pointer;' +
+      'filter:drop-shadow(0 0 4px ' + cM + ');';
+    av.onclick = function (ev) {
+      ev.stopPropagation();
+      STATE.maintAsset = m.assetId; STATE.maintTab = 'cron';
+      openMaintenance();
+    };
+    el.appendChild(av);
+  }
+
   // Punto de color si la máquina tiene regla de pin activa
   const _pinCol = pinRuleColor(m);
   if (_pinCol) {
@@ -7830,6 +9857,7 @@ function renderPanelNode(p, inner) {
     + (DIAG.selected === p.id && DIAG.selectedType === 'panel' ? ' selected' : '')
     + (isMultiSelected(p.id) ? ' multi-selected' : '')
     + (DIAG.pendingConn ? ' conn-target' : '');
+  el.dataset.id = p.id;
   el.style.left = p.x + 'px';
   el.style.top  = p.y + 'px';
   el.style.borderColor = pt.color + '88';
@@ -7914,54 +9942,55 @@ function renderPanelNode(p, inner) {
   inner.appendChild(el);
 }
 
-function makePanelDraggable(el, p) {
-  addTouchDrag(el, () => p, (x, y) => { p.x = x; p.y = y; el.style.left = x + 'px'; el.style.top = y + 'px'; });
-  let dragging = false, ox, oy;
+function makePanelDraggable(el, p)   { makeNodeDraggable(el, p); }
+function makeMachineDraggable(el, m) { makeNodeDraggable(el, m); }
+
+/* Arrastre de nodos del diagrama.
+   ANTES: cada nodo, en CADA renderDiagram(), agregaba un 'mousemove' y un
+   'mouseup' al document que nunca se quitaban. El diagrama se redibuja con
+   cada dato que llega, así que con 12 máquinas se sumaban ~24 listeners
+   cada 1,5 s: a los 20 s había más de 2 800, y cada movimiento del mouse
+   ejecutaba todos. Además retenían los nodos viejos en memoria. Ese era el
+   lag que crecía mientras el 2D estaba abierto.
+   AHORA: los listeners del document se ponen al empezar a arrastrar y se
+   quitan al soltar. Con el diagrama quieto hay cero. */
+function makeNodeDraggable(el, obj) {
+  addTouchDrag(el, () => obj, (x, y) => { obj.x = x; obj.y = y; el.style.left = x + 'px'; el.style.top = y + 'px'; });
   el.addEventListener('mousedown', e => {
     if (!isDiagEditable()) return;
     if (e.target.classList.contains('port-dot') || e.target.tagName === 'BUTTON') return;
-    dragging = true;
-    ox = e.clientX - p.x * DIAG.zoom;
-    oy = e.clientY - p.y * DIAG.zoom;
+    const ox = e.clientX - obj.x * DIAG.zoom;
+    const oy = e.clientY - obj.y * DIAG.zoom;
     e.preventDefault();
-  });
-  document.addEventListener('mousemove', e => {
-    if (!dragging) return;
-    const _nx = (e.clientX - ox) / DIAG.zoom, _ny = (e.clientY - oy) / DIAG.zoom;
-    if (isMultiSelected(p.id)) moveMultiSelection(_nx - p.x, _ny - p.y, p.id);
-    p.x = _nx; p.y = _ny;
-    el.style.left = p.x + 'px';
-    el.style.top  = p.y + 'px';
-    renderConnections();
-  });
-  document.addEventListener('mouseup', () => {
-    if (dragging) { dragging = false; persistAll(); }
+    DIAG.dragging = true;
+
+    const mover = ev => {
+      const nx = (ev.clientX - ox) / DIAG.zoom, ny = (ev.clientY - oy) / DIAG.zoom;
+      if (isMultiSelected(obj.id)) moveMultiSelection(nx - obj.x, ny - obj.y, obj.id);
+      obj.x = nx; obj.y = ny;
+      // el nodo pudo haberse redibujado: se busca el actual
+      const vivo = el.isConnected ? el
+        : document.querySelector('#diag-canvas-inner [data-id="' + obj.id + '"]');
+      if (vivo) { vivo.style.left = nx + 'px'; vivo.style.top = ny + 'px'; }
+      scheduleRenderConnections();
+    };
+    const soltar = () => {
+      document.removeEventListener('mousemove', mover);
+      document.removeEventListener('mouseup', soltar);
+      DIAG.dragging = false;
+      persistAll();
+    };
+    document.addEventListener('mousemove', mover);
+    document.addEventListener('mouseup', soltar);
   });
 }
 
-function makeMachineDraggable(el, m) {
-  addTouchDrag(el, () => m, (x, y) => { m.x = x; m.y = y; el.style.left = x + 'px'; el.style.top = y + 'px'; });
-  let dragging = false, ox, oy;
-  el.addEventListener('mousedown', e => {
-    if (!isDiagEditable()) return;
-    if (e.target.classList.contains('port-dot') || e.target.tagName === 'BUTTON') return;
-    dragging = true;
-    ox = e.clientX - m.x * DIAG.zoom;
-    oy = e.clientY - m.y * DIAG.zoom;
-    e.preventDefault();
-  });
-  document.addEventListener('mousemove', e => {
-    if (!dragging) return;
-    const _nx = (e.clientX - ox) / DIAG.zoom, _ny = (e.clientY - oy) / DIAG.zoom;
-    if (isMultiSelected(m.id)) moveMultiSelection(_nx - m.x, _ny - m.y, m.id);
-    m.x = _nx; m.y = _ny;
-    el.style.left = m.x + 'px';
-    el.style.top  = m.y + 'px';
-    renderConnections();
-  });
-  document.addEventListener('mouseup', () => {
-    if (dragging) { dragging = false; persistAll(); }
-  });
+// Las líneas se redibujan una vez por frame, no en cada evento del mouse
+let _connRenderPend = false;
+function scheduleRenderConnections() {
+  if (_connRenderPend) return;
+  _connRenderPend = true;
+  requestAnimationFrame(() => { _connRenderPend = false; renderConnections(); });
 }
 
 /* ── Connections ── */
@@ -8233,9 +10262,50 @@ function removeSelectedConn() {
   renderDiagram();
 }
 
-/* ── 3D Thumbnails ── */
+/* ── 3D Thumbnails ──
+   Un solo WebGLRenderer compartido (antes: un contexto WebGL y un bucle a
+   60 fps por nodo). La miniatura se dibuja UNA vez y queda como imagen
+   fija; solo gira la que está bajo el puntero. Copiar de WebGL a un canvas
+   2D obliga a la GPU a sincronizarse, así que hacerlo 12 veces por segundo
+   para todas las miniaturas también trababa el diagrama. */
+let _thumbGL = null;          // { renderer, canvas } compartido
+let _thumbLoopOn = false;
+let _thumbUltimo = 0;
+
+function thumbGL() {
+  if (_thumbGL) return _thumbGL;
+  const canvas = document.createElement('canvas');
+  canvas.width = 160; canvas.height = 80;
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true });
+  renderer.setSize(160, 80, false); renderer.setPixelRatio(1);
+  renderer.setClearColor(0x000000, 0);
+  _thumbGL = { renderer, canvas };
+  return _thumbGL;
+}
+
+function thumbLoop(t) {
+  const ids = Object.keys(thumbRenderers).filter(function (id) { return thumbRenderers[id].hover; });
+  if (!ids.length) { _thumbLoopOn = false; return; }   // nada girando: el bucle se apaga
+  requestAnimationFrame(thumbLoop);
+
+  if (document.hidden) return;
+  if (t - _thumbUltimo < 50) return;          // ~20 fps, solo para la miniatura activa
+  _thumbUltimo = t;
+
+  const gl = thumbGL();
+  ids.forEach(function (id) {
+    const rec = thumbRenderers[id];
+    if (!rec || !rec.canvas.isConnected) return;   // nodo fuera de pantalla
+    rec.rot += 0.05;
+    rec.obj.rotation.y = rec.rot;
+    gl.renderer.render(rec.scene, rec.camera);
+    rec.ctx.clearRect(0, 0, 160, 80);
+    rec.ctx.drawImage(gl.canvas, 0, 0);
+  });
+}
+
 function createThumb(machineId, objectName) {
-  if (!STATE.scene) return null;
+  if (!STATE.scene || !window.THREE) return null;
   let src = null;
   STATE.scene.traverse(o => { if (!src && o.name === objectName) src = o; });
   if (!src) return null;
@@ -8258,28 +10328,29 @@ function createThumb(machineId, objectName) {
 
     const canvas = document.createElement('canvas');
     canvas.width = 160; canvas.height = 80;
-    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-    renderer.setSize(160, 80); renderer.setPixelRatio(1);
-    renderer.setClearColor(0x000000, 0);
+    const ctx = canvas.getContext('2d');
 
-    const rec = { renderer, scene: mini, camera: cam, canvas, animId: null, rot: 0 };
-    const tick = () => {
-      rec.rot += 0.008;
-      cloned.rotation.y = rec.rot;
-      renderer.render(mini, cam);
-      rec.animId = requestAnimationFrame(tick);
-    };
+    // Primer cuadro de inmediato, para que el nodo no aparezca vacío
+    const gl = thumbGL();
+    gl.renderer.render(mini, cam);
+    ctx.drawImage(gl.canvas, 0, 0);
+
+    const rec = { scene: mini, camera: cam, canvas, ctx, obj: cloned, rot: 0, hover: false };
     thumbRenderers[machineId] = rec;
-    tick();
+    // El canvas se reutiliza entre redibujados del diagrama, así que estos
+    // dos listeners se registran una sola vez por miniatura.
+    canvas.addEventListener('mouseenter', function () {
+      rec.hover = true;
+      if (!_thumbLoopOn) { _thumbLoopOn = true; requestAnimationFrame(thumbLoop); }
+    });
+    canvas.addEventListener('mouseleave', function () { rec.hover = false; });
     return canvas;
   } catch(e) { return null; }
 }
 
 function disposeThumb(machineId) {
-  const t = thumbRenderers[machineId];
-  if (!t) return;
-  cancelAnimationFrame(t.animId);
-  t.renderer.dispose();
+  // El renderer es compartido: solo se suelta la entrada. El clon comparte
+  // geometría y materiales con el modelo, así que no se liberan aquí.
   delete thumbRenderers[machineId];
 }
 
@@ -8704,17 +10775,28 @@ function triggerDriveExport() {
    UI HELPERS
 ══════════════════════════════════════════════════════ */
 function switchTab(view, el) {
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
+  // En modo básico la pestaña "Diagrama 2D" no existe: su contenido vive
+  // dentro de Tiempo Real.
+  if (esModoBasico() && view === 'diagram') view = 'realtime';
+  STATE.currentTab = view;
+  if (el) {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+  } else {
+    marcarPestanaActiva(view);
+  }
   requestAnimationFrame(fitHeader);
-  ['realtime','history','offline','settings'].forEach(v => {
-    const panel = document.getElementById('view-' + v);
-    if (panel) panel.style.display = v === view ? 'flex' : 'none';
-  });
+  mostrarVista(view);
+  // El visor pudo iniciarse oculto (0×0): ajustarlo al volver a mostrarse
+  if (view === 'realtime' && STATE.renderer) requestAnimationFrame(onWindowResize);
   if (view === 'history') renderHistoryView();
   if (view === 'offline') renderOfflineView();
   if (view === 'settings') populateSettings();
-  if (view === 'diagram') openDiagram();
+
+  // En modo básico no hay vista 3D: "Tiempo Real" muestra el diagrama,
+  // que es la representación del sistema que el usuario reconoce.
+  const verDiagrama = (view === 'diagram') || (esModoBasico() && view === 'realtime');
+  if (verDiagrama) openDiagram();
   else closeDiagram();
 }
 
@@ -8907,6 +10989,60 @@ function renderChannelConfigBar() {
   }).join('');
 }
 
+/* ── Calibración del shunt ───────────────────────────────────────────
+   Las resistencias de 150 Ω tienen tolerancia: una real puede medir 147
+   o 153, y eso desplaza todas las lecturas de ese canal. En vez de medir
+   la resistencia con el multímetro (habría que desoldarla), se mide la
+   VARIABLE real y el equipo deduce la resistencia:
+
+       mA que debería circular = 4 + (valorReal / fondoEscala) * 16
+       resistencia real        = V medida en el shunt / (mA / 1000)
+                                                                      */
+function calibrarCanal(chanKey, canalIdx) {
+  const devId = STATE.actionsDevice || STATE.selectedDevice;
+  if (!devId) { toast('Elegí un dispositivo', 'err'); return; }
+  if (canalIdx < 0) { toast('Este canal no tiene índice de hardware', 'err'); return; }
+
+  const fullKey = devId + '/' + chanKey;
+  const def = STATE.sensorDefs[fullKey] || {};
+  const live = STATE.liveData[fullKey] || {};
+  const nombre = def.name || chanKey;
+
+  if (live.falla) {
+    toast('El canal está en falla: no se puede calibrar sin señal', 'err', 5000);
+    return;
+  }
+
+  const fondoSugerido = (def.rangeMax !== undefined && def.rangeMax !== '') ? def.rangeMax : 100;
+
+  const valorReal = prompt(
+    'CALIBRACIÓN · ' + nombre + '\n\n' +
+    'El equipo está leyendo ' + (typeof live.mA === 'number' ? live.mA.toFixed(3) : '—') + ' mA' +
+    (typeof live.valor === 'number' ? ' (' + live.valor + ' ' + (def.unit || '') + ')' : '') + '\n\n' +
+    'Medí con el multímetro el valor REAL de la variable en este momento\n' +
+    'y escribilo (ej: si medís 119 V, escribí 119):', '');
+  if (valorReal === null) return;
+  const vr = parseFloat(valorReal);
+  if (!isFinite(vr)) { toast('Valor inválido', 'err'); return; }
+
+  const fondo = prompt(
+    'Fondo de escala del sensor\n\n' +
+    '¿Qué valor corresponde a 20 mA?\n' +
+    '(el máximo del sensor, ej: 500 para uno de 0-500 V)', String(fondoSugerido));
+  if (fondo === null) return;
+  const fe = parseFloat(fondo);
+  if (!isFinite(fe) || fe <= 0) { toast('Fondo de escala inválido', 'err'); return; }
+
+  const minimo = (def.rangeMin !== undefined && def.rangeMin !== '') ? Number(def.rangeMin) : 0;
+
+  const prev = STATE.actionsDevice;
+  STATE.actionsDevice = devId;
+  sendAction('calibrarShunt',
+    { canal: canalIdx, valorReal: vr, rangoMax: fe, rangoMin: minimo },
+    null, 'Calibrar ' + nombre);
+  STATE.actionsDevice = prev;
+}
+
 function renderChannelConfigList() {
   const cont = document.getElementById('chcfg-list');
   const footer = document.getElementById('chcfg-footer');
@@ -8947,12 +11083,17 @@ function renderChannelConfigList() {
       : 'sin mapa de HW';
     const liveTxt = live.falla ? '⚠ FALLA'
       : (typeof live.mA === 'number' ? live.mA.toFixed(2) + ' mA' : '— mA');
+    // Resistencia calibrada de este canal, si el equipo la reportó
+    const calib = (STATE.devices[devId] && STATE.devices[devId].calibracion) || {};
+    const rCh = (calib.ch && hw.index != null) ? calib.ch[String(hw.index)] : null;
+    const rTxt = rCh ? (Number(rCh).toFixed(1) + ' Ω calibrado')
+                     : (calib.shuntGlobal ? (Number(calib.shuntGlobal).toFixed(1) + ' Ω') : '');
 
     return `
     <div style="border:1px solid var(--border);border-radius:6px;padding:12px;margin-bottom:10px;background:var(--bg2);">
       <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:10px;">
         <div style="font-size:12px;color:var(--text);font-weight:600;">${pinBadge}${chEsc(def.name || chanKey)}</div>
-        <div style="font-size:10px;color:var(--text3);">${chEsc(chanKey)} · ${chEsc(addr)}</div>
+        <div style="font-size:10px;color:var(--text3);">${chEsc(chanKey)} · ${chEsc(addr)}${rTxt ? ' · <span style="color:' + (rCh ? 'var(--accent)' : 'var(--text3)') + '">' + chEsc(rTxt) + '</span>' : ''}</div>
       </div>
       <div style="display:grid;grid-template-columns:1.4fr 1.4fr 0.8fr;gap:8px;align-items:end;">
         <div class="field-group" style="margin:0;">
@@ -8995,9 +11136,13 @@ function renderChannelConfigList() {
           <label style="font-size:10px;color:var(--text3);">Se dibujan como líneas punteadas en el gráfico. Dejá vacío si no aplica.</label>
         </div>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px;flex-wrap:wrap;">
         <span style="font-size:11px;color:var(--text2);">En vivo: <b id="${safe}_live">${chEsc(liveTxt)}</b></span>
-        <button class="btn-sm accent" onclick="saveChannelDef('${safe}')">Guardar</button>
+        <div style="display:flex;gap:6px;">
+          <button class="btn-sm" style="font-size:10px;" onclick="calibrarCanal('${chEsc(chanKey)}', ${hw.index != null ? hw.index : -1})"
+            title="Ajustar la resistencia del shunt midiendo con multímetro">⚖ Calibrar</button>
+          <button class="btn-sm accent" onclick="saveChannelDef('${safe}')">Guardar</button>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -9017,6 +11162,13 @@ function chcfgApplyPreset(safe) {
     const ff = document.getElementById(safe + '_formula');
     if (!ff.value.trim()) ff.value = p.formula || '';
   }
+}
+
+// Muestra u oculta los campos del pedido de valor
+function toggleAskFields() {
+  const on = (document.getElementById('dcmd-ask') || {}).checked;
+  const box = document.getElementById('dcmd-ask-box');
+  if (box) box.style.display = on ? '' : 'none';
 }
 
 function readCardDef(safe) {
@@ -9137,6 +11289,7 @@ function openActionsPanel() {
     : (STATE.selectedDevice && devs.includes(STATE.selectedDevice) ? STATE.selectedDevice : devs[0] || null);
   renderActionsBar();
   renderActionsPanel();
+  renderActionChart();
   openModal('actions-modal');
 }
 
@@ -9184,6 +11337,14 @@ function renderActionsPanel() {
       btn('Aplicar', `sendAction('setSampleRate',{intervalMs:actNum('act_samp')})`) +
       fld('Publicación (ms)', `<input id="act_pub" type="number" style="${IS}width:110px;" value="${m.publishMs || 15000}">`) +
       btn('Aplicar', `sendAction('setPublishRate',{intervalMs:actNum('act_pub')})`)
+    ),
+    card('Muestreo acelerado',
+      `<div style="font-size:11px;color:var(--text2);">${
+        m.boost ? '<b style="color:var(--warn);">ACTIVO</b>' +
+                  (m.boostRestaMs ? ' · quedan ' + Math.ceil(m.boostRestaMs / 60000) + ' min' : '')
+                : 'Normal · ' + boostCfg().sampleMs + ' ms por ' + boostCfg().minutos + ' min'}</div>` +
+      btn(m.boost ? '■ Volver a normal' : '⚡ Acelerar muestreo', `toggleBoost()`,
+          m.boost ? 'warn' : undefined)
     ),
     card('Filtro (global)',
       fld('Tipo', `<select id="act_filt_t" style="${IS}">${filterOpts}</select>`) +
@@ -9254,14 +11415,17 @@ function updateActionResult() {
 
 document.addEventListener('DOMContentLoaded', () => {
   loadPersisted();
-  // Three.js se carga como módulo (diferido). Normalmente ya está listo aquí,
-  // pero si el CDN aún no respondió, esperamos el evento 'three-ready'.
-  if (window.__THREE_READY__ && window.THREE) {
-    initThree();
-    bootScene();
-  } else {
-    window.addEventListener('three-ready', () => { initThree(); bootScene(); }, { once: true });
-  }
+  applyBranding();
+  // El modo guardado se aplica al arrancar (antes se perdía al recargar)
+  STATE.currentTab = STATE.currentTab || 'realtime';
+  aplicarModo();
+  // Conexión lenta → modo básico automático, antes de cargar nada pesado
+  vigilarConexion();
+  // La escena (diagrama, sensores, configuración) arranca de inmediato: no
+  // depende del 3D. El visor se activa solo en modo avanzado; en básico no se
+  // descarga Three.js ni se decodifica el modelo hasta que se habilite.
+  bootScene();
+  if (!esModoBasico()) activar3D();
   renderDevices();
   renderSensors();
   buildRTPanel();
@@ -9280,6 +11444,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (file && (file.name.endsWith('.glb') || file.name.endsWith('.gltf'))) {
       fileToBase64(file).then(b64 => {
         STATE.glbData = { name: file.name, data: b64 };
+    STATE._glbEnEscena = b64;   // ya está en el visor: no recargar
         if (!STATE.currentSceneDev && STATE.selectedDevice) STATE.currentSceneDev = STATE.selectedDevice;
         persistGlb(); persistAll();
       }).catch(() => {});
@@ -9314,8 +11479,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 250);
   });
 
+  // Al ocultar la pestaña se vuelca lo que esté pendiente de guardar:
+  // el guardado ahora es diferido, así que este es el punto seguro.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) persistFlush();
+  });
+
   // Guardar la escena si quedaron cambios pendientes al cerrar la pestaña
   window.addEventListener('beforeunload', () => {
+    persistFlush();
     if (STATE.sceneDirty && googleReady() && STATE.sceneFileId) {
       // sendBeacon no admite cabeceras: se usa el token en la URL, que es
       // la vía admitida por Drive para peticiones sin cabeceras.
