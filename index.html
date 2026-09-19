@@ -8,6 +8,7 @@
 <!-- Cloud SDK -->
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 
 <!-- Three.js 0.162 (módulos) + Draco — expuesto como global THREE para compatibilidad -->
@@ -1445,7 +1446,6 @@
     <div class="sidebar-section">
       <div class="sidebar-label">Dispositivos</div>
       <div id="devices-list"></div>
-      <button class="btn-sm" style="width:100%;margin-top:6px;" onclick="openAddDevice()">+ Agregar Dispositivo</button>
     </div>
     <div class="sidebar-section" style="flex:1">
       <div class="sidebar-label">Sensores Activos</div>
@@ -1510,6 +1510,7 @@
           <button class="vc-btn" onclick="updateSensorIcons();refreshSensorIconAnchors();toast('Iconos actualizados','ok');">Actualizar Iconos</button>
           <button class="vc-btn" onclick="saveCurrentView()" title="Guardar este encuadre como vista inicial de la escena">📌 Fijar Vista</button>
           <button class="vc-btn" onclick="changeModelGLB()" title="Cargar otro archivo .glb en lugar del actual">🔄 Cambiar Modelo</button>
+          <button class="vc-btn" id="btn-quitar-modelo" onclick="quitarModelo3D()" title="Eliminar el modelo 3D de este dispositivo" style="color:var(--err);">🗑 Quitar Modelo</button>
           <button class="vc-btn" onclick="copySceneFromDevice()" title="Copiar el modelo y diagrama de otro dispositivo">⧉ Copiar de otro</button>
         </div>
       </div>
@@ -2861,7 +2862,20 @@ function initFirebase() {
       });
       STATE.db = firebase.database();
     }
-    subscribeRTDB();
+    // La base exige sesión: se suscribe cuando Firebase confirma quién es el
+    // usuario (y se corta todo si cierra sesión o la sesión es de otro).
+    if (!STATE._authWatch && firebase.auth) {
+      STATE._authWatch = true;
+      firebase.auth().onAuthStateChanged(u => {
+        STATE.fbUser = u || null;
+        if (u) verificarCambioDeCuenta(u.email);
+        subscribeRTDB();
+      });
+      // Si hay token de Google vigente pero Firebase no tiene sesión, se abre
+      if (googleReady() && !firebase.auth().currentUser) firebaseLogin(STATE.gToken);
+    } else {
+      subscribeRTDB();
+    }
     document.getElementById('fb-status').textContent = 'Conectado ✓';
     document.getElementById('fb-status').style.color = 'var(--ok)';
     toast('Conectado al servidor', 'ok');
@@ -2893,21 +2907,172 @@ function initFirebase() {
 const RTDB_RAMAS = ['meta', 'canales', 'hardware', 'sensorDefs', 'horas', 'pines',
                     'modbus', 'calibracion', 'last_action_result', 'sdFiles',
                     'motores', 'sensores'];
-let _rtdbRef = null, _rtdbSnap = null, _rtdbT = null, _rtdbUlt = 0, _rtdbFirma = '';
+let _rtdbT = null, _rtdbUlt = 0, _rtdbFirma = '';
+const _rtdbSnaps = {};          // devId → { rama: valor } de ese equipo
+const _rtdbRefs  = {};          // devId → [referencias suscritas, una por rama]
+let _rtdbLista = null, _rtdbAdminT = null;
+
+/* ── SEGURIDAD ─────────────────────────────────────────────────────
+   Antes la plataforma leía TODO /dispositivos sin identificarse: cualquier
+   usuario (o cualquiera con la URL de la base) veía y comandaba todos los
+   equipos. Ahora:
+   · El usuario inicia sesión en Firebase con su cuenta de Google.
+   · Se lee usuarios/{correo} (lo escribe el Apps Script al vincular o
+     compartir) y se suscribe SOLO a esos equipos.
+   · Las reglas de la base hacen cumplir lo mismo del lado del servidor:
+     aunque alguien modifique esta página, no puede leer lo que no es suyo.
+   Filtrar en el navegador solo no sería seguridad; esto es la parte
+   visible, la protección real son las reglas.                          */
+function claveCorreo(email) { return String(email || '').toLowerCase().replace(/\./g, ','); }
+
+/* Se escucha RAMA POR RAMA (meta, canales, hardware…), nunca el nodo del
+   equipo entero ni /dispositivos completo: ahí también viven historial/ y
+   sdUpload/, que pueden pesar decenas de MB (la base llegó a superar
+   50 MB). Escuchar el nodo entero obligaba a bajar todo eso en cada
+   cambio: esa era la raíz del lag desde el principio.                  */
+function suscribirEquipo(basePath, id) {
+  if (_rtdbRefs[id]) return;
+  _rtdbSnaps[id] = {};
+  _rtdbRefs[id] = RTDB_RAMAS.map(rama => {
+    const ref = STATE.db.ref(basePath + '/' + id + '/' + rama);
+    ref.on('value', s => {
+      if (!_rtdbSnaps[id]) return;
+      const v = s.val();
+      if (v === null || v === undefined) delete _rtdbSnaps[id][rama];
+      else _rtdbSnaps[id][rama] = v;
+      programarProcesoRTDB();
+    }, () => { desuscribirEquipo(id); programarProcesoRTDB(); });
+    return ref;
+  });
+}
+
+function desuscribirEquipo(id) {
+  (_rtdbRefs[id] || []).forEach(r => { try { r.off('value'); } catch (e) {} });
+  delete _rtdbRefs[id];
+  delete _rtdbSnaps[id];
+}
+
+// Lista de equipos para el administrador SIN bajar su contenido: la API
+// REST con shallow=true devuelve solo los nombres.
+async function listaEquiposAdmin(basePath) {
+  const u = firebase.auth().currentUser;
+  if (!u) return [];
+  const tok = await u.getIdToken();
+  const url = STATE.config.firebase.databaseURL.replace(/\/$/, '') + basePath + '.json?shallow=true&auth=' + encodeURIComponent(tok);
+  const r = await fetch(url);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return Object.keys((await r.json()) || {}).filter(k => k !== 'manual_upload');
+}
+
+function cancelarSuscripciones() {
+  Object.keys(_rtdbRefs).forEach(desuscribirEquipo);
+  if (_rtdbLista) { try { _rtdbLista.off('value'); } catch (e) {} _rtdbLista = null; }
+  if (_rtdbAdminT) { clearInterval(_rtdbAdminT); _rtdbAdminT = null; }
+  Object.keys(_rtdbSnaps).forEach(id => delete _rtdbSnaps[id]);   // incluye las del modo admin
+  if (_rtdbT) { clearTimeout(_rtdbT); _rtdbT = null; }             // nada pendiente de la cuenta anterior
+  STATE.esAdmin = false;
+  _rtdbFirma = '';
+}
 
 function subscribeRTDB() {
   if (!STATE.db) return;
+  cancelarSuscripciones();
+  const u = STATE.fbUser;
+  if (!u || !u.email) {
+    // Sin sesión no se ve ningún equipo real (solo el demo simulado)
+    quitarEquiposNoPermitidos([]);
+    return;
+  }
   const basePath = STATE.config.firebase.basePath || '/dispositivos';
-  // Evitar suscripciones duplicadas si se reconecta o se guarda la config
-  if (_rtdbRef) _rtdbRef.off('value');
-  _rtdbFirma = '';
-  _rtdbRef = STATE.db.ref(basePath);
-  _rtdbRef.on('value', snap => {
-    _rtdbSnap = snap;              // solo se guarda; se procesa agrupado
-    programarProcesoRTDB();
-  }, err => {
-    setOnline(false);
-    toast('Error del servidor: ' + err.message, 'err');
+  const k = claveCorreo(u.email);
+
+  // Administrador: ve todos los equipos (lo habilita el Apps Script)
+  STATE.db.ref('admins/' + k).once('value').then(s => s.val() === true, () => false).then(esAdmin => {
+    if (STATE.fbUser !== u) return;              // cambió de cuenta mientras tanto
+    STATE.esAdmin = esAdmin;
+    if (esAdmin) {
+      // Se revisa la lista cada minuto por si aparecen equipos nuevos
+      const refrescar = () => listaEquiposAdmin(basePath).then(ids => {
+        if (STATE.fbUser !== u) return;
+        Object.keys(_rtdbRefs).forEach(id => { if (ids.indexOf(id) < 0) desuscribirEquipo(id); });
+        ids.forEach(id => suscribirEquipo(basePath, id));
+        programarProcesoRTDB();
+      }).catch(errorRTDB);
+      refrescar();
+      _rtdbAdminT = setInterval(refrescar, 60000);
+      return;
+    }
+    // Usuario normal: su lista de equipos, en vivo (si alguien le comparte
+    // o le quita un equipo, se refleja al instante)
+    _rtdbLista = STATE.db.ref('usuarios/' + k);
+    _rtdbLista.on('value', snap => {
+      const ids = Object.keys(snap.val() || {});
+      STATE.misEquipos = ids;
+      Object.keys(_rtdbRefs).forEach(id => { if (ids.indexOf(id) < 0) desuscribirEquipo(id); });
+      ids.forEach(id => suscribirEquipo(basePath, id));
+      quitarEquiposNoPermitidos(ids);
+      if (!ids.length) programarProcesoRTDB();
+    }, errorRTDB);
+  });
+}
+
+function errorRTDB(err) {
+  setOnline(false);
+  const denegado = err && /permission/i.test(err.code || err.message || '');
+  toast(denegado ? 'La base de datos rechazó el acceso: verificá tu sesión'
+                 : 'Error del servidor: ' + (err && err.message), 'err', 6000);
+}
+
+// Quita de la pantalla y de la memoria local los equipos a los que el
+// usuario ya no tiene acceso (o que quedaron de otra cuenta).
+function quitarEquiposNoPermitidos(ids) {
+  let cambio = false;
+  Object.keys(STATE.devices).forEach(id => {
+    if (id === DEMO_DEVICE_ID || ids.indexOf(id) >= 0 || STATE.esAdmin) return;
+    delete STATE.devices[id];
+    const pre = id + '/';
+    Object.keys(STATE.liveData).forEach(x => { if (x.indexOf(pre) === 0) delete STATE.liveData[x]; });
+    Object.keys(STATE.history).forEach(x => { if (x.indexOf(pre) === 0) delete STATE.history[x]; });
+    Object.keys(STATE.sensorDefs).forEach(x => { if (x.indexOf(pre) === 0) delete STATE.sensorDefs[x]; });
+    delete STATE.channels[id];
+    if (STATE.selectedDevice === id) STATE.selectedDevice = null;
+    cambio = true;
+  });
+  if (cambio) {
+    persistAll();
+    renderDevices(); renderSensors(); updateRTPanel();
+  }
+}
+
+// Si en este navegador entra otra cuenta, se borra lo que dejó la anterior
+// (equipos, diagramas, escenas, fichas): no debe quedar a la vista.
+function verificarCambioDeCuenta(email) {
+  const actual = String(email || '').toLowerCase();
+  const previa = loadLocal('ultimaCuenta', null);
+  if (previa && previa !== actual) {
+    STATE.devices = {}; STATE.liveData = {}; STATE.history = {};
+    STATE.sensorDefs = {}; STATE.channels = {};
+    STATE.scenes = {}; STATE.assets = {}; STATE.currentSceneDev = null;
+    STATE.diagMachines = []; STATE.diagConnections = []; STATE.diagPanels = [];
+    STATE.diagCapsules = []; STATE.objectLinks = {}; STATE.diagCommands = [];
+    STATE.glbData = null; STATE.selectedDevice = null; STATE.sceneFileId = null;
+    try { localStorage.removeItem('iot_glbData'); } catch (e) {}
+    if (typeof limpiarModelo3D === 'function') limpiarModelo3D();
+    persistFlush();
+    renderDevices(); renderSensors(); buildRTPanel();
+    if (document.getElementById('diagram-overlay').classList.contains('active')) renderDiagram();
+  }
+  saveLocal('ultimaCuenta', actual);
+}
+
+// Abre la sesión de Firebase con el token de Google ya obtenido
+function firebaseLogin(accessToken) {
+  if (!accessToken || !window.firebase || !firebase.auth || !STATE.firebase) return Promise.resolve(false);
+  const cred = firebase.auth.GoogleAuthProvider.credential(null, accessToken);
+  return firebase.auth().signInWithCredential(cred).then(() => true).catch(e => {
+    console.warn('[auth] Firebase rechazó la sesión:', e);
+    toast('No se pudo abrir la sesión en la base de datos: ' + (e.code || e.message), 'err', 8000);
+    return false;
   });
 }
 
@@ -2920,20 +3085,15 @@ function programarProcesoRTDB() {
 function procesarRTDB() {
   _rtdbT = null;
   _rtdbUlt = Date.now();
-  const snap = _rtdbSnap;
-  _rtdbSnap = null;
-  if (!snap || !snap.exists()) return;
+  const ids = Object.keys(_rtdbSnaps);
+  if (!ids.length) return;
   setOnline(true);
 
   const data = {};
-  snap.forEach(dev => {
-    const o = {};
-    RTDB_RAMAS.forEach(k => {
-      const c = dev.child(k);
-      if (c.exists()) o[k] = c.val();
-    });
+  ids.forEach(id => {
+    const o = _rtdbSnaps[id];
     // Nodos sin ninguna rama conocida (manual_upload, colas) no son equipos
-    if (Object.keys(o).length) data[dev.key] = o;
+    if (o && Object.keys(o).length) data[id] = o;
   });
 
   const firma = JSON.stringify(data);
@@ -3032,7 +3192,23 @@ function processRTDBData(data) {
     }
     // ── Canales con datos CRUDOS 4-20 mA → convertir aquí ───────────
     if (devData.canales) {
+      // Canales huérfanos: el firmware publica canales/ con updateNode (une,
+      // no reemplaza). Si se reubica un ADS, la clave vieja —p. ej.
+      // t70_c3_a4b_ch0— queda para siempre en la base con su último valor,
+      // pero ya no figura en hardware/ (que sí se rehace en cada arranque).
+      // Por eso aparecían sin número de entrada (INxx). Se descartan aquí y
+      // se ofrece borrarlos de la base desde "Configurar Canales".
+      const hwMap = STATE.channels[devId];
+      const hayMapa = hwMap && Object.keys(hwMap).length > 0;
+      const huerfanos = hayMapa ? Object.keys(devData.canales).filter(k => !hwMap[k]) : [];
+      STATE.devices[devId]._canalesHuerfanos = huerfanos;
+      huerfanos.forEach(k => {
+        delete STATE.liveData[devId + '/' + k];
+        delete STATE.history[devId + '/' + k];
+      });
+
       Object.entries(devData.canales).forEach(([chanKey, c]) => {
+        if (hayMapa && !hwMap[chanKey]) return;          // canal que ya no existe
         const fullKey = devId + '/' + chanKey;
         const def = STATE.sensorDefs[fullKey];
         const mA = (typeof c.mA === 'number') ? c.mA : Number(c.mA);
@@ -4606,7 +4782,7 @@ function toggleDiagChart(forzarOn) {
 function diagChartKeys() {
   return Object.keys(STATE.liveData).filter(function (k) {
     const d = STATE.liveData[k];
-    return d && (typeof d.valor === 'number' || typeof d.rpm === 'number');
+    return d && (typeof d.valor === 'number' || typeof d.rpm === 'number') && claveDelDispositivo(k);
   });
 }
 
@@ -4802,7 +4978,23 @@ function switchDeviceScene(devId) {
   if (STATE.currentSceneDev === devId) return;   // ya estamos en la suya
 
   STATE.currentSceneDev = devId;
+  // El estado de navegación del diagrama pertenece al equipo anterior:
+  // cápsula abierta, selección y conexión a medio trazar se descartan.
+  DIAG.openCapsuleId = null;
+  DIAG.pendingConn = null;
+  DIAG.selected = null;
+  DIAG.selectedType = null;
+  DIAG.multi = [];
+  const bc = document.getElementById('capsule-breadcrumb');
+  if (bc) bc.style.display = 'none';
+  const cdp = document.getElementById('conn-detail-panel');
+  if (cdp) cdp.style.display = 'none';
+
   applySceneObject(store[devId] || {});
+  // Encuadrar el diagrama del equipo nuevo. Antes se conservaban el zoom y
+  // el desplazamiento del anterior, y el diagrama nuevo quedaba corrido o
+  // fuera de la vista. Se espera un frame para medir los nodos ya dibujados.
+  reencuadrarDiagrama();
   persistAll();
 
   const dev = STATE.devices[devId] || {};
@@ -4906,10 +5098,15 @@ function updateNodeCharts() {
    PANEL DERECHO — todos los gráficos, seleccionado arriba
 ══════════════════════════════════════════════════════ */
 // Claves de sensor graficables (excluye motores sin valor numérico)
+// Si hay un dispositivo seleccionado, solo se muestran SUS gráficas.
+function claveDelDispositivo(k) {
+  return !STATE.selectedDevice || k.indexOf(STATE.selectedDevice + '/') === 0;
+}
+
 function panelSensorKeys() {
   const keys = Object.keys(STATE.liveData).filter(k => {
     const d = STATE.liveData[k];
-    return d && (typeof d.valor === 'number' || typeof d.rpm === 'number');
+    return d && (typeof d.valor === 'number' || typeof d.rpm === 'number') && claveDelDispositivo(k);
   });
   // El seleccionado primero; el resto en orden alfabético
   keys.sort((a, b) => {
@@ -4958,14 +5155,27 @@ function buildRTPanel() {
     delete STATE.rtCharts[id];
   });
 
+  // Aviso de filtro: deja claro de qué equipo son las gráficas y cómo ver todas
+  let aviso = '';
+  if (STATE.selectedDevice) {
+    const dev = STATE.devices[STATE.selectedDevice] || {};
+    aviso = `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;
+        font-size:10px;color:var(--text3);margin-bottom:10px;padding:6px 8px;
+        border:1px solid var(--border);border-radius:6px;background:var(--bg3);">
+      <span>Mostrando <b style="color:var(--accent);">${chEsc(dev.name || STATE.selectedDevice)}</b></span>
+      <button class="btn-sm" style="padding:2px 8px;min-height:0;font-size:9px;" onclick="verTodosLosDispositivos()">Ver todos</button>
+    </div>`;
+  }
+
   if (!keys.length) {
-    panel.innerHTML = `<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:40px;">
-      Selecciona un sensor o presiona un objeto del modelo 3D</div>`;
-    STATE._panelKeys = '';
+    panel.innerHTML = aviso + `<div style="font-size:11px;color:var(--text3);text-align:center;margin-top:40px;">
+      ${STATE.selectedDevice ? 'Este dispositivo todavía no tiene datos para graficar'
+                             : 'Selecciona un sensor o presiona un objeto del modelo 3D'}</div>`;
+    STATE._panelKeys = firmaPanel(keys);
     return;
   }
 
-  panel.innerHTML = keys.map(k => {
+  panel.innerHTML = aviso + keys.map(k => {
     const sel = (k === STATE.selectedSensor);
     const d = STATE.liveData[k] || {};
     const safe = 'pc_' + k.replace(/[^\w]/g, '_');
@@ -5005,7 +5215,20 @@ function buildRTPanel() {
   requestAnimationFrame(() => {
     keys.forEach(k => renderSensorChart(k, 'pc_' + k.replace(/[^\w]/g, '_') + '_chart'));
   });
-  STATE._panelKeys = keys.join('|') + '#' + (STATE.selectedSensor || '');
+  STATE._panelKeys = firmaPanel(keys);
+}
+
+// Identifica lo que muestra el panel: si cambia, se reconstruye
+function firmaPanel(keys) {
+  return (STATE.selectedDevice || '*') + '@' + keys.join('|') + '#' + (STATE.selectedSensor || '');
+}
+
+// Quita el filtro de dispositivo y vuelve a mostrar todas las gráficas
+function verTodosLosDispositivos() {
+  STATE.selectedDevice = null;
+  renderDevices();
+  renderSensors();
+  updateRTPanel();
 }
 
 function updateRTPanel() {
@@ -5015,7 +5238,7 @@ function updateRTPanel() {
   updateDiagChart();     // gráfico fijo junto al diagrama
 
   const keys = panelSensorKeys();
-  const sig = keys.join('|') + '#' + (STATE.selectedSensor || '');
+  const sig = firmaPanel(keys);
   // Si cambió la lista de sensores o la selección, reconstruir; si no, solo refrescar
   if (sig !== STATE._panelKeys) { buildRTPanel(); return; }
 
@@ -5826,6 +6049,30 @@ function findAnchorObject(link) {
 // sensores, comandos) se conserva; los vínculos con objetos 3D se mantienen
 // por NOMBRE, así que seguirán funcionando si el modelo nuevo usa los mismos
 // nombres de pieza. Si no, hay que rehacerlos.
+// Elimina el modelo 3D del dispositivo actual (libera memoria y espacio).
+// El diagrama, los sensores y los comandos no se tocan; los vínculos con
+// piezas 3D se conservan por nombre, por si más adelante se carga un
+// modelo con las mismas piezas.
+function quitarModelo3D() {
+  if (!STATE.model && !(STATE.glbData && STATE.glbData.data)) {
+    toast('Este dispositivo no tiene modelo 3D', 'warn');
+    return;
+  }
+  const dev = STATE.currentSceneDev && STATE.devices[STATE.currentSceneDev];
+  if (!confirm('¿Eliminar el modelo 3D' + (dev ? ' de "' + (dev.name || STATE.currentSceneDev) + '"' : '') + '?\n\n' +
+               'El diagrama 2D, los sensores y los comandos se conservan.\n' +
+               'Se borra también de la copia guardada en tu Drive.')) return;
+  limpiarModelo3D();
+  STATE.glbData = null;
+  STATE.cameraView = null;
+  STATE._pendingCameraView = null;
+  try { localStorage.removeItem('iot_glbData'); localStorage.removeItem('iot_cameraView'); } catch (e) {}
+  if (STATE.currentSceneDev) scenesStore()[STATE.currentSceneDev] = captureCurrentScene();
+  persistAll();
+  renderDevices();                     // quita el indicador "🧊 modelo"
+  toast('Modelo 3D eliminado', 'warn');
+}
+
 function changeModelGLB() {
   const tieneVinculos = Object.keys(STATE.objectLinks || {}).length > 0;
   if (tieneVinculos) {
@@ -6063,6 +6310,16 @@ function bootScene() {
       if (!ok) bootSceneLocal();
     });
     return;
+  }
+  // Sesión guardada pero token vencido (volvió horas después): el usuario
+  // sigue identificado, se usa la copia local y Drive se reconecta en el
+  // primer clic (el navegador exige un gesto para la ventanita de Google).
+  if (googleSesion()) {
+    STATE.gProfile = loadLocal('gProfile', null);
+    STATE.gPendiente = 'reconectar';
+    renderUserCard();
+    updateGoogleUI();
+    reconectarEnPrimerClic();
   }
   bootSceneLocal();
 }
@@ -6555,6 +6812,13 @@ function diagZoomOut() { setDiagZoom(DIAG.zoom / 1.2); }
 function diagZoomReset() { DIAG.zoom = 1; DIAG.panX = 0; DIAG.panY = 0; applyDiagTransform(); }
 
 // Encuadra todo el diagrama en la vista
+// Encuadra el diagrama tras un cambio de contenido (si está a la vista)
+function reencuadrarDiagrama() {
+  const ov = document.getElementById('diagram-overlay');
+  if (!ov || !ov.classList.contains('active')) return;   // se encuadra al abrirlo
+  requestAnimationFrame(() => requestAnimationFrame(() => diagFitAll()));
+}
+
 function diagFitAll(retry) {
   const wrap = document.getElementById('diag-canvas-wrap');
   if (!wrap) return;
@@ -6570,9 +6834,24 @@ function diagFitAll(retry) {
     return;
   }
 
+  // Tamaño REAL de cada nodo si ya está dibujado: una máquina con varios
+  // sensores es bastante más alta que los 160 px supuestos, y eso dejaba el
+  // encuadre corrido hacia abajo.
+  const medida = {};
+  document.querySelectorAll('#diag-canvas-inner [data-id]').forEach(el => {
+    medida[el.dataset.id] = { w: el.offsetWidth, h: el.offsetHeight };
+  });
+
+  // El gráfico fijo lateral tapa la franja derecha del área: se centra en
+  // lo que queda libre, no detrás del panel.
+  const panelGraf = document.getElementById('diag-chart-panel');
+  const tapa = (panelGraf && panelGraf.style.display !== 'none' && panelGraf.offsetWidth) || 0;
+  const anchoLibre = Math.max(120, r.width - tapa);
+
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   nodes.forEach(n => {
-    const w = n._w || 170, h = n._h || 170;
+    const m = medida[n.id];
+    const w = (m && m.w) || n._w || 170, h = (m && m.h) || n._h || 170;
     minX = Math.min(minX, n.x);       minY = Math.min(minY, n.y);
     maxX = Math.max(maxX, n.x + w);   maxY = Math.max(maxY, n.y + h);
   });
@@ -6582,9 +6861,9 @@ function diagFitAll(retry) {
   const bh = (maxY - minY) + pad * 2;
   if (bw <= 0 || bh <= 0) return;
 
-  DIAG.zoom = Math.max(0.15, Math.min(1.6, Math.min(r.width / bw, r.height / bh)));
-  // Centrar el contenido en el área visible
-  DIAG.panX = (r.width  - (maxX - minX) * DIAG.zoom) / 2 - minX * DIAG.zoom;
+  DIAG.zoom = Math.max(0.15, Math.min(1.6, Math.min(anchoLibre / bw, r.height / bh)));
+  // Centrar el contenido en el área visible (sin la franja del gráfico)
+  DIAG.panX = (anchoLibre - (maxX - minX) * DIAG.zoom) / 2 - minX * DIAG.zoom;
   DIAG.panY = (r.height - (maxY - minY) * DIAG.zoom) / 2 - minY * DIAG.zoom;
   applyDiagTransform();
 }
@@ -7175,7 +7454,7 @@ function ownerId() {
 }
 
 function openPairDevice() {
-  if (!googleReady()) { toast('Iniciá sesión con Google primero', 'warn'); googleConnect(); return; }
+  if (!googleSesion()) { toast('Iniciá sesión con Google primero', 'warn'); googleConnect(); return; }
   document.getElementById('pair-code').value = '';
   document.getElementById('pair-msg').textContent = '';
   openModal('pair-modal');
@@ -8005,11 +8284,13 @@ function showCmdProgress(label) {
   if (!box) {
     box = document.createElement('div');
     box.id = 'cmd-progress';
-    box.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:300;' +
-      'background:var(--panel);border:1px solid var(--border2);border-radius:10px;padding:12px 16px;' +
-      'min-width:280px;box-shadow:0 6px 24px rgba(0,0,0,.6);font-family:var(--font);';
-    document.body.appendChild(box);
+    // z-index 2500: por encima de los modales (1000, con fondo oscurecido y
+    // desenfocado). Antes era 300 y quedaba DEBAJO de la ventana de comandos.
+    box.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2500;' +
+      'background:var(--panel);border:1px solid var(--accent);border-radius:10px;padding:12px 16px;' +
+      'min-width:300px;max-width:92vw;box-shadow:0 8px 32px rgba(0,0,0,.75);font-family:var(--font);';
   }
+  document.body.appendChild(box);   // siempre al final: queda encima de todo
   box.style.display = '';
   box.innerHTML =
     '<div id="cmdp-text" style="font-size:12px;color:var(--text);margin-bottom:8px;">' +
@@ -8238,13 +8519,34 @@ function renderUserCard() {
   const inn = document.getElementById('user-signed-in');
   if (!out || !inn) return;
 
-  if (!googleReady()) {
+  if (!googleSesion()) {
     out.style.display = '';
     inn.style.display = 'none';
     return;
   }
   out.style.display = 'none';
   inn.style.display = '';
+
+  // Estado del acceso a Drive, con la acción que lo resuelve
+  let aviso = document.getElementById('user-drive-aviso');
+  if (!aviso) {
+    aviso = document.createElement('div');
+    aviso.id = 'user-drive-aviso';
+    aviso.style.cssText = 'margin-bottom:6px;';
+    const ref = document.getElementById('user-save-state');
+    const fila = ref && ref.parentElement;
+    if (fila && fila.parentElement) fila.parentElement.insertBefore(aviso, fila);
+  }
+  const pend = STATE.gPendiente || (googleReady() ? (STATE.gDrive === false ? 'sin-permiso' : null) : 'reconectar');
+  if (pend === 'sin-permiso') {
+    aviso.innerHTML = '<div style="font-size:9px;color:var(--warn);margin-bottom:4px;">⚠ Sin permiso para Drive: no se guarda tu trabajo</div>' +
+      '<button class="btn-sm" data-google="1" style="width:100%;color:var(--warn);border-color:var(--warn);font-size:10px;" onclick="pedirPermisoDrive()">Conceder acceso a Drive</button>';
+  } else if (pend === 'reconectar') {
+    aviso.innerHTML = '<div style="font-size:9px;color:var(--text3);margin-bottom:4px;">Drive en pausa · se reconecta al tocar la pantalla</div>' +
+      '<button class="btn-sm" data-google="1" style="width:100%;font-size:10px;" onclick="reconectarGoogle()">⟳ Reconectar ahora</button>';
+  } else {
+    aviso.innerHTML = '';
+  }
 
   const p = STATE.gProfile || loadLocal('gProfile', null) || {};
   const nameEl = document.getElementById('user-name');
@@ -8273,16 +8575,26 @@ function renderUserCard() {
   }
 }
 
-/* ── OAuth con Google Identity Services ── */
-// El token se guarda para que al volver a abrir la página la sesión siga
-// activa. Los tokens duran ~1 h; pasado ese tiempo se renuevan en silencio
-// (sin volver a pedir consentimiento, porque el permiso ya fue otorgado).
-function saveGoogleToken(token, expiresIn) {
+/* ── OAuth con Google Identity Services ──────────────────────────────
+   Dos conceptos distintos:
+   · SESIÓN: quién es el usuario (nombre, correo, foto). Se guarda y dura
+     hasta que toque "Salir". Antes la sesión dependía del token y, como
+     Google los emite por 1 hora, al volver más tarde parecía "deslogueado".
+   · TOKEN: el acceso vigente a Drive (~1 h). Se renueva solo; si el
+     navegador bloquea la renovación (hace falta un clic del usuario), la
+     sesión sigue visible y se renueva en el primer clic o con "Reconectar".
+
+   PERMISO DE DRIVE: Google muestra casillas separadas por permiso. Si se
+   desmarca la de Drive, el token llega sin drive.file y toda llamada a
+   Drive falla (el 404 que aparecía). Ahora se detecta y se ofrece
+   concederlo, en vez de intentar leer y fallar.                        */
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+
+function saveGoogleToken(token, expiresIn, driveOk) {
   STATE.gToken = token;
   STATE.gTokenExp = Date.now() + (Number(expiresIn || 3600) - 60) * 1000;
-  try {
-    saveLocal('gAuth', { token: STATE.gToken, exp: STATE.gTokenExp });
-  } catch (e) {}
+  STATE.gDrive = driveOk;
+  try { saveLocal('gAuth', { token: STATE.gToken, exp: STATE.gTokenExp, drive: driveOk }); } catch (e) {}
 }
 
 function restoreGoogleToken() {
@@ -8290,9 +8602,27 @@ function restoreGoogleToken() {
   if (a && a.token && a.exp && Date.now() < a.exp) {
     STATE.gToken = a.token;
     STATE.gTokenExp = a.exp;
+    STATE.gDrive = (a.drive === undefined) ? true : !!a.drive;   // tokens viejos: se verifica al usarlo
     return true;
   }
   return false;
+}
+
+// ¿Hay un usuario identificado? (aunque su token haya vencido)
+function googleSesion() {
+  const p = STATE.gProfile || loadLocal('gProfile', null);
+  return !!(p && p.email) || googleReady();
+}
+
+// ¿El token actual incluye el permiso de Drive?
+function tokenTieneDrive(resp) {
+  try {
+    if (window.google && google.accounts && google.accounts.oauth2 &&
+        typeof google.accounts.oauth2.hasGrantedAllScopes === 'function') {
+      return google.accounts.oauth2.hasGrantedAllScopes(resp, DRIVE_SCOPE);
+    }
+  } catch (e) {}
+  return String((resp && resp.scope) || '').indexOf(DRIVE_SCOPE) >= 0;
 }
 
 function makeTokenClient(onToken, onError) {
@@ -8301,17 +8631,27 @@ function makeTokenClient(onToken, onError) {
   if (!window.google || !google.accounts || !google.accounts.oauth2) {
     if (onError) onError('sdk-no-cargado'); return null;
   }
-  return google.accounts.oauth2.initTokenClient({
+  const p = STATE.gProfile || loadLocal('gProfile', null) || {};
+  const conf = {
     client_id: cfg.clientId,
     scope: GOOGLE_SCOPES,
+    include_granted_scopes: true,
     callback: (resp) => {
       if (resp && resp.access_token) {
-        saveGoogleToken(resp.access_token, resp.expires_in);
+        saveGoogleToken(resp.access_token, resp.expires_in, tokenTieneDrive(resp));
+        STATE.gPendiente = STATE.gDrive ? null : 'sin-permiso';
+        // Misma cuenta en la base de datos: sin esto las reglas no dejan leer
+        const fu = window.firebase && firebase.auth && STATE.firebase ? firebase.auth().currentUser : null;
+        if (!fu) firebaseLogin(resp.access_token);
+        renderUserCard();
         if (onToken) onToken(resp.access_token);
       } else if (onError) onError('sin-token');
     },
     error_callback: (err) => { if (onError) onError((err && err.type) || 'error'); }
-  });
+  };
+  // Con el correo conocido, Google no vuelve a mostrar el selector de cuenta
+  if (p.email) conf.login_hint = p.email;
+  return google.accounts.oauth2.initTokenClient(conf);
 }
 
 function googleConnect() {
@@ -8325,10 +8665,11 @@ function googleConnect() {
   }
   const client = makeTokenClient(
     () => {
-      toast('Cuenta de Google conectada', 'ok');
       fetchGoogleProfile();
       renderUserCard();
       updateGoogleUI();
+      if (!STATE.gDrive) { avisoDriveSinPermiso(); return; }
+      toast('Cuenta de Google conectada', 'ok');
       // Al entrar, recuperar la escena guardada en Drive (si existe)
       loadSceneFromDrive({ silent: true });
     },
@@ -8340,28 +8681,113 @@ function googleConnect() {
   if (client) client.requestAccessToken();
 }
 
-// Renueva el token sin interacción; si no se puede, avisa para reconectar
+function avisoDriveSinPermiso() {
+  toast('Iniciaste sesión, pero sin permiso para Drive: no se puede guardar ni restaurar tu escena. ' +
+        'Tocá "Conceder acceso a Drive" en tu tarjeta de usuario.', 'warn', 9000);
+}
+
+// Vuelve a pedir el consentimiento para que el usuario marque la casilla
+// de Drive que había dejado sin marcar.
+function pedirPermisoDrive() {
+  const client = makeTokenClient(
+    () => {
+      if (!STATE.gDrive) { avisoDriveSinPermiso(); return; }
+      toast('Acceso a Drive concedido', 'ok');
+      STATE.sceneFileId = null;
+      updateGoogleUI();
+      // Si la cuenta ya tiene una escena en Drive se restaura (nunca se pisa
+      // con lo local); si no tiene ninguna, se crea con lo que hay ahora.
+      findSceneFile().then(id => id ? loadSceneFromDrive({ silent: true })
+                                    : saveSceneToDrive({ silent: true }))
+                     .catch(() => {});
+    },
+    (e) => { if (e !== 'popup_closed') toast('No se pudo autorizar', 'warn'); }
+  );
+  if (client) client.requestAccessToken({ prompt: 'consent', scope: GOOGLE_SCOPES });
+}
+
+// Renueva el token sin mostrar consentimiento. Necesita un clic del usuario
+// para que el navegador permita la ventanita de Google; sin él falla y se
+// resuelve en false (con un tope de tiempo por si Google no responde).
 function googleSilentRefresh() {
   return new Promise((resolve) => {
-    const client = makeTokenClient(() => resolve(true), () => resolve(false));
-    if (!client) { resolve(false); return; }
-    try { client.requestAccessToken({ prompt: '' }); } catch (e) { resolve(false); }
+    let listo = false;
+    const fin = v => { if (!listo) { listo = true; resolve(v); } };
+    const client = makeTokenClient(() => fin(true), () => fin(false));
+    if (!client) { fin(false); return; }
+    try { client.requestAccessToken({ prompt: '' }); } catch (e) { fin(false); }
+    setTimeout(() => fin(false), 15000);
   });
 }
 
-// Asegura que haya un token válido antes de una llamada a Drive
+// Botón "Reconectar" y reconexión en el primer clic tras recargar
+function reconectarGoogle(opts) {
+  opts = opts || {};
+  googleSilentRefresh().then(ok => {
+    if (!ok) { STATE.gPendiente = 'reconectar'; renderUserCard(); return; }
+    STATE.gPendiente = STATE.gDrive ? null : 'sin-permiso';
+    renderUserCard();
+    updateGoogleUI();
+    fetchGoogleProfile();
+    if (!STATE.gDrive) { avisoDriveSinPermiso(); return; }
+    // En el primer clic tras recargar, Drive manda (igual que un arranque
+    // normal con sesión): antes de ese clic no se pudo editar nada. Más
+    // adelante, si hubo cambios sin subir, se suben en vez de pisarlos.
+    if (!opts.alArrancar && STATE.sceneDirty) saveSceneToDrive({ silent: true });
+    else loadSceneFromDrive({ silent: true });
+  });
+}
+
+function reconectarEnPrimerClic() {
+  if (STATE._reconexionArmada) return;
+  STATE._reconexionArmada = true;
+  document.addEventListener('pointerdown', function unaVez(e) {
+    // Si el clic es justo en un botón de Google, ese botón ya se encarga
+    if (e.target && e.target.closest && e.target.closest('[data-google]')) return;
+    document.removeEventListener('pointerdown', unaVez, true);
+    STATE._reconexionArmada = false;
+    if (!googleReady() && googleSesion()) reconectarGoogle({ alArrancar: !STATE._yaReconecto });
+    STATE._yaReconecto = true;
+  }, true);
+}
+
+// Asegura que haya un token válido CON permiso de Drive antes de usar Drive
 async function ensureGoogleToken() {
-  if (googleReady()) return true;
-  return await googleSilentRefresh();
+  if (googleReady()) {
+    if (STATE.gDrive === false) { STATE.gPendiente = 'sin-permiso'; renderUserCard(); return false; }
+    return true;
+  }
+  if (!googleSesion()) return false;
+  const ok = await googleSilentRefresh();
+  if (!ok) { STATE.gPendiente = 'reconectar'; renderUserCard(); reconectarEnPrimerClic(); return false; }
+  if (STATE.gDrive === false) { STATE.gPendiente = 'sin-permiso'; renderUserCard(); return false; }
+  STATE.gPendiente = null;
+  renderUserCard();
+  return true;
+}
+
+// Drive respondió que el token no tiene el permiso necesario
+function driveSinPermisoDetectado() {
+  STATE.gDrive = false;
+  const a = loadLocal('gAuth', null);
+  if (a) { a.drive = false; saveLocal('gAuth', a); }
+  STATE.gPendiente = 'sin-permiso';
+  renderUserCard();
 }
 
 function googleDisconnect() {
   if (STATE.gToken && window.google && google.accounts && google.accounts.oauth2) {
     try { google.accounts.oauth2.revoke(STATE.gToken); } catch (e) {}
   }
+  // Cerrar también la sesión de la base: deja de verse cualquier equipo
+  try { if (window.firebase && firebase.auth && STATE.firebase) firebase.auth().signOut(); } catch (e) {}
+  STATE.esAdmin = false;
   STATE.gToken = null;
   STATE.gTokenExp = 0;
+  STATE.gDrive = undefined;
+  STATE.gPendiente = null;
   STATE.gProfile = null;
+  STATE.sceneFileId = null;
   saveLocal('gAuth', null);
   saveLocal('gProfile', null);
   toast('Sesión de Google cerrada', 'warn');
@@ -8387,12 +8813,20 @@ function updateGoogleUI() {
   const dev = devId ? STATE.devices[devId] : null;
   const sheetId = dev && dev.meta && dev.meta.sheetId;
 
-  if (!googleReady()) {
-    st.textContent = 'Sin conectar';
-    st.style.color = 'var(--text3)';
+  if (!googleReady() || STATE.gDrive === false) {
+    const conSesion = googleSesion();
+    const sinPermiso = googleReady() && STATE.gDrive === false;
+    st.textContent = !conSesion ? 'Sin conectar'
+                   : (sinPermiso ? '⚠ Sin permiso de Drive' : 'Sesión activa · Drive en pausa');
+    st.style.color = sinPermiso ? 'var(--warn)' : 'var(--text3)';
     const bOut0 = document.getElementById('btn-gdisconnect');
-    if (bOut0) bOut0.style.display = 'none';
-    if (bC) { bC.style.display = ''; bC.textContent = 'Conectar Google'; }
+    if (bOut0) bOut0.style.display = conSesion ? '' : 'none';
+    if (bC) {
+      bC.style.display = '';
+      bC.setAttribute('data-google', '1');
+      bC.textContent = !conSesion ? 'Conectar Google' : (sinPermiso ? 'Conceder acceso a Drive' : '⟳ Reconectar');
+      bC.onclick = !conSesion ? googleConnect : (sinPermiso ? pedirPermisoDrive : reconectarGoogle);
+    }
     [bNew, bOpen, bSync].forEach(b => b && (b.style.display = 'none'));
     if (browser) browser.style.display = 'none';
     return;
@@ -8465,7 +8899,11 @@ function toggleHistoryArchiving() {
 async function createHistorySheet() {
   const devId = STATE.selectedDevice;
   if (!devId) { toast('Elegí un dispositivo primero', 'err'); return; }
-  if (!googleReady()) { toast('Conectá tu cuenta de Google', 'err'); return; }
+  if (!(await ensureGoogleToken())) {
+    toast(STATE.gDrive === false ? 'Falta el permiso de Drive: concedelo desde tu tarjeta de usuario'
+                                 : 'Conectá tu cuenta de Google', 'err', 6000);
+    return;
+  }
   const cfg = gasCfg();
   const dev = STATE.devices[devId] || {};
   const msg = document.getElementById('hist-msg');
@@ -8630,22 +9068,28 @@ function setDeviceSheet(devId, sheetId) {
 const SCENE_FILE_NAME = 'wavesense_plataforma.json';
 
 // Busca el archivo de escena entre los creados por esta app
+// El id del archivo se recuerda POR CUENTA. Antes era uno solo para todo
+// el navegador: al entrar con otra cuenta se pedía el archivo de la cuenta
+// anterior y Drive respondía 404.
+function claveArchivoEscena() { return 'sceneFileId:' + (ownerId() || 'anon'); }
+function olvidarArchivoEscena() { STATE.sceneFileId = null; saveLocal(claveArchivoEscena(), null); }
+
 async function findSceneFile() {
   if (STATE.sceneFileId) return STATE.sceneFileId;
-  const cached = loadLocal('sceneFileId', null);
+  const cached = loadLocal(claveArchivoEscena(), null);
   if (cached) { STATE.sceneFileId = cached; return cached; }
-  try {
-    const q = encodeURIComponent("name='" + SCENE_FILE_NAME + "' and trashed=false");
-    const r = await fetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&fields=files(id,name,modifiedTime)', {
-      headers: { Authorization: 'Bearer ' + STATE.gToken }
-    });
-    const d = await r.json();
-    if (d.files && d.files.length) {
-      STATE.sceneFileId = d.files[0].id;
-      saveLocal('sceneFileId', STATE.sceneFileId);
-      return STATE.sceneFileId;
-    }
-  } catch (e) {}
+  const q = encodeURIComponent("name='" + SCENE_FILE_NAME + "' and trashed=false");
+  const r = await fetch('https://www.googleapis.com/drive/v3/files?q=' + q +
+      '&orderBy=modifiedTime desc&fields=files(id,name,modifiedTime)', {
+    headers: { Authorization: 'Bearer ' + STATE.gToken }
+  });
+  if (r.status === 401 || r.status === 403) { driveSinPermisoDetectado(); throw new Error('sin permiso de Drive'); }
+  const d = await r.json().catch(() => ({}));
+  if (d.files && d.files.length) {
+    STATE.sceneFileId = d.files[0].id;
+    saveLocal(claveArchivoEscena(), STATE.sceneFileId);
+    return STATE.sceneFileId;
+  }
   return null;
 }
 
@@ -8682,11 +9126,18 @@ async function saveSceneToDrive(opts) {
       },
       body: cuerpo
     });
+    // El archivo recordado ya no es accesible (borrado u otra cuenta):
+    // se olvida y se crea uno nuevo en este mismo intento.
+    if (r.status === 404 && fileId && !opts._reintento) {
+      olvidarArchivoEscena();
+      return saveSceneToDrive(Object.assign({}, opts, { _reintento: true }));
+    }
+    if (r.status === 401 || r.status === 403) { driveSinPermisoDetectado(); throw new Error('sin permiso de Drive'); }
     const res = await r.json();
     if (!res.id) throw new Error((res.error && res.error.message) || ('HTTP ' + r.status));
 
     STATE.sceneFileId = res.id;
-    saveLocal('sceneFileId', res.id);
+    saveLocal(claveArchivoEscena(), res.id);
     STATE.sceneDirty = false;
     updateSceneSaveStatus('Guardado en tu Drive · ' + new Date().toLocaleTimeString());
     if (!opts.silent) toast('Escena guardada en tu Drive', 'ok');
@@ -8722,6 +9173,12 @@ async function loadSceneFromDrive(opts) {
     }
     return ok;
   } catch (e) {
+    // 404: el id recordado no existe para esta cuenta → buscar el correcto
+    if (/HTTP 404/.test(e.message) && !opts._reintento) {
+      olvidarArchivoEscena();
+      return loadSceneFromDrive(Object.assign({}, opts, { _reintento: true }));
+    }
+    if (/HTTP 40[13]/.test(e.message)) driveSinPermisoDetectado();
     if (!opts.silent) toast('No se pudo cargar: ' + e.message, 'err', 6000);
     return false;
   }
@@ -8745,23 +9202,31 @@ function updateSceneSaveStatus(txt) {
 }
 
 /* ── Llamadas al servicio de sincronización ── */
+// Todas las llamadas al servicio llevan el token de Google del usuario
+// ('at'): el Apps Script lo verifica con Google y saca de ahí el correo.
+// Ya no se confía en un correo escrito por la página.
 function gasGet(params) {
   const cfg = gasCfg();
   if (!cfg.url) return Promise.reject(new Error('Falta la URL del servicio'));
-  const q = Object.assign({ token: cfg.token }, params);
+  const q = Object.assign({ token: cfg.token, at: STATE.gToken || '' }, params);
   const qs = Object.keys(q).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(q[k])).join('&');
   return fetch(cfg.url + '?' + qs).then(r => r.json());
 }
 
-function gasPost(body) {
+async function gasPost(body) {
   const cfg = gasCfg();
-  if (!cfg.url) return Promise.reject(new Error('Falta la URL del servicio'));
-  return fetch(cfg.url, {
+  if (!cfg.url) throw new Error('Falta la URL del servicio');
+  // Token vencido: se renueva antes (estas llamadas nacen de un clic, así
+  // que el navegador permite la ventanita de Google)
+  if (!googleReady() && googleSesion()) await googleSilentRefresh();
+  if (!googleReady()) throw new Error('Iniciá sesión con Google');
+  const r = await fetch(cfg.url, {
     method: 'POST',
     // text/plain evita la verificación previa CORS con Apps Script
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(Object.assign({ token: cfg.token }, body))
-  }).then(r => r.json());
+    body: JSON.stringify(Object.assign({ token: cfg.token, at: STATE.gToken }, body))
+  });
+  return r.json();
 }
 
 function testGasConnection() {
@@ -10968,6 +11433,39 @@ function deviceChannelKeys(devId) {
   return Array.from(set).sort();
 }
 
+// Aviso + botón para borrar de la base los canales que ya no existen en el
+// hardware (quedaron de una conexión anterior de los ADS).
+function avisoHuerfanos(devId) {
+  const h = (STATE.devices[devId] && STATE.devices[devId]._canalesHuerfanos) || [];
+  if (!h.length) return '';
+  return `<div style="border:1px solid var(--warn);border-radius:6px;padding:10px 12px;margin-bottom:12px;background:rgba(255,184,0,0.06);">
+    <div style="font-size:11px;color:var(--warn);font-weight:600;margin-bottom:4px;">
+      ${h.length} canal(es) ya no existen en el hardware</div>
+    <div style="font-size:10px;color:var(--text2);line-height:1.6;margin-bottom:8px;">
+      Quedaron en la base de datos de una conexión anterior de los ADS
+      (${h.map(chEsc).join(', ')}). No se muestran, pero siguen guardados.</div>
+    <button class="btn-sm" style="color:var(--warn);border-color:var(--warn);" onclick="borrarCanalesHuerfanos('${chEsc(devId)}')">🧹 Borrarlos de la base</button>
+  </div>`;
+}
+
+function borrarCanalesHuerfanos(devId) {
+  const h = (STATE.devices[devId] && STATE.devices[devId]._canalesHuerfanos) || [];
+  if (!h.length) return;
+  if (!STATE.db) { toast('Sin conexión con la base de datos', 'err'); return; }
+  if (!confirm('¿Borrar de la base ' + h.length + ' canal(es) que ya no existen en el equipo?\n\n' +
+               h.join('\n') + '\n\nSolo se borra su último valor; la configuración de sensores no se toca.')) return;
+  const basePath = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
+  const upd = {};
+  h.forEach(k => { upd[k] = null; });                  // null = borrar en un solo update
+  STATE.db.ref(basePath + '/' + devId + '/canales').update(upd)
+    .then(() => {
+      STATE.devices[devId]._canalesHuerfanos = [];
+      renderChannelConfigList();
+      toast(h.length + ' canal(es) viejos borrados', 'ok');
+    })
+    .catch(e => toast('No se pudieron borrar: ' + e.message, 'err', 6000));
+}
+
 function openChannelConfig() {
   const devs = devicesWithChannels();
   STATE.chcfgDevice = (STATE.chcfgDevice && devs.includes(STATE.chcfgDevice))
@@ -11064,7 +11562,7 @@ function renderChannelConfigList() {
   const presetOptions = (sel) => SENSOR_PRESETS.map(p =>
     `<option value="${p.id}"${p.id === sel ? ' selected' : ''}>${chEsc(p.label)}</option>`).join('');
 
-  cont.innerHTML = keys.map(chanKey => {
+  cont.innerHTML = avisoHuerfanos(devId) + keys.map(chanKey => {
     const fullKey = devId + '/' + chanKey;
     const safe = chSafeId(fullKey);
     CHCFG_ROWS[safe] = { devId, chanKey, fullKey };
