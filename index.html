@@ -1313,6 +1313,32 @@
 
   /* ─── MAIN VIEW PANELS ─── */
   #view-realtime { display: flex; flex-direction: column; height: 100%; }
+  #view-map { display: none; flex-direction: row; height: 100%; position: relative; }
+  #mapa-equipos { flex: 1; min-width: 0; height: 100%; background: var(--bg2); }
+  .mapa-pin {
+    position: absolute; left: 0; top: 0; width: max-content;
+    display: flex; flex-direction: column; align-items: center; transform: translate(-50%, -100%);
+    font-family: var(--font); pointer-events: auto; cursor: pointer;
+  }
+  .mapa-pin-et {
+    background: rgba(10,12,16,.88); border: 1px solid var(--accent); color: var(--text);
+    border-radius: 6px; padding: 3px 7px; font-size: 10px; white-space: nowrap;
+  }
+  .mapa-pin-pt { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; margin-top: 3px; }
+  .leaflet-container { font-family: var(--font); background: var(--bg2); }
+  /* Mapa de calles en tonos oscuros (sin depender de un proveedor con clave) */
+  .mapa-oscuro { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6); }
+  #mapa-equipos.ubicando, #mapa-equipos.ubicando .leaflet-interactive { cursor: crosshair !important; }
+  #mapa-aviso {
+    display: none; position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 1000;
+    background: var(--panel); border: 1px solid var(--accent); border-radius: 8px; padding: 8px 12px;
+    font-size: 11px; color: var(--text); box-shadow: 0 6px 24px rgba(0,0,0,.6);
+    align-items: center; gap: 10px; max-width: 92%; flex-wrap: wrap;
+  }
+  #mapa-aviso.show { display: flex; }
+  .leaflet-popup-content-wrapper, .leaflet-popup-tip { background: var(--panel); color: var(--text); }
+  @media (max-width: 1024px), (orientation: portrait) and (max-width: 1400px) {
+  }
   #view-history { display: none; flex-direction: column; height: 100%; padding: 20px; overflow-y: auto; }
   #view-offline { display: none; flex-direction: column; height: 100%; padding: 20px; overflow-y: auto; }
   #view-settings { display: none; flex-direction: column; height: 100%; padding: 20px; overflow-y: auto; }
@@ -1366,6 +1392,7 @@
     </div>
     <div class="header-tabs">
       <button class="tab active" onclick="switchTab('realtime',this)">Tiempo Real</button>
+      <button class="tab" onclick="switchTab('map',this)">Mapa</button>
       <button class="tab" onclick="switchTab('history',this)">Histórico</button>
       <button class="tab" data-adv="1" onclick="switchTab('diagram',this)">Diagrama 2D</button>
       <button class="tab" data-adv="1" onclick="switchTab('offline',this)">Cola Offline</button>
@@ -1438,7 +1465,7 @@
           <button class="btn-sm" style="padding:2px 8px;min-height:0;font-size:9px;" onclick="googleDisconnect()">Salir</button>
         </div>
         <button class="btn-sm accent" style="width:100%;margin-top:6px;" onclick="openPairDevice()">
-          + Vincular dispositivo
+          ⚙ Gestionar dispositivos
         </button>
       </div>
     </div>
@@ -1525,6 +1552,19 @@
           <button class="ts-btn" onclick="setTimeRange('7d',this)">7D</button>
         </div>
         <div class="history-status" id="last-update-bar">— Esperando datos…</div>
+      </div>
+    </div>
+
+    <!-- MAP VIEW -->
+    <div id="view-map">
+      <div id="mapa-equipos"></div>
+      <div id="mapa-aviso">
+        <span id="mapa-aviso-txt"></span>
+        <input id="mapa-coords" type="text" placeholder="o pegá coordenadas: 10.0579, -84.4234"
+          style="width:230px;font-size:11px;padding:5px 8px;" onkeydown="if(event.key==='Enter')ubicarConTexto()">
+        <button class="btn-sm" onclick="ubicarConTexto()">Usar</button>
+        <button class="btn-sm" onclick="ubicarConGPS()">📍 Mi ubicación</button>
+        <button class="btn-sm" style="color:var(--err);border-color:var(--err);" onclick="cancelarUbicar()">Cancelar</button>
       </div>
     </div>
 
@@ -1960,30 +2000,30 @@
   </div>
 </div>
 
-<!-- ─── MODAL: Vincular dispositivo ─── -->
+<!-- ─── MODAL: Gestionar dispositivos ─── -->
 <div class="modal-overlay" id="pair-modal">
   <div class="modal" style="max-width:520px;">
     <button class="modal-close" onclick="closeModal('pair-modal')">✕</button>
-    <div class="modal-title">Vincular dispositivo</div>
-    <div class="modal-sub">Escribí el código que muestra la pantalla del equipo.</div>
+    <div class="modal-title">Gestionar dispositivos</div>
+    <div class="modal-sub">Tus equipos, con quién los compartís y cómo sumar uno nuevo.</div>
 
-    <div class="field-group">
-      <label>Código de vinculación</label>
-      <input type="text" id="pair-code" maxlength="6" autocomplete="off"
-        style="font-size:26px;letter-spacing:7px;text-align:center;text-transform:uppercase;padding:12px;">
-    </div>
-    <button class="btn-sm accent" style="width:100%;margin-top:8px;" onclick="claimDevice()">Vincular a mi cuenta</button>
-    <div id="pair-msg" style="font-size:11px;color:var(--text3);margin-top:10px;min-height:16px;"></div>
+    <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Mis dispositivos</div>
+    <div id="pair-devices" style="font-size:11px;color:var(--text3);">—</div>
+    <button class="btn-sm" style="width:100%;margin-top:8px;" onclick="loadMyDevices()">⟳ Actualizar lista</button>
 
     <div style="border-top:1px solid var(--border);margin-top:14px;padding-top:12px;">
-      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Mis dispositivos</div>
-      <div id="pair-devices" style="font-size:11px;color:var(--text3);">—</div>
-      <button class="btn-sm" style="width:100%;margin-top:8px;" onclick="loadMyDevices()">⟳ Actualizar lista</button>
-    </div>
-
-    <div style="font-size:9px;color:var(--text3);margin-top:12px;line-height:1.6;">
-      ¿No ves el código? Conectate a la red WiFi del equipo (<b>WaveSense-XXXX</b>)
-      desde el teléfono: se abre una página con el código y la configuración de red.
+      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;">Vincular un equipo nuevo</div>
+      <div style="font-size:10px;color:var(--text3);margin-bottom:6px;">Escribí el código que muestra la pantalla del equipo.</div>
+      <div class="field-group" style="margin:0;">
+        <input type="text" id="pair-code" maxlength="6" autocomplete="off" placeholder="ABC123"
+          style="font-size:26px;letter-spacing:7px;text-align:center;text-transform:uppercase;padding:12px;">
+      </div>
+      <button class="btn-sm accent" style="width:100%;margin-top:8px;" onclick="claimDevice()">Vincular a mi cuenta</button>
+      <div id="pair-msg" style="font-size:11px;color:var(--text3);margin-top:10px;min-height:16px;"></div>
+      <div style="font-size:9px;color:var(--text3);margin-top:6px;line-height:1.6;">
+        ¿No ves el código? Conectate a la red WiFi del equipo (<b>WaveSense-XXXX</b>)
+        desde el teléfono: se abre una página con el código y la configuración de red.
+      </div>
     </div>
   </div>
 </div>
@@ -2027,41 +2067,6 @@
     <div style="font-size:9px;color:var(--text3);margin-top:12px;line-height:1.6;">
       Los pines reservados los usa el sistema (I2C, tarjeta SD, LEDs, botones, flash interna)
       y no pueden reasignarse. Los GPIO 34-39 son solo entrada.
-    </div>
-  </div>
-</div>
-
-<!-- ─── MODAL: Ubicación GPS ─── -->
-<div class="modal-overlay" id="map-modal">
-  <div class="modal" style="max-width:720px;width:94vw;">
-    <button class="modal-close" onclick="closeModal('map-modal')">✕</button>
-    <div class="modal-title" id="map-modal-title">Ubicación</div>
-    <div class="modal-sub" id="map-modal-sub"></div>
-    <div id="map-container" style="width:100%;height:300px;border-radius:8px;overflow:hidden;border:1px solid var(--border);background:var(--bg3);"></div>
-    <div style="border-top:1px solid var(--border);margin-top:12px;padding-top:12px;">
-      <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;">Definir ubicación manualmente</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-        <div class="field-group" style="margin:0;">
-          <label>Latitud</label>
-          <input type="number" step="any" id="map-lat" placeholder="9.9281">
-        </div>
-        <div class="field-group" style="margin:0;">
-          <label>Longitud</label>
-          <input type="number" step="any" id="map-lon" placeholder="-84.0907">
-        </div>
-      </div>
-      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-        <button class="btn-sm accent" style="flex:2;" onclick="saveMapCoords()">Guardar ubicación</button>
-        <button class="btn-sm" style="flex:1;" onclick="useMyLocationInMap()">📍 Mi ubicación</button>
-      </div>
-      <div style="font-size:9px;color:var(--text3);margin-top:8px;line-height:1.5;">
-        Podés pegar coordenadas de Google Maps (clic derecho sobre el punto → copiar).
-        Se guardan en la ficha del equipo, no requieren que tenga GPS.
-      </div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-      <a id="map-open-link" href="#" target="_blank" rel="noopener" class="btn-sm" style="flex:1;text-align:center;text-decoration:none;line-height:22px;">↗ Abrir en Google Maps</a>
-      <button class="btn-sm" style="flex:1;" onclick="copyCoords()">⧉ Copiar coordenadas</button>
     </div>
   </div>
 </div>
@@ -3239,6 +3244,7 @@ function processRTDBData(data) {
   });
   persistData();      // camino caliente: solo lo que cambia con el dato
   renderDevices();
+  if (STATE.currentTab === 'map') actualizarMapa();
   renderSensors();
   updateRTPanel();
   updateSensorIconValues();
@@ -3448,6 +3454,13 @@ function renderDemoSensors() {
           <input type="number" step="any" id="ds_${i}_lmax" style="${IS}" value="${s.limitMax != null ? s.limitMax : ''}" placeholder="opcional"></div>
         <div style="font-size:9px;color:var(--text3);">Se dibujan como líneas punteadas en el gráfico.</div>
       </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px;margin-top:8px;align-items:end;">
+        <div class="field-group" style="margin:0;"><label style="font-size:10px;">Escala: mín</label>
+          <input type="number" step="any" id="ds_${i}_vmin" style="${IS}" value="${s.viewMin != null ? s.viewMin : ''}" placeholder="auto"></div>
+        <div class="field-group" style="margin:0;"><label style="font-size:10px;">Escala: máx</label>
+          <input type="number" step="any" id="ds_${i}_vmax" style="${IS}" value="${s.viewMax != null ? s.viewMax : ''}" placeholder="auto"></div>
+        <div style="font-size:9px;color:var(--text3);">Rango fijo del eje vertical. Vacío = automático.</div>
+      </div>
     </div>`).join('');
 }
 
@@ -3465,7 +3478,8 @@ function readDemoSensors() {
       mode: g('mode') || 'wave',
       base: n('base'), amp: n('amp'),
       period: n('period') || 60, noise: n('noise'),
-      limitMin: nOrNull('lmin'), limitMax: nOrNull('lmax')
+      limitMin: nOrNull('lmin'), limitMax: nOrNull('lmax'),
+      viewMin: nOrNull('vmin'), viewMax: nOrNull('vmax')
     };
   });
   return cfg;
@@ -3511,6 +3525,7 @@ function saveDemoConfig() {
     STATE.sensorDefs[fk] = Object.assign({}, prev, {
       name: s.name, unit: s.unit,
       limitMin: s.limitMin, limitMax: s.limitMax,
+      viewMin: s.viewMin, viewMax: s.viewMax,
       type: 'raw_ma', presetId: prev.presetId || 'raw_ma'
     });
   });
@@ -3524,6 +3539,7 @@ function saveDemoConfig() {
     lastUpdate: Date.now()
   });
   persistAll();
+  STATE._lastChartDraw = 0;           // escala y límites nuevos, al instante
   if (STATE.simulating) simulateTick();
   renderDevices();
   renderSensors();
@@ -4758,7 +4774,7 @@ function marcarPestanaActiva(view) {
 
 // Muestra el panel de la vista indicada y oculta los demás
 function mostrarVista(view) {
-  ['realtime', 'history', 'offline', 'settings'].forEach(function (v) {
+  ['realtime', 'map', 'history', 'offline', 'settings'].forEach(function (v) {
     const panel = document.getElementById('view-' + v);
     if (panel) panel.style.display = (v === view) ? 'flex' : 'none';
   });
@@ -5032,7 +5048,16 @@ function copySceneFromDevice() {
 
 function selectDevice(id) {
   STATE.selectedDevice = id;
-  switchDeviceScene(id);              // trae el modelo y diagrama de ese equipo
+  if (STATE.currentTab === 'map') {
+    // En el mapa no se ve ni el 3D ni el diagrama: cambiar de escena ahí
+    // (decodificar el modelo, dibujar el diagrama) sería trabajo tirado.
+    // Queda anotado y se hace al salir del mapa.
+    STATE._escenaPendiente = id;
+    enfocarEquipoEnMapa(id);
+  } else {
+    STATE._escenaPendiente = null;
+    switchDeviceScene(id);            // trae el modelo y diagrama de ese equipo
+  }
   if (typeof updateGoogleUI === 'function') updateGoogleUI();
   renderDevices();
   renderSensors();
@@ -5304,6 +5329,25 @@ function getChartPoints(sensorKey) {
 }
 
 // Devuelve {min,max} de alarma para un sensor, o null si no hay ninguno.
+// Rango fijo del eje vertical definido por el usuario (o null = automático)
+function sensorEscala(sensorKey) {
+  const def = STATE.sensorDefs[sensorKey];
+  if (!def) return { min: undefined, max: undefined };
+  const n = v => (typeof v === 'number' && isFinite(v)) ? v : undefined;
+  let mn = n(def.viewMin), mx = n(def.viewMax);
+  if (mn !== undefined && mx !== undefined && mn >= mx) { mn = undefined; mx = undefined; }  // rango inválido
+  return { min: mn, max: mx };
+}
+
+// Aplica escala fija y/o sugerida (las líneas de alarma se mantienen visibles)
+function aplicarEscalaY(y, sensorKey, sMin, sMax) {
+  const e = sensorEscala(sensorKey);
+  y.min = e.min;
+  y.max = e.max;
+  y.suggestedMin = sMin;
+  y.suggestedMax = sMax;
+}
+
 function sensorLimits(sensorKey) {
   const def = STATE.sensorDefs[sensorKey];
   if (!def) return null;
@@ -5374,7 +5418,7 @@ function renderSensorChart(sensorKey, canvasId) {
     existing.data.datasets[0].data = vals;
     existing.$limits = limits;
     if (existing.options.scales && existing.options.scales.y) {
-      existing.options.scales.y.suggestedMin = sMin;
+      aplicarEscalaY(existing.options.scales.y, sensorKey, sMin, sMax);
       existing.options.scales.y.suggestedMax = sMax;
     }
     existing.update('none'); // 'none' = skip animation for live updates
@@ -5405,7 +5449,8 @@ function renderSensorChart(sensorKey, canvasId) {
       plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
       scales: {
         x: { ticks: { color: '#545870', font: { size: 9 }, maxTicksLimit: 6 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-        y: { suggestedMin: sMin, suggestedMax: sMax, ticks: { color: '#545870', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+        y: { min: sensorEscala(sensorKey).min, max: sensorEscala(sensorKey).max,
+             suggestedMin: sMin, suggestedMax: sMax, ticks: { color: '#545870', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
       }
     }
   });
@@ -5462,7 +5507,7 @@ function activar3D() {
 // Carga en el visor el modelo que corresponde a la escena actual, si no es
 // el que ya está. Es el único lugar donde se decodifica el base64 del GLB.
 function cargarModeloPendiente() {
-  if (!STATE.scene || esModoBasico()) return;
+  if (!STATE.scene || esModoBasico() || STATE.currentTab === 'map') return;
   const g = STATE.glbData;
   if (g && g.data) {
     if (STATE._glbEnEscena === g.data) return;           // ya está cargado
@@ -5478,10 +5523,10 @@ function cargarModeloPendiente() {
 // En modo básico NO decodifica nada: solo deja el modelo pendiente.
 function loadGLBBase64(b64, name) {
   if (!b64) return;
-  if (esModoBasico() || !STATE.scene) {
+  if (esModoBasico() || !STATE.scene || STATE.currentTab === 'map') {
     // Si había un modelo de otra escena, se libera: no corresponde mostrarlo
     if (STATE.model && STATE._glbEnEscena !== b64) limpiarModelo3D();
-    if (!esModoBasico()) activar3D();          // avanzado sin visor aún: arrancarlo
+    if (!esModoBasico() && STATE.currentTab !== 'map') activar3D();   // avanzado sin visor aún
     return;
   }
   if (STATE._glbEnEscena === b64) return;      // ya cargado o cargando
@@ -8357,6 +8402,270 @@ function onActionResult(devId, res) {
    Lee meta/lat y meta/lon de Firebase y muestra el mapa.
 ══════════════════════════════════════════════════════ */
 // Devuelve {lat, lon} si el dispositivo tiene coordenadas válidas
+/* ══════════════════════════════════════════════════════
+   MAPA DE EQUIPOS
+   Leaflet se descarga solo al abrir la pestaña (no pesa en el arranque ni
+   en modo básico si no se usa). Cada equipo con coordenadas es un pin con
+   su estado; doble clic abre su modelo 3D o su diagrama.
+══════════════════════════════════════════════════════ */
+const MAPA = { mapa: null, pines: {}, cargando: null, encuadrado: true };
+// Costa Rica completa (incluye Guanacaste y la zona sur)
+const CR_LIMITES = [[8.03, -85.95], [11.22, -82.55]];
+
+// Botón para volver a ver todo el país
+function vistaCostaRica() { if (MAPA.mapa) MAPA.mapa.fitBounds(CR_LIMITES); }
+
+function cargarLeaflet() {
+  if (window.L && window.L.map) return Promise.resolve();
+  if (MAPA.cargando) return MAPA.cargando;
+  MAPA.cargando = new Promise((res, rej) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+    document.head.appendChild(css);
+    const js = document.createElement('script');
+    js.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+    js.onload = () => res();
+    js.onerror = () => { MAPA.cargando = null; rej(new Error('no se pudo descargar el mapa')); };
+    document.head.appendChild(js);
+  });
+  return MAPA.cargando;
+}
+
+function abrirMapa() {
+  return cargarLeaflet().then(() => {
+    if (!MAPA.mapa) {
+      MAPA.mapa = L.map('mapa-equipos', { zoomControl: true, attributionControl: true })
+        .fitBounds(CR_LIMITES);               // vista inicial: todo Costa Rica
+      // Capas sin clave de API. (CARTO pasó a exigir clave y marcaba el mapa
+      // con "API KEY REQUIRED".) El mapa de calles es OpenStreetMap
+      // oscurecido con CSS para que combine con la plataforma; el satelital
+      // sirve para ubicar el equipo en la instalación real.
+      const calles = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, className: 'mapa-oscuro',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+      });
+      const satelite = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19,
+        attribution: 'Imágenes &copy; Esri, Maxar, Earthstar Geographics'
+      });
+      (loadLocal('mapaCapa', 'calles') === 'satelite' ? satelite : calles).addTo(MAPA.mapa);
+      L.control.layers({ 'Calles': calles, 'Satélite': satelite }, null, { position: 'topright' }).addTo(MAPA.mapa);
+      MAPA.mapa.on('baselayerchange', e => saveLocal('mapaCapa', e.layer === satelite ? 'satelite' : 'calles'));
+      MAPA.mapa.on('click', clicEnMapa);
+      // Control "⌂": volver a la vista de todo el país
+      const Inicio = L.Control.extend({
+        options: { position: 'topleft' },
+        onAdd: function () {
+          const b = L.DomUtil.create('a', 'leaflet-bar');
+          b.href = '#'; b.title = 'Ver todo Costa Rica'; b.innerHTML = '⌂';
+          b.style.cssText = 'display:block;width:30px;height:30px;line-height:30px;text-align:center;font-size:17px;background:#fff;color:#333;text-decoration:none;';
+          L.DomEvent.on(b, 'click', e => { L.DomEvent.stop(e); vistaCostaRica(); });
+          return b;
+        }
+      });
+      new Inicio().addTo(MAPA.mapa);
+    }
+    // El contenedor estaba oculto: Leaflet necesita remedirlo
+    return new Promise(res => requestAnimationFrame(() => {
+      MAPA.mapa.invalidateSize();
+      // Se abre mostrando todo Costa Rica; al elegir un equipo se acerca a él
+      actualizarMapa(false);
+      res();
+    }));
+  }).catch(e => toast('Mapa no disponible: ' + e.message, 'err'));
+}
+
+// Lleva el mapa al equipo: si tiene ubicación, lo centra y abre su globo;
+// si no la tiene, entra directo en "tocá el mapa para ubicarlo".
+function enfocarEquipoEnMapa(id) {
+  if (!MAPA.mapa) { abrirMapa(); return; }
+  const c = deviceCoords(id);
+  if (!c) { empezarUbicar(id); return; }
+  cancelarUbicar();
+  MAPA.mapa.setView([c.lat, c.lon], Math.max(MAPA.mapa.getZoom(), 15));
+  if (MAPA.pines[id]) MAPA.pines[id].openPopup();
+}
+
+function colorEstado(id) {
+  return isDeviceOnline(id) || (STATE.simulating && id === DEMO_DEVICE_ID) ? '#00e5a0' : '#ff4d4d';
+}
+
+// Resumen corto de un equipo para el globo del pin
+function resumenEquipo(id) {
+  const dev = STATE.devices[id] || {};
+  const on = colorEstado(id) === '#00e5a0';
+  const claves = Object.keys(STATE.liveData).filter(k => k.indexOf(id + '/') === 0).slice(0, 4);
+  const filas = claves.map(k => {
+    const d = STATE.liveData[k] || {};
+    const v = d.falla ? 'FALLA' : (d.valor !== undefined ? d.valor : (d.rpm !== undefined ? d.rpm : '—'));
+    return '<div style="display:flex;justify-content:space-between;gap:10px;font-size:10px;">' +
+      '<span style="color:var(--text2);">' + chEsc(sensorDisplayName(k)) + '</span>' +
+      '<b style="color:var(--accent);">' + chEsc(String(v)) + ' ' + chEsc(d.unidad || '') + '</b></div>';
+  }).join('');
+  return '<div style="min-width:180px;">' +
+    '<div style="font-size:12px;font-weight:600;">' + chEsc(dev.name || id) + '</div>' +
+    '<div style="font-size:9px;color:' + (on ? 'var(--accent)' : 'var(--err)') + ';margin-bottom:6px;">' +
+      (on ? '● En línea' : '● Sin conexión') + (dev.loc ? ' · ' + chEsc(dev.loc) : '') + '</div>' +
+    filas +
+    '<button class="btn-sm accent" style="width:100%;margin-top:8px;" onclick="abrirEquipoDesdeMapa(\'' + chEsc(id) + '\')">Abrir ' +
+      (vistaDeEquipo(id) === '3d' ? 'modelo 3D' : 'diagrama') + '</button>' +
+    '<button class="btn-sm" style="width:100%;margin-top:6px;" onclick="empezarUbicar(\'' + chEsc(id) + '\')">📍 Cambiar ubicación</button>' +
+    '<div style="display:flex;gap:6px;margin-top:6px;">' +
+      '<a class="btn-sm" style="flex:1;text-align:center;text-decoration:none;" target="_blank" rel="noopener" ' +
+        'href="https://www.google.com/maps/search/?api=1&query=' + (deviceCoords(id) || {}).lat + ',' + (deviceCoords(id) || {}).lon + '">↗ Google Maps</a>' +
+      '<button class="btn-sm" style="flex:1;" onclick="copiarCoordenadas(\'' + chEsc(id) + '\')">⧉ Copiar</button>' +
+    '</div></div>';
+}
+
+// Qué vista corresponde a un equipo: 3D si tiene modelo y no es modo básico
+function vistaDeEquipo(id) {
+  if (esModoBasico()) return '2d';
+  const sc = (STATE.scenes && STATE.scenes[id]) || (id === STATE.currentSceneDev ? captureCurrentScene() : null);
+  return (sc && sc.glb && sc.glb.data) ? '3d' : '2d';
+}
+
+function abrirEquipoDesdeMapa(id) {
+  if (MAPA.mapa) MAPA.mapa.closePopup();
+  selectDevice(id);                                    // trae su escena y filtra gráficas
+  const vista = vistaDeEquipo(id);
+  if (vista === '3d' || esModoBasico()) {
+    switchTab('realtime');                             // básico: el 2D vive en Tiempo Real
+  } else {
+    switchTab('diagram');
+  }
+}
+
+function actualizarMapa(encuadrar) {
+  if (!MAPA.mapa || !window.L) return;
+  const ids = Object.keys(STATE.devices).filter(id => deviceCoords(id));
+  // Quitar pines de equipos que ya no están o sin coordenadas
+  Object.keys(MAPA.pines).forEach(id => {
+    if (ids.indexOf(id) < 0) { MAPA.mapa.removeLayer(MAPA.pines[id]); delete MAPA.pines[id]; }
+  });
+  ids.forEach(id => {
+    const c = deviceCoords(id);
+    const dev = STATE.devices[id] || {};
+    // El doble clic se atiende en el propio elemento: así funciona siempre,
+    // antes de que Leaflet lo interprete como "acercar el mapa".
+    const html = '<div class="mapa-pin" ondblclick="event.stopPropagation();event.preventDefault();abrirEquipoDesdeMapa(\'' + chEsc(id) + '\')">' +
+      '<div class="mapa-pin-et">' + chEsc(dev.name || id) + '</div>' +
+      '<div class="mapa-pin-pt" style="background:' + colorEstado(id) + ';"></div></div>';
+    // popupAnchor: el globo se abre ARRIBA del rótulo; si no, lo tapaba y el
+    // segundo clic del doble clic caía sobre el globo en vez del pin.
+    const icono = L.divIcon({ className: '', html: html, iconSize: [0, 0], popupAnchor: [0, -44] });
+    let m = MAPA.pines[id];
+    if (!m) {
+      m = L.marker([c.lat, c.lon], { icon: icono, bubblingMouseEvents: false }).addTo(MAPA.mapa);
+      m.bindPopup(() => resumenEquipo(id));
+      m.on('dblclick', ev => { L.DomEvent.stop(ev); abrirEquipoDesdeMapa(id); });
+      MAPA.pines[id] = m;
+    } else {
+      m.setLatLng([c.lat, c.lon]);
+      if (m._htmlPrevio !== html) m.setIcon(icono);
+    }
+    m._htmlPrevio = html;
+  });
+  if (encuadrar && ids.length && !MAPA.encuadrado) {
+    MAPA.encuadrado = true;
+    if (ids.length === 1) {
+      const c = deviceCoords(ids[0]);
+      MAPA.mapa.setView([c.lat, c.lon], 14);
+    } else {
+      MAPA.mapa.fitBounds(L.latLngBounds(ids.map(id => { const c = deviceCoords(id); return [c.lat, c.lon]; })), { padding: [60, 60] });
+    }
+  }
+}
+
+/* ── Marcar la ubicación de un equipo tocando el mapa ────────────── */
+function empezarUbicar(id) {
+  if (STATE.currentTab !== 'map') switchTab('map');
+  const dev = STATE.devices[id] || {};
+  MAPA.ubicando = id;
+  if (MAPA.mapa) MAPA.mapa.closePopup();
+  document.getElementById('mapa-aviso-txt').innerHTML =
+    'Tocá el mapa donde está <b style="color:var(--accent);">' + chEsc(dev.name || id) + '</b>';
+  document.getElementById('mapa-aviso').classList.add('show');
+  document.getElementById('mapa-equipos').classList.add('ubicando');
+}
+
+function cancelarUbicar() {
+  MAPA.ubicando = null;
+  const campo = document.getElementById('mapa-coords');
+  if (campo) campo.value = '';
+  document.getElementById('mapa-aviso').classList.remove('show');
+  document.getElementById('mapa-equipos').classList.remove('ubicando');
+}
+
+function clicEnMapa(e) {
+  if (!MAPA.ubicando) return;
+  const id = MAPA.ubicando;
+  cancelarUbicar();
+  guardarUbicacion(id, e.latlng.lat, e.latlng.lng);
+}
+
+// Coordenadas pegadas (p. ej. desde Google Maps: clic derecho → copiar)
+function ubicarConTexto() {
+  const id = MAPA.ubicando;
+  const el = document.getElementById('mapa-coords');
+  if (!id || !el) return;
+  const m = el.value.match(/(-?\d+(?:\.\d+)?)[,;\s]+(-?\d+(?:\.\d+)?)/);
+  if (!m) { toast('Formato: latitud, longitud (ej. 10.0579, -84.4234)', 'err', 5000); return; }
+  const lat = parseFloat(m[1]), lon = parseFloat(m[2]);
+  cancelarUbicar();
+  if (guardarUbicacion(id, lat, lon) && MAPA.mapa) {
+    MAPA.mapa.setView([lat, lon], 16);
+    if (MAPA.pines[id]) MAPA.pines[id].openPopup();
+  }
+}
+
+// Estando en el lugar de la instalación: usar el GPS del teléfono
+function ubicarConGPS() {
+  const id = MAPA.ubicando;
+  if (!id) return;
+  if (!navigator.geolocation) { toast('El navegador no permite geolocalización', 'err'); return; }
+  toast('Obteniendo tu ubicación…', 'ok', 2000);
+  navigator.geolocation.getCurrentPosition(p => {
+    cancelarUbicar();
+    guardarUbicacion(id, p.coords.latitude, p.coords.longitude);
+    if (MAPA.mapa) MAPA.mapa.setView([p.coords.latitude, p.coords.longitude], 17);
+  }, err => toast('No se pudo obtener la ubicación: ' + err.message, 'err'),
+     { enableHighAccuracy: true, timeout: 15000 });
+}
+
+// Guarda las coordenadas del equipo (local + base de datos)
+function guardarUbicacion(devId, lat, lon) {
+  lat = Math.round(lat * 1e6) / 1e6;
+  lon = Math.round(lon * 1e6) / 1e6;
+  if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+    toast('Coordenadas inválidas', 'err');
+    return false;
+  }
+  const dev = STATE.devices[devId] || (STATE.devices[devId] = {});
+  dev.meta = Object.assign({}, dev.meta || {}, { lat, lon });
+  persistAll();
+  renderDevices();
+  if (MAPA.mapa) actualizarMapa(false);
+
+  if (STATE.db && devId !== DEMO_DEVICE_ID) {
+    const basePath = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
+    STATE.db.ref(basePath + '/' + devId + '/meta').update({ lat, lon })
+      .then(() => toast('Ubicación de "' + (dev.name || devId) + '" guardada', 'ok'))
+      .catch(e => toast('Guardada solo en este navegador · ' + e.message, 'warn', 6000));
+  } else {
+    toast('Ubicación guardada', 'ok');
+  }
+  return true;
+}
+
+function centrarEnEquipo(id) {
+  const c = deviceCoords(id);
+  if (!c) { empezarUbicar(id); return; }
+  if (!MAPA.mapa) return;
+  MAPA.mapa.setView([c.lat, c.lon], Math.max(MAPA.mapa.getZoom(), 14));
+  if (MAPA.pines[id]) MAPA.pines[id].openPopup();
+}
+
 function deviceCoords(devId) {
   const dev = STATE.devices[devId];
   const m = (dev && dev.meta) || {};
@@ -8367,103 +8676,23 @@ function deviceCoords(devId) {
   return { lat, lon };
 }
 
+// La antigua ventana de ubicación ahora es el mapa: el 📍 de cada equipo
+// (y el botón del panel de comandos) llevan a la pestaña Mapa enfocada en él.
 function openDeviceMap(devId) {
   if (!devId) { toast('Elegí un dispositivo', 'err'); return; }
-  STATE._mapDeviceId = devId;
+  document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  if (STATE.selectedDevice !== devId) selectDevice(devId);
+  if (STATE.currentTab !== 'map') switchTab('map');
+  enfocarEquipoEnMapa(devId);
+}
+
+// Copia las coordenadas del equipo al portapapeles
+function copiarCoordenadas(devId) {
   const c = deviceCoords(devId);
-  const dev = STATE.devices[devId] || {};
-  STATE._mapCoords = c;
-
-  document.getElementById('map-modal-title').textContent = '📍 ' + (dev.name || devId);
-  document.getElementById('map-modal-sub').textContent = c
-    ? ((dev.loc ? dev.loc + ' · ' : '') + c.lat.toFixed(6) + ', ' + c.lon.toFixed(6))
-    : 'Sin ubicación definida — ingresá las coordenadas abajo';
-
-  document.getElementById('map-lat').value = c ? c.lat : '';
-  document.getElementById('map-lon').value = c ? c.lon : '';
-  renderMapPreview(c);
-  openModal('map-modal');
-}
-
-// Dibuja el mapa (o un aviso si todavía no hay coordenadas)
-function renderMapPreview(c) {
-  const cont = document.getElementById('map-container');
-  const link = document.getElementById('map-open-link');
-  if (!cont) return;
-  if (!c) {
-    cont.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;' +
-      'font-size:11px;color:var(--text3);text-align:center;padding:20px;">Sin ubicación definida.<br>' +
-      'Ingresá latitud y longitud abajo para ver el mapa.</div>';
-    if (link) link.href = '#';
-    return;
-  }
-  const d = 0.004;
-  const bbox = [c.lon - d, c.lat - d, c.lon + d, c.lat + d].join('%2C');
-  cont.innerHTML =
-    '<iframe width="100%" height="100%" frameborder="0" style="border:0;display:block;" ' +
-    'src="https://www.openstreetmap.org/export/embed.html?bbox=' + bbox +
-    '&layer=mapnik&marker=' + c.lat + '%2C' + c.lon + '" allowfullscreen></iframe>';
-  if (link) link.href = 'https://www.google.com/maps/search/?api=1&query=' + c.lat + ',' + c.lon;
-}
-
-// Guarda las coordenadas escritas a mano en el modal
-function saveMapCoords() {
-  const devId = STATE._mapDeviceId;
-  if (!devId) return;
-  // Acepta también un pegado tipo "9.9281, -84.0907" en el campo de latitud
-  const rawLat = document.getElementById('map-lat').value.trim();
-  const rawLon = document.getElementById('map-lon').value.trim();
-  let lat = parseFloat(rawLat), lon = parseFloat(rawLon);
-  const pair = rawLat.match(/(-?\d+\.?\d*)[,\s]+(-?\d+\.?\d*)/);
-  if (pair) { lat = parseFloat(pair[1]); lon = parseFloat(pair[2]); }
-
-  if (!isFinite(lat) || !isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
-    toast('Coordenadas inválidas', 'err');
-    return;
-  }
-
-  const dev = STATE.devices[devId] || (STATE.devices[devId] = {});
-  dev.meta = Object.assign({}, dev.meta || {}, { lat, lon });
-  persistAll();
-  renderDevices();
-
-  STATE._mapCoords = { lat, lon };
-  document.getElementById('map-lat').value = lat;
-  document.getElementById('map-lon').value = lon;
-  document.getElementById('map-modal-sub').textContent =
-    (dev.loc ? dev.loc + ' · ' : '') + lat.toFixed(6) + ', ' + lon.toFixed(6);
-  renderMapPreview({ lat, lon });
-
-  if (STATE.db) {
-    const basePath = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
-    STATE.db.ref(basePath + '/' + devId + '/meta').update({ lat, lon })
-      .then(() => toast('Ubicación guardada', 'ok'))
-      .catch(e => toast('Guardada localmente · ' + e.message, 'warn'));
-  } else {
-    toast('Ubicación guardada localmente', 'warn');
-  }
-}
-
-function useMyLocationInMap() {
-  if (!navigator.geolocation) { toast('El navegador no permite geolocalización', 'err'); return; }
-  toast('Obteniendo ubicación…', 'ok', 2000);
-  navigator.geolocation.getCurrentPosition(
-    pos => {
-      document.getElementById('map-lat').value = pos.coords.latitude.toFixed(6);
-      document.getElementById('map-lon').value = pos.coords.longitude.toFixed(6);
-      toast('Ubicación obtenida · tocá Guardar', 'ok');
-    },
-    err => toast('No se pudo obtener: ' + err.message, 'err', 5000),
-    { enableHighAccuracy: true, timeout: 10000 }
-  );
-}
-
-function copyCoords() {
-  const c = STATE._mapCoords;
   if (!c) return;
   const txt = c.lat + ', ' + c.lon;
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(txt).then(() => toast('Coordenadas copiadas', 'ok'))
+    navigator.clipboard.writeText(txt).then(() => toast('Coordenadas copiadas: ' + txt, 'ok'))
       .catch(() => toast(txt, 'ok', 5000));
   } else {
     toast(txt, 'ok', 5000);
@@ -10971,7 +11200,7 @@ function renderHistoryChartFull() {
     STATE.histChart.data.datasets[0].data = vals;
     STATE.histChart.$limits = limits;
     if (STATE.histChart.options.scales && STATE.histChart.options.scales.y) {
-      STATE.histChart.options.scales.y.suggestedMin = sMin;
+      aplicarEscalaY(STATE.histChart.options.scales.y, STATE.selectedSensor, sMin, sMax);
       STATE.histChart.options.scales.y.suggestedMax = sMax;
     }
     STATE.histChart.update('none');
@@ -11001,7 +11230,8 @@ function renderHistoryChartFull() {
       plugins: { legend: { display: false } },
       scales: {
         x: { ticks: { color: '#545870', font: { size: 9 }, maxTicksLimit: 8 }, grid: { color: 'rgba(255,255,255,0.04)' } },
-        y: { suggestedMin: sMin, suggestedMax: sMax, ticks: { color: '#545870', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
+        y: { min: sensorEscala(STATE.selectedSensor).min, max: sensorEscala(STATE.selectedSensor).max,
+             suggestedMin: sMin, suggestedMax: sMax, ticks: { color: '#545870', font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.04)' } }
       }
     }
   });
@@ -11244,6 +11474,12 @@ function switchTab(view, el) {
   // dentro de Tiempo Real.
   if (esModoBasico() && view === 'diagram') view = 'realtime';
   STATE.currentTab = view;
+  // Al salir del mapa se carga recién la escena del equipo elegido ahí
+  if (view !== 'map' && STATE._escenaPendiente) {
+    const pend = STATE._escenaPendiente;
+    STATE._escenaPendiente = null;
+    switchDeviceScene(pend);
+  }
   if (el) {
     document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
@@ -11254,7 +11490,12 @@ function switchTab(view, el) {
   mostrarVista(view);
   // El visor pudo iniciarse oculto (0×0): ajustarlo al volver a mostrarse
   if (view === 'realtime' && STATE.renderer) requestAnimationFrame(onWindowResize);
+  // Modelo que quedó pendiente mientras se estaba en el mapa
+  if (view !== 'map' && !esModoBasico()) {
+    if (STATE.scene) cargarModeloPendiente(); else activar3D();
+  }
   if (view === 'history') renderHistoryView();
+  if (view === 'map') abrirMapa();
   if (view === 'offline') renderOfflineView();
   if (view === 'settings') populateSettings();
 
@@ -11306,7 +11547,6 @@ function setTimeRange(range, el) {
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 function closeModal(id) {
   document.getElementById(id).classList.remove('open');
-  if (id === 'map-modal') { const mc = document.getElementById('map-container'); if (mc) mc.innerHTML = ''; }
   if (id === 'object-modal') STATE._modalSensorKey = null;
   if (id === 'object-modal') DIAG.nodeChartKeys = [];
   if (STATE.rtCharts['modal-chart']) { STATE.rtCharts['modal-chart'].destroy(); delete STATE.rtCharts['modal-chart']; }
@@ -11634,6 +11874,19 @@ function renderChannelConfigList() {
           <label style="font-size:10px;color:var(--text3);">Se dibujan como líneas punteadas en el gráfico. Dejá vacío si no aplica.</label>
         </div>
       </div>
+      <div style="display:grid;grid-template-columns:0.8fr 0.8fr 2.2fr;gap:8px;align-items:end;margin-top:8px;">
+        <div class="field-group" style="margin:0;">
+          <label style="font-size:10px;">Escala del gráfico: mín</label>
+          <input id="${safe}_vmin" type="number" step="any" style="${inputStyle}" value="${def.viewMin != null ? chEsc(def.viewMin) : ''}" placeholder="auto">
+        </div>
+        <div class="field-group" style="margin:0;">
+          <label style="font-size:10px;">Escala del gráfico: máx</label>
+          <input id="${safe}_vmax" type="number" step="any" style="${inputStyle}" value="${def.viewMax != null ? chEsc(def.viewMax) : ''}" placeholder="auto">
+        </div>
+        <div class="field-group" style="margin:0;">
+          <label style="font-size:10px;color:var(--text3);">Rango fijo del eje vertical. Vacío = se ajusta solo a los datos.</label>
+        </div>
+      </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:8px;flex-wrap:wrap;">
         <span style="font-size:11px;color:var(--text2);">En vivo: <b id="${safe}_live">${chEsc(liveTxt)}</b></span>
         <div style="display:flex;gap:6px;">
@@ -11687,7 +11940,9 @@ function readCardDef(safe) {
     rangeMax:  parseFloat(document.getElementById(safe + '_max').value),
     formula:   document.getElementById(safe + '_formula').value.trim(),
     limitMin:  numOrNull(safe + '_lmin'),   // línea punteada inferior (o null)
-    limitMax:  numOrNull(safe + '_lmax')    // línea punteada superior (o null)
+    limitMax:  numOrNull(safe + '_lmax'),   // línea punteada superior (o null)
+    viewMin:   numOrNull(safe + '_vmin'),   // eje vertical fijo (o null = automático)
+    viewMax:   numOrNull(safe + '_vmax')
   };
 }
 
@@ -11697,6 +11952,10 @@ function persistChannelDef(devId, chanKey, fullKey, def) {
   if (!isFinite(def.rangeMax)) def.rangeMax = 100;
   STATE.sensorDefs[fullKey] = def;
   saveLocal('sensorDefs', STATE.sensorDefs);
+  // Los gráficos toman la nueva escala y límites al instante, sin esperar
+  // al próximo dato del equipo
+  STATE._lastChartDraw = 0;
+  setTimeout(() => updateRTPanel(), 0);
 
   // Recalcular el valor mostrado inmediatamente con la nueva definición
   const live = STATE.liveData[fullKey];
