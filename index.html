@@ -891,6 +891,36 @@
   .pec-val   { font-size: 10px; color: var(--accent); font-weight: 600; font-family: var(--font); }
   .panel-footer { padding: 4px 8px; border-top: 1px solid var(--border); display: flex; gap: 4px; }
 
+  /* ─── LED (luz piloto) ─── */
+  .led-node {
+    position: absolute;
+    background: var(--panel);
+    border: 1.5px solid var(--border2);
+    border-radius: 10px;
+    padding: 8px 10px 6px;
+    cursor: move; user-select: none;
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+    min-width: 62px;
+  }
+  .led-node:hover { border-color: var(--accent); }
+  .led-node.selected { border-color: var(--accent2); box-shadow: 0 0 0 2px rgba(0,180,255,0.25); }
+  .led-node.conn-target:hover { border-color: #ff6b35; }
+  /* La lente: fondo oscuro cuando está apagada, con brillo cuando prende */
+  .led-luz {
+    border-radius: 50%;
+    border: 2px solid rgba(255,255,255,.55);
+    background: #2a2f3a;
+    flex-shrink: 0;
+    transition: background .15s, box-shadow .15s;
+  }
+  .led-luz.cuadrado { border-radius: 4px; }
+  .led-node.parpadea .led-luz { animation: ledBlink .6s steps(1) infinite; }
+  @keyframes ledBlink { 50% { background: #2a2f3a !important; box-shadow: none !important; } }
+  .led-lbl { font-size: 9px; color: var(--text2); text-align: center; max-width: 92px;
+             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .led-est { font-size: 8px; color: var(--text3); text-transform: uppercase; letter-spacing: .06em; }
+  .led-3d  { font-size: 8px; color: var(--accent2); }
+
   /* ─── Port dots ─── */
   .port-dot {
     position: absolute;
@@ -1351,6 +1381,30 @@
     border-radius: 6px; padding: 3px 7px; font-size: 10px; white-space: nowrap;
   }
   .mapa-pin-pt { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #fff; margin-top: 3px; }
+  /* Equipo con fallas activas: rótulo amarillo, cantidad y halo que late */
+  .mapa-pin.con-falla .mapa-pin-et { border-color: var(--warn); color: var(--warn); }
+  .mapa-pin-al {
+    display: inline-block; margin-left: 5px; padding: 0 5px; border-radius: 8px;
+    background: var(--warn); color: #1a1205; font-weight: 700; font-size: 9px;
+  }
+  .mapa-pin.con-falla .mapa-pin-pt { box-shadow: 0 0 0 0 rgba(255,193,7,.85); animation: pinHalo 1.4s infinite; }
+  @keyframes pinHalo {
+    0%   { box-shadow: 0 0 0 0 rgba(255,193,7,.85); }
+    70%  { box-shadow: 0 0 0 12px rgba(255,193,7,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,193,7,0); }
+  }
+  /* Lista de fallas al pasar el mouse por el pin */
+  .mapa-pin-tip {
+    display: none; position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+    margin-bottom: 8px; z-index: 1200; min-width: 200px; max-width: 300px;
+    background: rgba(10,12,16,.97); border: 1px solid var(--warn); border-radius: 8px;
+    padding: 8px 10px; box-shadow: 0 8px 28px rgba(0,0,0,.65); text-align: left;
+    white-space: normal; pointer-events: none;
+  }
+  .mapa-pin:hover .mapa-pin-tip { display: block; }
+  .mapa-pin-tip .mt-t { font-size: 10px; font-weight: 700; color: var(--warn); margin-bottom: 5px; }
+  .mapa-pin-tip .mt-f { font-size: 10px; color: var(--text); line-height: 1.5; }
+  .mapa-pin-tip .mt-f span { color: var(--text3); white-space: nowrap; }
   .leaflet-container { font-family: var(--font); background: var(--bg2); }
   /* Mapa de calles en tonos oscuros (sin depender de un proveedor con clave) */
   .mapa-oscuro { filter: invert(1) hue-rotate(180deg) brightness(.85) contrast(.9) saturate(.6); }
@@ -1366,6 +1420,43 @@
   @media (max-width: 1024px), (orientation: portrait) and (max-width: 1400px) {
   }
   #view-history { display: none; flex-direction: column; height: 100%; padding: 20px; overflow-y: auto; }
+  #view-prog { display: none; flex-direction: column; height: 100%; padding: 20px; overflow-y: auto; }
+  /* ─── Programación (bloques SI / ENTONCES) ─── */
+  .pg-regla {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: var(--radius2); padding: 12px 14px; margin-bottom: 10px;
+  }
+  .pg-regla.apagada { opacity: .5; }
+  .pg-cab { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .pg-nom { font-size: 13px; font-weight: 600; color: var(--text); flex: 1; min-width: 120px; }
+  .pg-est {
+    font-size: 9px; padding: 2px 8px; border-radius: 10px; text-transform: uppercase;
+    letter-spacing: .06em; border: 1px solid var(--border2); color: var(--text3);
+  }
+  .pg-est.cumple { border-color: var(--ok); color: var(--ok); }
+  .pg-est.nocumple { border-color: var(--border2); color: var(--text3); }
+  .pg-est.sindatos { border-color: var(--warn); color: var(--warn); }
+  .pg-linea { font-size: 11px; line-height: 1.8; color: var(--text2); }
+  .pg-kw { color: var(--accent2); font-weight: 700; letter-spacing: .04em; }
+  .pg-chip {
+    display: inline-block; background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 5px; padding: 1px 7px; margin: 0 3px 3px 0; font-size: 10px; color: var(--text);
+  }
+  .pg-chip.accion { border-color: rgba(0,229,160,.35); color: var(--accent); }
+  .pg-fila {
+    display: grid; grid-template-columns: 1.4fr .7fr .9fr .8fr auto; gap: 6px;
+    align-items: center; margin-bottom: 6px;
+  }
+  .pg-fila.acc { grid-template-columns: 1fr 1.2fr .9fr auto; }
+  .pg-fila select, .pg-fila input {
+    font-size: 11px; padding: 5px 6px; background: var(--bg3);
+    border: 1px solid var(--border2); color: var(--text); border-radius: 4px; font-family: var(--font); width: 100%;
+  }
+  .pg-del { background: none; border: none; color: var(--err); cursor: pointer; font-size: 13px; padding: 0 4px; }
+  .pg-sec { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; margin: 14px 0 6px; }
+  .pg-vacio { font-size: 11px; color: var(--text3); padding: 16px; text-align: center; }
+  #pg-texto { font-family: var(--font); font-size: 10px; color: var(--text3); white-space: pre-wrap;
+              background: var(--bg3); border: 1px solid var(--border); border-radius: 6px; padding: 10px; }
   #view-offline { display: none; flex-direction: column; height: 100%; padding: 20px; overflow-y: auto; }
   #view-settings { display: none; flex-direction: column; height: 100%; padding: 20px; overflow-y: auto; }
 
@@ -1504,7 +1595,8 @@ body.mod-off-hist [data-mod="hist"],
 body.mod-off-offline [data-mod="offline"],
 body.mod-off-mant [data-mod="mant"],
 body.mod-off-plc [data-mod="plc"],
-body.mod-off-cmd [data-mod="cmd"]{display:none !important;}
+body.mod-off-cmd [data-mod="cmd"],
+body.mod-off-prog [data-mod="prog"]{display:none !important;}
 @media (max-width:820px){#hdr-sw-basico .ws-lbl{display:none;}}
 @media (max-width:700px){.plc-det-grid{grid-template-columns:1fr 1fr;}}
 </style>
@@ -1532,6 +1624,7 @@ body.mod-off-cmd [data-mod="cmd"]{display:none !important;}
       <button class="tab" data-mod="hist" onclick="switchTab('history',this)">Histórico</button>
       <button class="tab" data-adv="1" data-mod="diag2d" onclick="switchTab('diagram',this)">Diagrama 2D</button>
       <button class="tab" data-adv="1" data-mod="offline" onclick="switchTab('offline',this)">Cola Offline</button>
+      <button class="tab" data-mod="prog" onclick="switchTab('prog',this)">Programación</button>
       <button class="tab" onclick="switchTab('settings',this)">Configuración</button>
     </div>
     <div class="header-right">
@@ -1769,6 +1862,36 @@ body.mod-off-cmd [data-mod="cmd"]{display:none !important;}
     </div>
 
     <!-- OFFLINE VIEW -->
+    <div id="view-prog">
+      <div style="font-size:14px;color:var(--text);margin-bottom:4px;">Programación</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:16px;">
+        Automatizaciones propias: el equipo las ejecuta por su cuenta, sin depender de la plataforma ni de internet.
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+        <select id="pg-dev" onchange="STATE._pgDev=this.value;renderProgView()"
+          style="width:auto;min-width:180px;font-size:11px;"></select>
+        <label class="ws-sw" style="font-size:12px;">
+          <input type="checkbox" id="pg-on" onchange="progActivar(this.checked)">
+          <span class="ws-track"></span><span class="ws-lbl">Programa activo</span>
+        </label>
+        <span style="flex:1;"></span>
+        <button class="btn-sm accent" onclick="progNuevaRegla()">+ Regla</button>
+        <button class="btn-sm accent" onclick="progPublicar()">⬆ Enviar al equipo</button>
+      </div>
+
+      <div id="pg-aviso" style="display:none;font-size:11px;border-radius:6px;padding:8px 10px;margin-bottom:12px;"></div>
+      <div id="pg-lista"></div>
+
+      <details style="margin-top:16px;">
+        <summary style="font-size:10px;color:var(--text3);cursor:pointer;">Ver lo que se le envía al equipo</summary>
+        <div style="font-size:9px;color:var(--text3);margin:8px 0;">
+          Una línea por regla. Es lo que queda en <b>config/progFw</b> de la base de datos.
+        </div>
+        <div id="pg-texto"></div>
+      </details>
+    </div>
+
     <div id="view-offline">
       <div style="font-size:14px;color:var(--text);margin-bottom:4px;">Cola Offline</div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:20px;">Datos pendientes de sincronizar cuando haya conexión</div>
@@ -2062,6 +2185,7 @@ body.mod-off-cmd [data-mod="cmd"]{display:none !important;}
     <span id="diag-edit-tools" style="display:none;gap:6px;align-items:center;">
       <button class="btn-sm" id="btn-add-machine" onclick="openAddMachineModal()">+ Máquina</button>
       <button class="btn-sm" id="btn-add-panel" onclick="openAddPanelModal()">+ Panel</button>
+      <button class="btn-sm" id="btn-add-led"      onclick="openAddLedModal()" title="Luz piloto que cambia de color según el estado">💡 LED</button>
       <button class="btn-sm" id="btn-add-capsule" onclick="openAddCapsuleModal()" style="color:#a78bfa;border-color:rgba(167,139,250,0.4);">⬡ Cápsula</button>
       <span style="font-size:10px;color:var(--text3);margin-left:4px;">Nueva conexión:</span>
       <select id="new-conn-type" onchange="DIAG.newConnType=this.value"
@@ -2642,6 +2766,144 @@ body.mod-off-cmd [data-mod="cmd"]{display:none !important;}
   </div>
 </div>
 
+<!-- ─── MODAL: Regla de programación ─── -->
+<div class="modal-overlay" id="pg-regla-modal">
+  <div class="modal" style="max-width:720px;">
+    <button class="modal-close" onclick="closeModal('pg-regla-modal')">✕</button>
+    <div class="modal-title">Regla</div>
+    <div class="modal-sub">Si se cumplen las condiciones, el equipo hace las acciones</div>
+
+    <div class="field-group">
+      <label>Nombre</label>
+      <input type="text" id="pg-nombre" placeholder="Arranque por presión baja"
+        oninput="if(PG.borrador)PG.borrador.nombre=this.value;">
+    </div>
+
+    <div class="pg-sec">Si…</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+      <select id="pg-modo" style="width:auto;font-size:11px;"
+        onchange="if(PG.borrador)PG.borrador.modo=this.value;">
+        <option value="todas">Se cumplen TODAS las condiciones</option>
+        <option value="alguna">Se cumple ALGUNA condición</option>
+      </select>
+      <button class="btn-sm" onclick="pgAgregarCond()">+ Condición</button>
+    </div>
+    <div id="pg-conds"></div>
+
+    <div class="pg-sec">Entonces…</div>
+    <button class="btn-sm" onclick="pgAgregarAccion('hacer')" style="margin-bottom:8px;">+ Acción</button>
+    <div id="pg-hacer"></div>
+
+    <div class="pg-sec">Y cuando deja de cumplirse… <span style="text-transform:none;letter-spacing:0;">(opcional)</span></div>
+    <button class="btn-sm" onclick="pgAgregarAccion('alSalir')" style="margin-bottom:8px;">+ Acción</button>
+    <div id="pg-alsalir"></div>
+
+    <div class="field-group" style="margin-top:14px;">
+      <label>No repetir antes de (segundos)</label>
+      <input type="number" id="pg-rearme" min="0" max="3600" value="0" style="width:120px;"
+        oninput="if(PG.borrador)PG.borrador.rearme=Number(this.value)||0;">
+      <div style="font-size:9px;color:var(--text3);margin-top:4px;">
+        Evita que la regla se dispare una y otra vez si la condición va y viene.
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn-sm accent" style="flex:1;" onclick="pgGuardarRegla()">Guardar regla</button>
+      <button class="btn-sm" style="color:var(--err);border-color:var(--err);" onclick="pgBorrarRegla()">Eliminar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── MODAL: Agregar LED ─── -->
+<div class="modal-overlay" id="add-led-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('add-led-modal')">✕</button>
+    <div class="modal-title">Agregar LED</div>
+    <div class="modal-sub">Luz piloto: se pinta según el estado del equipo</div>
+    <div class="field-group">
+      <label>Nombre</label>
+      <input type="text" id="new-led-name" placeholder="Marcha Bomba 1">
+    </div>
+    <div class="field-group">
+      <label>Qué indica</label>
+      <select id="new-led-preset" style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+        <option value="marcha">Encendido / apagado (registro o pin)</option>
+        <option value="falla">Una falla específica</option>
+        <option value="todas">Cualquier falla del equipo</option>
+        <option value="presencia">Equipo conectado (en línea)</option>
+      </select>
+      <div style="font-size:9px;color:var(--text3);margin-top:4px;">
+        Después se termina de configurar en el LED: registros, colores y parpadeo.
+      </div>
+    </div>
+    <div class="field-group">
+      <label>Forma</label>
+      <select id="new-led-forma" style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+        <option value="redondo">Redondo</option>
+        <option value="cuadrado">Cuadrado</option>
+      </select>
+    </div>
+    <button class="btn-sm accent" style="width:100%;margin-top:14px;" onclick="confirmAddLed()">Agregar LED</button>
+  </div>
+</div>
+
+<!-- ─── MODAL: Detalle de LED ─── -->
+<div class="modal-overlay" id="led-detail-modal">
+  <div class="modal">
+    <button class="modal-close" onclick="closeModal('led-detail-modal')">✕</button>
+    <div class="modal-title" id="led-modal-title">LED</div>
+    <div class="modal-sub" id="led-modal-sub">Luz piloto del diagrama</div>
+    <div class="field-group">
+      <label>Nombre</label>
+      <input type="text" id="led-edit-name" oninput="updateLedLabel(this.value)">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+      <div class="field-group" style="margin:0;">
+        <label>Forma</label>
+        <select id="led-edit-forma" onchange="updateLedCampo('forma',this.value)"
+          style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+          <option value="redondo">Redondo</option>
+          <option value="cuadrado">Cuadrado</option>
+        </select>
+      </div>
+      <div class="field-group" style="margin:0;">
+        <label>Tamaño</label>
+        <select id="led-edit-tam" onchange="updateLedCampo('tam',Number(this.value))"
+          style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+          <option value="16">Chico</option>
+          <option value="24">Mediano</option>
+          <option value="34">Grande</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin:14px 0 8px;">Qué lo enciende</div>
+    <div class="field-group">
+      <label>Equipo</label>
+      <select id="led-edit-dev" onchange="cambiarLedEquipo(this.value)"
+        style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);"></select>
+    </div>
+    <div id="led-regla-box"></div>
+    <button class="btn-sm accent" style="width:100%;margin-top:10px;" onclick="guardarLedRegla()">Guardar condición</button>
+
+    <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.08em;margin:14px 0 8px;">Objeto 3D</div>
+    <div class="field-group">
+      <select id="led-edit-obj" onchange="updateLedObjeto(this.value)"
+        style="width:100%;padding:6px 8px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:4px;font-family:var(--font);">
+        <option value="">Sin objeto — solo la luz del diagrama</option>
+      </select>
+      <button class="btn-sm accent" style="width:100%;margin-top:6px;" onclick="pickObjectFor3D('led')">
+        🎯 Elegir haciendo clic en el modelo 3D
+      </button>
+      <div style="font-size:9px;color:var(--text3);margin-top:4px;">
+        El objeto que elijas se va a pintar del mismo color que el LED.
+      </div>
+    </div>
+
+    <button class="btn-sm" style="width:100%;margin-top:14px;color:var(--err);border-color:var(--err);" onclick="removeLed()">Eliminar LED</button>
+  </div>
+</div>
+
 <!-- ─── MODAL: Agregar Cápsula ─── -->
 <div class="modal-overlay" id="add-capsule-modal">
   <div class="modal">
@@ -2794,6 +3056,7 @@ const STATE = {
   diagConnections: [],   // {id, fromId, toId, connType, sensorKey}
   diagPanels: [],        // {id, label, panelType, assemblyName, elements:[{id,sensorKey}], x, y}
   diagCapsules: [],      // {id, label, assemblyName, childMachineIds[], x, y}
+  diagLeds: [],          // {id, label, forma, tam, pinRule, modelObjectName, modelObjectPath, x, y}
   objectLinks: {},       // objectName -> {nodeId, sensorKey, deviceId}  (legacy 3D links)
   model: null,
   glbData: null,     // { name, data(base64) } del GLB cargado (para export/import)
@@ -3049,6 +3312,7 @@ function persistAllNow() {
   saveLocal('diagConnections', STATE.diagConnections);
   saveLocal('diagPanels', STATE.diagPanels);
   saveLocal('diagCapsules', STATE.diagCapsules);
+  saveLocal('diagLeds', STATE.diagLeds || []);
   saveLocal('objectLinks', STATE.objectLinks);
   saveLocal('offlineQueue', STATE.offlineQueue);
   saveLocal('sensorDefs', STATE.sensorDefs);
@@ -3081,6 +3345,7 @@ function loadPersisted() {
   STATE.diagConnections = loadLocal('diagConnections', []);
   STATE.diagPanels = loadLocal('diagPanels', []);
   STATE.diagCapsules = loadLocal('diagCapsules', []);
+  STATE.diagLeds = loadLocal('diagLeds', []) || [];
   STATE.objectLinks = loadLocal('objectLinks', {});
   STATE.offlineQueue = loadLocal('offlineQueue', []);
   STATE.sensorDefs = loadLocal('sensorDefs', {});
@@ -3339,7 +3604,8 @@ function verificarCambioDeCuenta(email) {
     STATE.sensorDefs = {}; STATE.channels = {};
     STATE.scenes = {}; STATE.assets = {}; STATE.currentSceneDev = null;
     STATE.diagMachines = []; STATE.diagConnections = []; STATE.diagPanels = [];
-    STATE.diagCapsules = []; STATE.objectLinks = {}; STATE.diagCommands = []; STATE.colorRules = {};
+    STATE.diagCapsules = []; STATE.diagLeds = [];
+    STATE.objectLinks = {}; STATE.diagCommands = []; STATE.colorRules = {};
     STATE.glbData = null; STATE.selectedDevice = null; STATE.sceneFileId = null;
     try { localStorage.removeItem('iot_glbData'); } catch (e) {}
     if (typeof limpiarModelo3D === 'function') limpiarModelo3D();
@@ -5405,12 +5671,18 @@ const MODULOS = [
   ['mant',    'Mantenimiento',    'Cronogramas, fichas, planes e historial de máquinas'],
   ['plc',     'PLC · Modbus',     'Tablero, registros, alarmas y eventos del PLC'],
   ['cmd',     'Comandos',         'Envío de comandos y configuración remota del equipo'],
+  ['prog',    'Programación',     'Automatizaciones propias (SI… ENTONCES…) que ejecuta el equipo'],
 ];
+
+// Módulos que arrancan apagados: se prenden a propósito desde Ajustes
+const MODULOS_OFF = ['prog'];
 
 function modulos() {
   if (!STATE.modulos || typeof STATE.modulos !== 'object') STATE.modulos = {};
   MODULOS.forEach(function (m) {
-    if (STATE.modulos[m[0]] === undefined) STATE.modulos[m[0]] = true;
+    if (STATE.modulos[m[0]] === undefined) {
+      STATE.modulos[m[0]] = MODULOS_OFF.indexOf(m[0]) < 0;
+    }
   });
   return STATE.modulos;
 }
@@ -5430,7 +5702,7 @@ function aplicarModulos() {
     document.body.classList.toggle('mod-off-' + m[0], !modulo(m[0]));
   });
   // Si la pestaña abierta pertenece a un módulo apagado, se vuelve a Tiempo Real
-  const porVista = { map: 'mapa', history: 'hist', diagram: 'diag2d', offline: 'offline' };
+  const porVista = { map: 'mapa', history: 'hist', diagram: 'diag2d', offline: 'offline', prog: 'prog' };
   const k = porVista[STATE.currentTab];
   if (k && !modulo(k)) switchTab('realtime');
   aplicarModo();                       // el visor 3D depende del módulo m3d
@@ -5594,7 +5866,7 @@ function marcarPestanaActiva(view) {
 
 // Muestra el panel de la vista indicada y oculta los demás
 function mostrarVista(view) {
-  ['realtime', 'map', 'history', 'offline', 'settings'].forEach(function (v) {
+  ['realtime', 'map', 'history', 'offline', 'prog', 'settings'].forEach(function (v) {
     const panel = document.getElementById('view-' + v);
     if (panel) panel.style.display = (v === view) ? 'flex' : 'none';
   });
@@ -5716,6 +5988,7 @@ function captureCurrentScene() {
     diagConnections: STATE.diagConnections || [],
     diagPanels: STATE.diagPanels || [],
     diagCapsules: STATE.diagCapsules || [],
+    diagLeds: STATE.diagLeds || [],
     objectLinks: STATE.objectLinks || {},
     diagCommands: STATE.diagCommands || [],
     colorRules: STATE.colorRules || {}
@@ -5733,6 +6006,7 @@ function applySceneObject(sc, opts) {
   STATE.diagConnections = sc.diagConnections || [];
   STATE.diagPanels      = sc.diagPanels || [];
   STATE.diagCapsules    = sc.diagCapsules || [];
+  STATE.diagLeds        = sc.diagLeds || [];
   STATE.objectLinks     = sc.objectLinks || {};
   STATE.diagCommands    = sc.diagCommands || [];
   STATE.colorRules      = sc.colorRules || {};
@@ -7772,6 +8046,7 @@ function buildSceneObject() {
     diagConnections: STATE.diagConnections,
     diagPanels: STATE.diagPanels,
     diagCapsules: STATE.diagCapsules,
+    diagLeds: STATE.diagLeds || [],
     objectLinks: STATE.objectLinks,
     diagCommands: STATE.diagCommands || [],
     sensorDefs: STATE.sensorDefs,
@@ -7809,6 +8084,7 @@ function importSceneObj(obj, opts) {
   STATE.diagConnections = obj.diagConnections || [];
   STATE.diagPanels = obj.diagPanels || [];
   STATE.diagCapsules = obj.diagCapsules || [];
+  STATE.diagLeds = obj.diagLeds || [];
   STATE.objectLinks = obj.objectLinks || {};
   STATE.diagCommands = obj.diagCommands || [];
   STATE.sensorDefs = obj.sensorDefs || {};
@@ -8401,6 +8677,7 @@ const DIAG = {
   editingMachineId: null,
   editingPanelId: null,
   editingCapsuleId: null,
+  editingLedId: null,
   openCapsuleId: null,     // when non-null, showing inside this capsule
   nodeChartKeys: [],       // sensor keys currently shown in node charts modal
   // ── Vista: zoom y desplazamiento del canvas ──
@@ -8524,15 +8801,18 @@ function visibleDiagNodes() {
     const cpids = cap.childPanelIds || [];
     add(STATE.diagMachines.filter(m => cap.childMachineIds.includes(m.id)), 160, 160);
     add(STATE.diagPanels.filter(p => cpids.includes(p.id)), 200, 150);
+    add((STATE.diagLeds || []).filter(l => (cap.childLedIds || []).includes(l.id)), 70, 70);
   } else {
     const inCap = new Set();
     STATE.diagCapsules.forEach(c => {
       c.childMachineIds.forEach(id => inCap.add(id));
       (c.childPanelIds || []).forEach(id => inCap.add(id));
+      (c.childLedIds || []).forEach(id => inCap.add(id));
     });
     add(STATE.diagMachines.filter(m => !inCap.has(m.id)), 160, 160);
     add(STATE.diagPanels.filter(p => !inCap.has(p.id)), 200, 150);
     add(STATE.diagCapsules, 170, 140);
+    add((STATE.diagLeds || []).filter(l => !inCap.has(l.id)), 70, 70);
   }
   return out;
 }
@@ -8706,6 +8986,7 @@ function autoSizeDiagCanvas() {
     STATE.diagMachines.forEach(n => { n.x += dx; n.y += dy; });
     STATE.diagPanels.forEach(n => { n.x += dx; n.y += dy; });
     STATE.diagCapsules.forEach(n => { n.x += dx; n.y += dy; });
+    (STATE.diagLeds || []).forEach(n => { n.x += dx; n.y += dy; });
     STATE.diagConnections.forEach(c => (c.waypoints || []).forEach(w => { w.x += dx; w.y += dy; }));
     DIAG.panX -= dx * DIAG.zoom;   // compensar para que la vista no salte
     DIAG.panY -= dy * DIAG.zoom;
@@ -8786,6 +9067,10 @@ function deleteMultiSelection() {
   const ids = new Set(DIAG.multi);
   STATE.diagMachines = STATE.diagMachines.filter(m => !ids.has(m.id));
   STATE.diagPanels   = STATE.diagPanels.filter(p => !ids.has(p.id));
+  STATE.diagLeds = (STATE.diagLeds || []).filter(l => !ids.has(l.id));
+  STATE.diagCapsules.forEach(c => {
+    if (c.childLedIds) c.childLedIds = c.childLedIds.filter(x => !ids.has(x));
+  });
   STATE.diagCapsules = STATE.diagCapsules.filter(c => !ids.has(c.id));
   STATE.diagCapsules.forEach(c => {
     c.childMachineIds = (c.childMachineIds || []).filter(id => !ids.has(id));
@@ -8869,6 +9154,7 @@ const PICK_KINDS = {
   machine: { field: 'modelObjectName', modal: 'machine-detail-modal', reopen: id => openMachineDetail(id) },
   panel:   { field: 'assemblyName',    modal: 'panel-detail-modal',   reopen: id => openPanelDetail(id) },
   capsule: { field: 'assemblyName',    modal: 'capsule-detail-modal', reopen: id => openCapsuleDetail(id) },
+  led:     { field: 'modelObjectName', modal: 'led-detail-modal',     reopen: id => openLedDetail(id) },
 };
 
 function pickObjectFor3D(kind, nodeId) {
@@ -8879,6 +9165,7 @@ function pickObjectFor3D(kind, nodeId) {
   if (!nodeId) {
     nodeId = kind === 'machine' ? DIAG.editingMachineId
            : kind === 'panel'   ? DIAG.editingPanelId
+           : kind === 'led'     ? DIAG.editingLedId
            : DIAG.editingCapsuleId;
   }
   if (!nodeId) return;
@@ -10646,6 +10933,11 @@ async function aplicarConfigEquipo() {
 ══════════════════════════════════════════════════════ */
 function plcRuleEstado(r) {
   if (!r || !r.deviceId) return null;
+  // Luz de "falla general": se prende con cualquier falla activa del equipo,
+  // sin tener que ir marcando los registros uno por uno.
+  if (r.todasLasFallas && typeof alarmasDeEquipo === 'function') {
+    if (alarmasDeEquipo(r.deviceId).length) return 'falla';
+  }
   const tags = r.fallaTags || [];
   let hayDato = false;
   for (let i = 0; i < tags.length; i++) {
@@ -10658,6 +10950,7 @@ function plcRuleEstado(r) {
     if (m === null) return hayDato ? 'paro' : null;
     return (r.marchaInv ? !m : m) ? 'marcha' : 'paro';
   }
+  if (r.todasLasFallas) return 'marcha';     // sin fallas = todo normal
   return hayDato ? 'marcha' : null;
 }
 
@@ -10681,7 +10974,10 @@ function plcRuleFormHTML(pref, r, devId) {
     .concat(cfg.regs.filter(x => x.cat === 'S').map(x => [x.tag, (x.nombre || x.tag) + ' (estado)']));
   const opcM = cfg.regs.filter(x => plcEsBinario(x)).map(x => [x.tag, x.nombre || x.tag]);
   return `
-    <label style="font-size:9px;">Si alguno de estos está activo → color de falla</label>
+    <label class="plc-chk" style="font-size:10px;margin-bottom:6px;">
+      <input type="checkbox" id="${pref}-todas"${r.todasLasFallas ? ' checked' : ''}>
+      Cualquier falla del equipo (incluye las de límite de gráfico)</label>
+    <label style="font-size:9px;">O si alguno de estos está activo → color de falla</label>
     <div id="${pref}-falla" class="plc-rule-list">${opcA.map(([t, n]) =>
       `<label><input type="checkbox" value="${chEsc(t)}"${fall.indexOf(t) >= 0 ? ' checked' : ''}> ${chEsc(n)}</label>`).join('')}</div>
     <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:6px;align-items:end;">
@@ -10703,6 +10999,7 @@ function leerPlcRuleForm(pref, devId) {
   const g = id => document.getElementById(pref + '-' + id);
   return {
     src: 'plc', deviceId: devId, fallaTags: falla,
+    todasLasFallas: !!(g('todas') && g('todas').checked),
     marchaTag: g('marcha') ? g('marcha').value : '', marchaInv: !!(g('inv') && g('inv').checked),
     colorFalla: g('cf') ? g('cf').value : '#ff3b5c', colorMarcha: g('cm') ? g('cm').value : '#00e5a0',
     colorParo: g('cp') ? g('cp').value : '#8a8fa3', parpadeo: !!(g('blink') && g('blink').checked)
@@ -11541,6 +11838,22 @@ function enfocarEquipoEnMapa(id) {
   if (MAPA.pines[id]) MAPA.pines[id].openPopup();
 }
 
+/* Fallas activas de UN equipo: las del PLC y las de límite de gráfico. */
+function alarmasDeEquipo(devId) {
+  let out = [];
+  try { out = out.concat(plcAlarmasActivas(devId) || []); } catch (e) { /* sin PLC */ }
+  if (typeof alarmasLimite === 'function') {
+    try { out = out.concat(alarmasLimite(devId) || []); } catch (e) { /* sin límites */ }
+  }
+  return out;
+}
+
+// Texto "desde hace" de una falla (las alarmas guardan el ts en segundos)
+function desdeFalla(a) {
+  const ts = Number(a && a.desde) || 0;
+  return ts ? haceTexto(ts) : '';
+}
+
 function colorEstado(id) {
   return isDeviceOnline(id) || (STATE.simulating && id === DEMO_DEVICE_ID) ? '#00e5a0' : '#ff4d4d';
 }
@@ -11564,6 +11877,20 @@ function resumenEquipo(id) {
         : (estadoEquipo(id) === 'verificando' ? '◍ Verificando si está en línea…'
           : (on ? '● En línea' : '● Sin conexión'))) +
       (dev.loc ? ' · ' + chEsc(dev.loc) : '') + '</div>' +
+    (function () {
+      const f = alarmasDeEquipo(id);
+      if (!f.length) return '';
+      return '<div style="border:1px solid var(--warn);border-radius:6px;padding:6px 8px;margin-bottom:6px;">' +
+        '<div style="font-size:10px;font-weight:700;color:var(--warn);margin-bottom:4px;">⚠ ' + f.length +
+          (f.length === 1 ? ' falla activa' : ' fallas activas') + '</div>' +
+        f.slice(0, 6).map(function (a) {
+          const d = desdeFalla(a);
+          return '<div style="font-size:10px;">• ' + chEsc(a.nombre || a.tag || '') +
+                 (d ? ' <span style="color:var(--text3);">· ' + chEsc(d) + '</span>' : '') + '</div>';
+        }).join('') +
+        (f.length > 6 ? '<div style="font-size:10px;color:var(--text3);">y ' + (f.length - 6) + ' más…</div>' : '') +
+        '</div>';
+    })() +
     filas +
     '<button class="btn-sm accent" style="width:100%;margin-top:8px;" onclick="abrirEquipoDesdeMapa(\'' + chEsc(id) + '\')">Abrir ' +
       (vistaDeEquipo(id) === '3d' ? 'modelo 3D' : 'diagrama') + '</button>' +
@@ -11605,8 +11932,25 @@ function actualizarMapa(encuadrar) {
     const dev = STATE.devices[id] || {};
     // El doble clic se atiende en el propio elemento: así funciona siempre,
     // antes de que Leaflet lo interprete como "acercar el mapa".
-    const html = '<div class="mapa-pin" ondblclick="event.stopPropagation();event.preventDefault();abrirEquipoDesdeMapa(\'' + chEsc(id) + '\')">' +
-      '<div class="mapa-pin-et">' + chEsc(dev.name || id) + '</div>' +
+    const fallas = alarmasDeEquipo(id);
+    const tip = fallas.length
+      ? '<div class="mapa-pin-tip"><div class="mt-t">⚠ ' + fallas.length +
+          (fallas.length === 1 ? ' falla activa' : ' fallas activas') + '</div>' +
+          fallas.slice(0, 8).map(function (a) {
+            const d = desdeFalla(a);
+            return '<div class="mt-f">• ' + chEsc(a.nombre || a.tag || '') +
+                   (d ? ' <span>· ' + chEsc(d) + '</span>' : '') +
+                   (a.reconocida ? ' <span>· reconocida</span>' : '') + '</div>';
+          }).join('') +
+          (fallas.length > 8 ? '<div class="mt-f" style="color:var(--text3);">y ' +
+             (fallas.length - 8) + ' más…</div>' : '') +
+        '</div>'
+      : '';
+    const html = '<div class="mapa-pin' + (fallas.length ? ' con-falla' : '') +
+      '" ondblclick="event.stopPropagation();event.preventDefault();abrirEquipoDesdeMapa(\'' + chEsc(id) + '\')">' +
+      tip +
+      '<div class="mapa-pin-et">' + chEsc(dev.name || id) +
+        (fallas.length ? '<span class="mapa-pin-al">⚠ ' + fallas.length + '</span>' : '') + '</div>' +
       '<div class="mapa-pin-pt" style="background:' + colorEstado(id) + ';"></div></div>';
     // popupAnchor: el globo se abre ARRIBA del rótulo; si no, lo tapaba y el
     // segundo clic del doble clic caía sobre el globo en vez del pin.
@@ -12736,6 +13080,12 @@ function pinState(devId, pin) {
 // Devuelve el color que corresponde a un nodo según su regla, o null
 function pinRuleColor(node) {
   const r = node && node.pinRule;
+  // Luz de presencia: verde conectado, rojo caído, ámbar mientras se verifica
+  if (r && r.src === 'presencia') {
+    const e = (typeof estadoEquipo === 'function') ? estadoEquipo(r.deviceId) : null;
+    if (e === 'verificando') return '#ffb800';
+    return e === 'on' ? (r.colorMarcha || '#00e5a0') : (r.colorFalla || '#ff3b5c');
+  }
   if (r && r.src === 'plc') return plcRuleColor(r);
   if (!r || r.pin == null) return null;
   const v = pinState(r.deviceId, r.pin);
@@ -12905,8 +13255,11 @@ function pinRuleForMesh(mesh) {
 }
 
 function machineRuleForMesh(mesh) {
-  for (let i = 0; i < STATE.diagMachines.length; i++) {
-    const m = STATE.diagMachines[i];
+  // Los LEDs también pintan su objeto 3D: son luces piloto, y lo natural es
+  // que la pieza del modelo se encienda del mismo color que la luz.
+  const nodos = STATE.diagMachines.concat(STATE.diagLeds || []);
+  for (let i = 0; i < nodos.length; i++) {
+    const m = nodos[i];
     if (!m.pinRule) continue;
     if (m.modelObjectPath) {
       if (isInPath(mesh, m.modelObjectPath)) return m;
@@ -12927,12 +13280,14 @@ function findDiagNode(id) {
   return STATE.diagMachines.find(n => n.id === id)
       || STATE.diagPanels.find(n => n.id === id)
       || STATE.diagCapsules.find(n => n.id === id)
+      || (STATE.diagLeds || []).find(n => n.id === id)
       || null;
 }
 
 function getNodeCenter(node) {
   if (STATE.diagPanels.some(p => p.id === node.id)) return [node.x + 100, node.y + 75];
   if (STATE.diagCapsules.some(c => c.id === node.id)) return [node.x + 85, node.y + 70];
+  if ((STATE.diagLeds || []).some(l => l.id === node.id)) return [node.x + 34, node.y + 32];
   return [node.x + 80, node.y + 80];
 }
 
@@ -12978,6 +13333,9 @@ function diagKeyHandler(e) {
   } else if (DIAG.selectedType === 'capsule') {
     DIAG.editingCapsuleId = DIAG.selected;
     removeCapsule();
+  } else if (DIAG.selectedType === 'led') {
+    DIAG.editingLedId = DIAG.selected;
+    removeLed();
   }
   DIAG.selected = null;
   DIAG.selectedType = null;
@@ -13074,6 +13432,734 @@ function populateAssemblySelect(selectId) {
 }
 
 /* ── Add / Remove panels ── */
+/* ══════════════════════════════════════════════════════
+   LEDS DEL DIAGRAMA (luces piloto)
+   Un LED es un nodo chico con una regla de color igual a la de las
+   máquinas: se apoya en plcRuleEstado(), así que entiende marcha/paro,
+   fallas puntuales y "cualquier falla del equipo". Si se le asocia un
+   objeto 3D, ese objeto se pinta del mismo color (updateHighlights).
+══════════════════════════════════════════════════════ */
+
+/* ══════════════════════════════════════════════════════
+   PROGRAMACIÓN — automatizaciones que ejecuta el equipo
+
+   Una regla es: SI (condiciones) ENTONCES (acciones), y opcionalmente
+   otras acciones cuando deja de cumplirse. Se guardan de dos formas:
+
+     config/prog    JSON completo, que es lo que lee la plataforma.
+     config/progFw  texto compacto, una línea por regla, que es lo que lee
+                    el equipo. Mismo criterio que config/limFw: el firmware
+                    no tiene que parsear JSON anidado.
+
+   Formato de cada línea:
+     nombre;modo;condiciones;acciones;accionesAlSalir;rearme
+   · condiciones y acciones van separadas por "|", sus campos por ","
+   · condición: tipo,clave,operador,valor,segundos
+   · acción:    tipo,clave,valor
+══════════════════════════════════════════════════════ */
+const PROG_FW_MIN   = '2.9.0';   // firmware que sabe ejecutar el programa
+const PROG_MAX_REGLAS = 12;
+const PROG_MAX_COND   = 4;
+const PROG_MAX_ACC    = 4;
+
+const PG_FUENTES = [
+  ['plc',    'Registro del PLC'],
+  ['ch',     'Canal 4-20 mA'],
+  ['pin',    'Entrada GPIO'],
+  ['alarma', 'Hay alguna falla activa'],
+  ['var',    'Variable'],
+  ['hora',   'Hora del día'],
+];
+const PG_OPS = [['>', 'mayor que'], ['<', 'menor que'], ['=', 'igual a'], ['!=', 'distinto de'],
+                ['>=', 'mayor o igual'], ['<=', 'menor o igual']];
+const PG_ACCIONES = [
+  ['plc',     'Escribir registro del PLC'],
+  ['pin',     'Poner salida GPIO'],
+  ['pwm',     'Salida PWM (0-255)'],
+  ['tg',      'Avisar por Telegram'],
+  ['var',     'Guardar en una variable'],
+  ['esperar', 'Esperar (segundos)'],
+];
+
+function pgDev() {
+  const ids = Object.keys(STATE.devices).filter(function (d) { return d !== 'demo_node'; });
+  if (STATE._pgDev && ids.indexOf(STATE._pgDev) >= 0) return STATE._pgDev;
+  return STATE.selectedDevice && ids.indexOf(STATE.selectedDevice) >= 0 ? STATE.selectedDevice : (ids[0] || '');
+}
+
+function progDe(devId) {
+  const d = STATE.devices[devId];
+  if (!d) return { on: false, v: 1, reglas: [] };
+  if (!d.prog || typeof d.prog !== 'object') d.prog = { on: false, v: 1, reglas: [] };
+  if (!Array.isArray(d.prog.reglas)) d.prog.reglas = [];
+  return d.prog;
+}
+
+// Texto libre que viaja dentro de un campo separado por , ; y |
+function pgLimpio(t) { return String(t == null ? '' : t).replace(/[;|,\n\r]/g, ' ').slice(0, 90); }
+function pgNum(v) { const x = Number(v); return isFinite(x) ? x : 0; }
+
+/* ── Cómo se lee una condición o una acción ───────────────────────── */
+function pgNombreFuente(devId, c) {
+  if (c.t === 'alarma') return 'alguna falla activa';
+  if (c.t === 'hora')   return 'la hora';
+  if (c.t === 'var')    return 'variable ' + (c.k || '?');
+  if (c.t === 'pin')    return 'GPIO ' + c.k;
+  if (c.t === 'plc') {
+    const r = plcRegDe(devId, c.k);
+    return (r && (r.nombre || r.tag)) || c.k;
+  }
+  const def = STATE.sensorDefs[devId + '/' + c.k] || {};
+  return def.name || c.k;
+}
+
+function pgUnidadDe(devId, c) {
+  if (c.t === 'plc') { const r = plcRegDe(devId, c.k); return (r && r.unidad) || ''; }
+  if (c.t === 'ch')  { const d = STATE.sensorDefs[devId + '/' + c.k] || {}; return d.unit || 'mA'; }
+  return '';
+}
+
+function pgTextoCond(devId, c) {
+  if (c.t === 'alarma') return 'hay alguna falla activa';
+  if (c.t === 'hora')   return 'la hora está entre ' + (c.k || '00:00') + ' y ' + (c.v || '23:59');
+  const u = pgUnidadDe(devId, c);
+  return pgNombreFuente(devId, c) + ' ' + c.op + ' ' + c.v + (u ? ' ' + u : '') +
+         (Number(c.seg) > 0 ? ' durante ' + c.seg + ' s' : '');
+}
+
+function pgTextoAccion(devId, a) {
+  if (a.t === 'tg')      return 'avisar por Telegram: "' + (a.v || '') + '"';
+  if (a.t === 'pin')     return 'GPIO ' + a.k + ' = ' + (Number(a.v) ? 'ALTO' : 'BAJO');
+  if (a.t === 'pwm')     return 'PWM en GPIO ' + a.k + ' = ' + a.v;
+  if (a.t === 'var')     return 'variable ' + a.k + ' = ' + a.v;
+  if (a.t === 'esperar') return 'esperar ' + a.v + ' s';
+  const r = plcRegDe(devId, a.k);
+  return 'escribir ' + ((r && (r.nombre || r.tag)) || a.k) + ' = ' + a.v;
+}
+
+/* ── Evaluación en la plataforma (solo para mostrar el estado) ─────── */
+function pgValorActual(devId, c) {
+  if (c.t === 'plc') { const v = plcVal(devId, c.k); return v == null ? null : v; }
+  if (c.t === 'ch') {
+    const d = STATE.liveData[devId + '/' + c.k];
+    if (!d) return null;
+    return typeof d.mA === 'number' ? d.mA : (typeof d.valor === 'number' ? d.valor : null);
+  }
+  if (c.t === 'pin') { const v = pinState(devId, Number(c.k)); return v == null ? null : (v ? 1 : 0); }
+  if (c.t === 'alarma') return alarmasDeEquipo(devId).length ? 1 : 0;
+  if (c.t === 'var') return null;          // las variables viven en el equipo
+  return null;
+}
+
+function pgCumpleCond(devId, c) {
+  if (c.t === 'hora') {
+    const ahora = new Date();
+    const m = ahora.getHours() * 60 + ahora.getMinutes();
+    const p = String(c.k || '00:00').split(':'), q = String(c.v || '23:59').split(':');
+    const a = Number(p[0]) * 60 + Number(p[1] || 0), b = Number(q[0]) * 60 + Number(q[1] || 0);
+    return a <= b ? (m >= a && m <= b) : (m >= a || m <= b);
+  }
+  const v = pgValorActual(devId, c);
+  if (v === null) return null;                       // sin datos
+  const ref = pgNum(c.v);
+  switch (c.op) {
+    case '>':  return v >  ref;
+    case '<':  return v <  ref;
+    case '>=': return v >= ref;
+    case '<=': return v <= ref;
+    case '!=': return v != ref;
+    default:   return v == ref;
+  }
+}
+
+function pgEstadoRegla(devId, r) {
+  const res = (r.conds || []).map(function (c) { return pgCumpleCond(devId, c); });
+  if (!res.length) return 'nocumple';
+  if (res.indexOf(null) >= 0 && res.every(function (x) { return x === null; })) return 'sindatos';
+  const ok = (r.modo === 'alguna')
+    ? res.some(function (x) { return x === true; })
+    : res.every(function (x) { return x === true; });
+  return ok ? 'cumple' : 'nocumple';
+}
+
+/* ── Texto compacto para el equipo ─────────────────────────────────── */
+function progTextoFw(devId) {
+  const p = progDe(devId);
+  return (p.reglas || []).slice(0, PROG_MAX_REGLAS).map(function (r) {
+    const conds = (r.conds || []).slice(0, PROG_MAX_COND).map(function (c) {
+      return [c.t, pgLimpio(c.k), c.t === 'hora' ? '-' : c.op, pgLimpio(c.v), pgNum(c.seg)].join(',');
+    }).join('|');
+    const acc = function (lista) {
+      return (lista || []).slice(0, PROG_MAX_ACC).map(function (a) {
+        return [a.t, pgLimpio(a.k), pgLimpio(a.v)].join(',');
+      }).join('|');
+    };
+    return [pgLimpio(r.nombre), r.modo === 'alguna' ? 'O' : 'Y',
+            conds, acc(r.hacer), acc(r.alSalir), pgNum(r.rearme)].join(';');
+  }).join('\n');
+}
+
+/* ── Guardar y publicar ────────────────────────────────────────────── */
+function progGuardarLocal(devId) {
+  persistAll();
+  renderProgView();
+}
+
+function progActivar(on) {
+  const dev = pgDev();
+  if (!dev) return;
+  progDe(dev).on = !!on;
+  progGuardarLocal(dev);
+  toast(on ? 'Programa activado (falta enviarlo al equipo)' : 'Programa desactivado', on ? 'ok' : 'warn', 4000);
+}
+
+function progPublicar() {
+  const dev = pgDev();
+  if (!dev) return;
+  if (!STATE.db) { toast('Sin conexión con la base de datos', 'err'); return; }
+  const p = progDe(dev);
+  const base = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
+  const texto = progTextoFw(dev);
+  Promise.all([
+    STATE.db.ref(base + '/' + dev + '/config/prog').set({ on: !!p.on, v: 1, reglas: p.reglas || [] }),
+    STATE.db.ref(base + '/' + dev + '/config/progFw').set(p.on ? texto : '')
+  ]).then(function () {
+    p.publicado = texto;
+    p.publicadoTs = Math.floor(Date.now() / 1000);
+    persistAll();
+    // Avisarle al equipo que hay programa nuevo (si el firmware lo soporta)
+    if (fwAlMenos(dev, PROG_FW_MIN) === true) {
+      const prev = STATE.actionsDevice;
+      STATE.actionsDevice = dev;
+      sendAction('syncConfig', {}, null, 'Aplicar programa');
+      STATE.actionsDevice = prev;
+    }
+    renderProgView();
+    toast('Programa enviado al equipo', 'ok', 4000);
+  }).catch(function (e) {
+    toast('No se pudo enviar: ' + e.message, 'err', 7000);
+  });
+}
+
+/* ── Vista ─────────────────────────────────────────────────────────── */
+function renderProgView() {
+  const cont = document.getElementById('pg-lista');
+  if (!cont) return;
+  const sel = document.getElementById('pg-dev');
+  const ids = Object.keys(STATE.devices).filter(function (d) { return d !== 'demo_node'; });
+  const dev = pgDev();
+  if (sel) {
+    sel.innerHTML = ids.map(function (d) {
+      return '<option value="' + chEsc(d) + '"' + (d === dev ? ' selected' : '') + '>' +
+             chEsc((STATE.devices[d] && STATE.devices[d].name) || d) + '</option>';
+    }).join('');
+  }
+  if (!dev) {
+    cont.innerHTML = '<div class="pg-vacio">No hay equipos.</div>';
+    return;
+  }
+  const p = progDe(dev);
+  const sw = document.getElementById('pg-on');
+  if (sw) sw.checked = !!p.on;
+
+  // Aviso: firmware viejo o cambios sin enviar
+  const aviso = document.getElementById('pg-aviso');
+  if (aviso) {
+    const texto = progTextoFw(dev);
+    const viejo = fwAlMenos(dev, PROG_FW_MIN) !== true;
+    const pendiente = p.publicado !== undefined && p.publicado !== texto;
+    if (viejo) {
+      aviso.style.display = '';
+      aviso.style.background = 'rgba(255,193,7,.12)';
+      aviso.style.border = '1px solid var(--warn)';
+      aviso.style.color = 'var(--warn)';
+      aviso.innerHTML = '⚠ Este equipo tiene firmware ' + (fwTextoDe(dev) || 'anterior') +
+        '. Para ejecutar el programa por su cuenta necesita la versión ' + PROG_FW_MIN + '.';
+    } else if (pendiente || (p.publicado === undefined && (p.reglas || []).length)) {
+      aviso.style.display = '';
+      aviso.style.background = 'rgba(0,180,255,.10)';
+      aviso.style.border = '1px solid var(--accent2)';
+      aviso.style.color = 'var(--accent2)';
+      aviso.innerHTML = 'Hay cambios sin enviar. Tocá «Enviar al equipo» para que empiece a usarlos.';
+    } else {
+      aviso.style.display = 'none';
+    }
+  }
+
+  const txt = document.getElementById('pg-texto');
+  if (txt) txt.textContent = progTextoFw(dev) || '(sin reglas)';
+
+  if (!(p.reglas || []).length) {
+    cont.innerHTML = '<div class="pg-vacio">Todavía no hay reglas.<br>' +
+      'Tocá «+ Regla» para crear la primera: por ejemplo, arrancar una bomba cuando la presión baje de cierto valor.</div>';
+    return;
+  }
+
+  cont.innerHTML = p.reglas.map(function (r, i) {
+    const est = pgEstadoRegla(dev, r);
+    const estTxt = est === 'cumple' ? 'se cumple' : est === 'sindatos' ? 'sin datos' : 'en espera';
+    const conds = (r.conds || []).map(function (c) {
+      return '<span class="pg-chip">' + chEsc(pgTextoCond(dev, c)) + '</span>';
+    }).join(r.modo === 'alguna' ? ' <span class="pg-kw">O</span> ' : ' <span class="pg-kw">Y</span> ');
+    const hacer = (r.hacer || []).map(function (a) {
+      return '<span class="pg-chip accion">' + chEsc(pgTextoAccion(dev, a)) + '</span>';
+    }).join(' ');
+    const salir = (r.alSalir || []).map(function (a) {
+      return '<span class="pg-chip accion">' + chEsc(pgTextoAccion(dev, a)) + '</span>';
+    }).join(' ');
+    return '<div class="pg-regla' + (r.off ? ' apagada' : '') + '">' +
+      '<div class="pg-cab">' +
+        '<div class="pg-nom">' + chEsc(r.nombre || 'Regla ' + (i + 1)) + '</div>' +
+        '<span class="pg-est ' + est + '">' + estTxt + '</span>' +
+        '<button class="btn-sm" onclick="pgEditarRegla(' + i + ')">Editar</button>' +
+        '<button class="btn-sm" onclick="pgAlternarRegla(' + i + ')">' + (r.off ? 'Activar' : 'Pausar') + '</button>' +
+      '</div>' +
+      '<div class="pg-linea"><span class="pg-kw">SI</span> ' + (conds || '—') + '</div>' +
+      '<div class="pg-linea"><span class="pg-kw">ENTONCES</span> ' + (hacer || '—') + '</div>' +
+      (salir ? '<div class="pg-linea"><span class="pg-kw">AL SALIR</span> ' + salir + '</div>' : '') +
+      (Number(r.rearme) > 0 ? '<div style="font-size:9px;color:var(--text3);margin-top:4px;">No se repite antes de ' + r.rearme + ' s</div>' : '') +
+    '</div>';
+  }).join('');
+}
+
+function pgAlternarRegla(i) {
+  const dev = pgDev();
+  const p = progDe(dev);
+  if (!p.reglas[i]) return;
+  p.reglas[i].off = !p.reglas[i].off;
+  progGuardarLocal(dev);
+}
+
+/* ── Editor de una regla ───────────────────────────────────────────── */
+function progNuevaRegla() {
+  const dev = pgDev();
+  if (!dev) { toast('No hay equipos', 'warn'); return; }
+  const p = progDe(dev);
+  if ((p.reglas || []).length >= PROG_MAX_REGLAS) {
+    toast('El equipo admite hasta ' + PROG_MAX_REGLAS + ' reglas', 'warn', 5000);
+    return;
+  }
+  PG.editando = -1;
+  PG.borrador = { id: 'r' + Date.now(), nombre: '', modo: 'todas',
+                  conds: [{ t: 'plc', k: '', op: '>', v: '0', seg: 0 }],
+                  hacer: [{ t: 'plc', k: '', v: '1' }], alSalir: [], rearme: 0 };
+  pgPintarEditor();
+  openModal('pg-regla-modal');
+}
+
+function pgEditarRegla(i) {
+  const p = progDe(pgDev());
+  if (!p.reglas[i]) return;
+  PG.editando = i;
+  PG.borrador = JSON.parse(JSON.stringify(p.reglas[i]));
+  pgPintarEditor();
+  openModal('pg-regla-modal');
+}
+
+const PG = { editando: -1, borrador: null };
+
+function pgOpcionesClave(t, devId, valor, soloEscritura) {
+  let opts = [];
+  if (t === 'plc') {
+    const cfg = plcCfgDe(devId);
+    let regs = (cfg && cfg.regs) || [];
+    // Para una acción solo sirven los registros que el equipo puede escribir
+    if (soloEscritura) regs = regs.filter(function (r) { return r.rw === 'RW'; });
+    opts = regs.map(function (r) { return [r.tag, r.nombre || r.tag]; });
+    if (soloEscritura && !opts.length) return '<option value="">(no hay registros de escritura)</option>';
+  } else if (t === 'ch') {
+    opts = Object.keys(STATE.liveData)
+      .filter(function (k) { return k.indexOf(devId + '/') === 0 && k.indexOf('/plc_') < 0; })
+      .map(function (k) { const c = k.split('/')[1]; return [c, sensorDisplayName(k)]; });
+  } else if (t === 'pin') {
+    const pines = (STATE.devices[devId] && STATE.devices[devId].pines) || {};
+    opts = Object.keys(pines).map(function (p) { return [p, 'GPIO ' + p]; });
+    if (!opts.length) for (let g = 0; g < 40; g++) opts.push([String(g), 'GPIO ' + g]);
+  }
+  if (!opts.length) return '<option value="">(sin opciones)</option>';
+  return opts.map(function (o) {
+    return '<option value="' + chEsc(o[0]) + '"' + (String(valor) === String(o[0]) ? ' selected' : '') + '>' +
+           chEsc(o[1]) + '</option>';
+  }).join('');
+}
+
+function pgPintarEditor() {
+  const b = PG.borrador, dev = pgDev();
+  document.getElementById('pg-nombre').value = b.nombre || '';
+  document.getElementById('pg-modo').value = b.modo || 'todas';
+  document.getElementById('pg-rearme').value = Number(b.rearme) || 0;
+
+  document.getElementById('pg-conds').innerHTML = (b.conds || []).map(function (c, i) {
+    const fuente = '<select onchange="pgCambioCond(' + i + ',\'t\',this.value)">' +
+      PG_FUENTES.map(function (f) {
+        return '<option value="' + f[0] + '"' + (c.t === f[0] ? ' selected' : '') + '>' + f[1] + '</option>';
+      }).join('') + '</select>';
+    if (c.t === 'alarma') {
+      return '<div class="pg-fila">' + fuente +
+        '<div style="grid-column:span 3;font-size:10px;color:var(--text3);">' +
+        'Se cumple cuando el equipo tiene cualquier falla activa</div>' +
+        '<button class="pg-del" onclick="pgQuitarCond(' + i + ')">✕</button></div>';
+    }
+    if (c.t === 'hora') {
+      return '<div class="pg-fila">' + fuente +
+        '<input type="time" value="' + chEsc(c.k || '08:00') + '" onchange="pgCambioCond(' + i + ',\'k\',this.value)">' +
+        '<div style="font-size:10px;color:var(--text3);text-align:center;">hasta</div>' +
+        '<input type="time" value="' + chEsc(c.v || '18:00') + '" onchange="pgCambioCond(' + i + ',\'v\',this.value)">' +
+        '<button class="pg-del" onclick="pgQuitarCond(' + i + ')">✕</button></div>';
+    }
+    const clave = (c.t === 'var')
+      ? '<input type="text" placeholder="nombre" value="' + chEsc(c.k || '') + '" onchange="pgCambioCond(' + i + ',\'k\',this.value)">'
+      : '<select onchange="pgCambioCond(' + i + ',\'k\',this.value)">' + pgOpcionesClave(c.t, dev, c.k) + '</select>';
+    return '<div class="pg-fila">' + fuente + clave +
+      '<select onchange="pgCambioCond(' + i + ',\'op\',this.value)">' +
+        PG_OPS.map(function (o) {
+          return '<option value="' + o[0] + '"' + (c.op === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+        }).join('') + '</select>' +
+      '<div style="display:flex;gap:4px;">' +
+        '<input type="text" value="' + chEsc(c.v == null ? '' : c.v) + '" onchange="pgCambioCond(' + i + ',\'v\',this.value)" placeholder="valor">' +
+        '<input type="number" min="0" max="3600" value="' + (Number(c.seg) || 0) + '" title="durante N segundos" style="width:62px;" onchange="pgCambioCond(' + i + ',\'seg\',this.value)">' +
+      '</div>' +
+      '<button class="pg-del" onclick="pgQuitarCond(' + i + ')">✕</button></div>';
+  }).join('') + '<div style="font-size:9px;color:var(--text3);">El último campo son los segundos que la condición debe mantenerse (0 = al instante).</div>';
+
+  ['hacer', 'alSalir'].forEach(function (campo) {
+    const cont = document.getElementById(campo === 'hacer' ? 'pg-hacer' : 'pg-alsalir');
+    cont.innerHTML = (b[campo] || []).map(function (a, i) {
+      const tipo = '<select onchange="pgCambioAcc(\'' + campo + '\',' + i + ',\'t\',this.value)">' +
+        PG_ACCIONES.map(function (x) {
+          return '<option value="' + x[0] + '"' + (a.t === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
+        }).join('') + '</select>';
+      let destino = '';
+      if (a.t === 'plc') destino = '<select onchange="pgCambioAcc(\'' + campo + '\',' + i + ',\'k\',this.value)">' + pgOpcionesClave('plc', dev, a.k, true) + '</select>';
+      else if (a.t === 'pin' || a.t === 'pwm') destino = '<select onchange="pgCambioAcc(\'' + campo + '\',' + i + ',\'k\',this.value)">' + pgOpcionesClave('pin', dev, a.k) + '</select>';
+      else if (a.t === 'var') destino = '<input type="text" placeholder="variable" value="' + chEsc(a.k || '') + '" onchange="pgCambioAcc(\'' + campo + '\',' + i + ',\'k\',this.value)">';
+      else destino = '<div style="font-size:10px;color:var(--text3);">' + (a.t === 'tg' ? 'mensaje →' : 'segundos →') + '</div>';
+      const valor = '<input type="text" value="' + chEsc(a.v == null ? '' : a.v) + '" placeholder="' +
+        (a.t === 'tg' ? 'texto del aviso' : a.t === 'pwm' ? '0-255' : 'valor') +
+        '" onchange="pgCambioAcc(\'' + campo + '\',' + i + ',\'v\',this.value)">';
+      return '<div class="pg-fila acc">' + tipo + destino + valor +
+        '<button class="pg-del" onclick="pgQuitarAccion(\'' + campo + '\',' + i + ')">✕</button></div>';
+    }).join('') || '<div style="font-size:10px;color:var(--text3);margin-bottom:6px;">Sin acciones.</div>';
+  });
+}
+
+function pgAgregarCond() {
+  if ((PG.borrador.conds || []).length >= PROG_MAX_COND) {
+    toast('Hasta ' + PROG_MAX_COND + ' condiciones por regla', 'warn'); return;
+  }
+  PG.borrador.conds.push({ t: 'plc', k: '', op: '>', v: '0', seg: 0 });
+  pgPintarEditor();
+}
+function pgQuitarCond(i) { PG.borrador.conds.splice(i, 1); pgPintarEditor(); }
+function pgCambioCond(i, campo, valor) {
+  const c = PG.borrador.conds[i];
+  if (!c) return;
+  c[campo] = (campo === 'seg') ? pgNum(valor) : valor;
+  if (campo === 't') { c.k = ''; c.v = c.t === 'hora' ? '18:00' : '0'; if (c.t === 'hora') c.k = '08:00'; }
+  pgPintarEditor();
+}
+function pgAgregarAccion(campo) {
+  if (!PG.borrador[campo]) PG.borrador[campo] = [];
+  if (PG.borrador[campo].length >= PROG_MAX_ACC) {
+    toast('Hasta ' + PROG_MAX_ACC + ' acciones', 'warn'); return;
+  }
+  PG.borrador[campo].push({ t: 'plc', k: '', v: '1' });
+  pgPintarEditor();
+}
+function pgQuitarAccion(campo, i) { PG.borrador[campo].splice(i, 1); pgPintarEditor(); }
+function pgCambioAcc(campo, i, prop, valor) {
+  const a = PG.borrador[campo][i];
+  if (!a) return;
+  a[prop] = valor;
+  if (prop === 't') { a.k = ''; a.v = a.t === 'tg' ? '' : '1'; }
+  pgPintarEditor();
+}
+
+function pgGuardarRegla() {
+  const dev = pgDev();
+  const b = PG.borrador;
+  b.nombre = document.getElementById('pg-nombre').value.trim() || 'Regla';
+  b.modo   = document.getElementById('pg-modo').value;
+  b.rearme = pgNum(document.getElementById('pg-rearme').value);
+  if (!(b.conds || []).length) { toast('La regla necesita al menos una condición', 'warn'); return; }
+  if (!(b.hacer || []).length) { toast('La regla necesita al menos una acción', 'warn'); return; }
+  const falta = (b.conds || []).some(function (c) { return c.t !== 'alarma' && c.t !== 'hora' && !c.k; }) ||
+                (b.hacer || []).some(function (a) { return (a.t === 'plc' || a.t === 'pin' || a.t === 'pwm' || a.t === 'var') && !a.k; });
+  if (falta) { toast('Faltan registros o pines por elegir', 'warn', 5000); return; }
+
+  const p = progDe(dev);
+  if (PG.editando >= 0) p.reglas[PG.editando] = b; else p.reglas.push(b);
+  closeModal('pg-regla-modal');
+  progGuardarLocal(dev);
+  toast('Regla guardada · acordate de enviarla al equipo', 'ok', 5000);
+}
+
+function pgBorrarRegla() {
+  const dev = pgDev();
+  const p = progDe(dev);
+  if (PG.editando >= 0) p.reglas.splice(PG.editando, 1);
+  closeModal('pg-regla-modal');
+  progGuardarLocal(dev);
+}
+
+function ledsDiag() { return STATE.diagLeds || (STATE.diagLeds = []); }
+
+function openAddLedModal() {
+  if (!isDiagEditable()) return;
+  const dev = STATE.selectedDevice || Object.keys(STATE.devices)[0] || '';
+  if (!dev) { toast('Primero agregá un equipo', 'warn'); return; }
+  const nm = document.getElementById('new-led-name');
+  if (nm) nm.value = '';
+  openModal('add-led-modal');
+}
+
+function confirmAddLed() {
+  const dev = STATE.selectedDevice || Object.keys(STATE.devices)[0] || '';
+  const label = (document.getElementById('new-led-name').value || '').trim() || 'LED';
+  const preset = document.getElementById('new-led-preset').value;
+  const forma = document.getElementById('new-led-forma').value;
+  const regla = { src: preset === 'presencia' ? 'presencia' : 'plc',
+                  deviceId: dev, fallaTags: [], marchaTag: '', marchaInv: false,
+                  colorFalla: '#ff3b5c', colorMarcha: '#00e5a0', colorParo: '#3a4050',
+                  parpadeo: true, todasLasFallas: preset === 'todas' };
+  const led = { id: 'led_' + Date.now(), label: label, forma: forma, tam: 24,
+                pinRule: regla, modelObjectName: '', modelObjectPath: null,
+                x: 60 + Math.random() * 420, y: 60 + Math.random() * 260 };
+  ledsDiag().push(led);
+  if (DIAG.openCapsuleId) {
+    const cap = STATE.diagCapsules.find(c => c.id === DIAG.openCapsuleId);
+    if (cap) (cap.childLedIds || (cap.childLedIds = [])).push(led.id);
+  }
+  persistAll();
+  closeModal('add-led-modal');
+  renderDiagram();
+  openLedDetail(led.id);              // se termina de configurar de una vez
+}
+
+function ledPorId(id) { return ledsDiag().find(l => l.id === id) || null; }
+
+function openLedDetail(id) {
+  const l = ledPorId(id);
+  if (!l) return;
+  DIAG.editingLedId = id;
+  document.getElementById('led-modal-title').textContent = l.label || 'LED';
+  document.getElementById('led-edit-name').value = l.label || '';
+  document.getElementById('led-edit-forma').value = l.forma || 'redondo';
+  document.getElementById('led-edit-tam').value = String(l.tam || 24);
+
+  // Equipos
+  const selDev = document.getElementById('led-edit-dev');
+  const devActual = (l.pinRule && l.pinRule.deviceId) || STATE.selectedDevice || '';
+  selDev.innerHTML = Object.keys(STATE.devices).map(function (d) {
+    return '<option value="' + chEsc(d) + '"' + (d === devActual ? ' selected' : '') + '>' +
+           chEsc((STATE.devices[d] && STATE.devices[d].name) || d) + '</option>';
+  }).join('');
+
+  pintarLedRegla(devActual, l.pinRule);
+
+  // Objeto 3D
+  populateAssemblySelect('led-edit-obj');
+  const selObj = document.getElementById('led-edit-obj');
+  if (selObj) {
+    if (l.modelObjectName && !Array.from(selObj.options).some(o => o.value === l.modelObjectName)) {
+      selObj.insertAdjacentHTML('beforeend',
+        '<option value="' + chEsc(l.modelObjectName) + '">' + chEsc(l.modelObjectName) + '</option>');
+    }
+    selObj.value = l.modelObjectName || '';
+  }
+  openModal('led-detail-modal');
+}
+
+function pintarLedRegla(devId, regla) {
+  const box = document.getElementById('led-regla-box');
+  if (!box) return;
+  regla = regla || {};
+  const esPres = regla.src === 'presencia';
+  box.innerHTML =
+    '<label class="plc-chk" style="font-size:10px;margin-bottom:8px;">' +
+      '<input type="checkbox" id="ledr-pres"' + (esPres ? ' checked' : '') +
+      ' onchange="alternarLedPresencia(this.checked)"> ' +
+      'Mostrar si el equipo está conectado (en línea)</label>' +
+    (esPres
+      ? '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">' +
+          '<div class="field-group" style="margin:0;"><label style="font-size:9px;">En línea</label>' +
+            '<input type="color" id="ledr-cm" value="' + (regla.colorMarcha || '#00e5a0') + '" style="height:28px;padding:2px;"></div>' +
+          '<div class="field-group" style="margin:0;"><label style="font-size:9px;">Sin conexión</label>' +
+            '<input type="color" id="ledr-cf" value="' + (regla.colorFalla || '#ff3b5c') + '" style="height:28px;padding:2px;"></div>' +
+        '</div>' +
+        '<div style="font-size:9px;color:var(--text3);margin-top:6px;">' +
+        'Mientras la plataforma verifica, la luz se pone ámbar.</div>'
+      : plcRuleFormHTML('ledr', regla, devId));
+}
+
+// Cambia entre luz de presencia y luz por estado del PLC
+function alternarLedPresencia(on) {
+  const l = ledPorId(DIAG.editingLedId);
+  if (!l) return;
+  const dev = document.getElementById('led-edit-dev').value;
+  l.pinRule = Object.assign({}, l.pinRule || {}, { src: on ? 'presencia' : 'plc', deviceId: dev });
+  pintarLedRegla(dev, l.pinRule);
+}
+
+function cambiarLedEquipo(devId) {
+  const l = ledPorId(DIAG.editingLedId);
+  if (!l) return;
+  l.pinRule = Object.assign({}, l.pinRule || {}, { deviceId: devId, fallaTags: [], marchaTag: '' });
+  pintarLedRegla(devId, l.pinRule);
+}
+
+function guardarLedRegla() {
+  const l = ledPorId(DIAG.editingLedId);
+  if (!l) return;
+  const dev = document.getElementById('led-edit-dev').value;
+  const pres = document.getElementById('ledr-pres');
+  if (pres && pres.checked) {
+    const g = id => document.getElementById('ledr-' + id);
+    l.pinRule = { src: 'presencia', deviceId: dev,
+      colorMarcha: g('cm') ? g('cm').value : '#00e5a0',
+      colorFalla:  g('cf') ? g('cf').value : '#ff3b5c' };
+    persistAll();
+    renderDiagram();
+    if (typeof updateHighlights === 'function') updateHighlights();
+    toast('Condición del LED guardada', 'ok', 3000);
+    return;
+  }
+  l.pinRule = leerPlcRuleForm('ledr', dev);
+  persistAll();
+  renderDiagram();
+  if (typeof updateHighlights === 'function') updateHighlights();
+  toast('Condición del LED guardada', 'ok', 3000);
+}
+
+function updateLedLabel(v) {
+  const l = ledPorId(DIAG.editingLedId);
+  if (!l) return;
+  l.label = v;
+  document.getElementById('led-modal-title').textContent = v || 'LED';
+  persistAll();
+  renderDiagram();
+}
+
+function updateLedCampo(campo, valor) {
+  const l = ledPorId(DIAG.editingLedId);
+  if (!l) return;
+  l[campo] = valor;
+  persistAll();
+  renderDiagram();
+}
+
+function updateLedObjeto(nombre) {
+  const l = ledPorId(DIAG.editingLedId);
+  if (!l) return;
+  l.modelObjectName = nombre || '';
+  l.modelObjectPath = null;            // se eligió por nombre, no por instancia
+  persistAll();
+  renderDiagram();
+  if (typeof updateHighlights === 'function') updateHighlights();
+}
+
+function removeLed() {
+  const id = DIAG.editingLedId;
+  if (!id) return;
+  STATE.diagLeds = ledsDiag().filter(l => l.id !== id);
+  STATE.diagConnections = STATE.diagConnections.filter(c => c.fromId !== id && c.toId !== id);
+  STATE.diagCapsules.forEach(c => {
+    if (c.childLedIds) c.childLedIds = c.childLedIds.filter(x => x !== id);
+  });
+  DIAG.editingLedId = null;
+  closeModal('led-detail-modal');
+  persistAll();
+  renderDiagram();
+  if (typeof updateHighlights === 'function') updateHighlights();
+}
+
+function selectLed(id) {
+  DIAG.selected = id;
+  DIAG.selectedType = 'led';
+  renderDiagram();
+}
+
+// Texto corto del estado, para que se entienda sin abrir nada
+function ledEstadoTexto(l) {
+  const r = l.pinRule;
+  if (!r) return 'sin condición';
+  if (r.src === 'presencia') {
+    const e = (typeof estadoEquipo === 'function') ? estadoEquipo(r.deviceId) : null;
+    return e === 'on' ? 'EN LÍNEA' : e === 'verificando' ? 'VERIFICANDO' : 'SIN CONEXIÓN';
+  }
+  if (r.src === 'plc') {
+    const e = plcRuleEstado(r);
+    return e === 'falla' ? 'FALLA' : e === 'marcha' ? 'ON' : e === 'paro' ? 'OFF' : 'sin datos';
+  }
+  const v = pinState(r.deviceId, r.pin);
+  return v === null ? 'sin datos' : (v ? 'ON' : 'OFF');
+}
+
+function renderLedNode(l, inner) {
+  const el = document.createElement('div');
+  el.className = 'led-node'
+    + (DIAG.selected === l.id && DIAG.selectedType === 'led' ? ' selected' : '')
+    + (isMultiSelected(l.id) ? ' multi-selected' : '')
+    + (DIAG.pendingConn ? ' conn-target' : '');
+  el.dataset.id = l.id;
+  el.style.left = l.x + 'px';
+  el.style.top  = l.y + 'px';
+
+  const color = pinRuleColor(l);
+  const r = l.pinRule || {};
+  const enFalla = r.src === 'plc' && plcRuleEstado(r) === 'falla';
+  if (enFalla && r.parpadeo !== false) el.classList.add('parpadea');
+
+  const tam = Number(l.tam) || 24;
+  const luz = document.createElement('div');
+  luz.className = 'led-luz' + (l.forma === 'cuadrado' ? ' cuadrado' : '');
+  luz.style.width = tam + 'px';
+  luz.style.height = tam + 'px';
+  if (color) {
+    luz.style.background = color;
+    luz.style.boxShadow = '0 0 ' + Math.round(tam / 2) + 'px ' + color;
+  }
+  el.appendChild(luz);
+
+  const lbl = document.createElement('div');
+  lbl.className = 'led-lbl';
+  lbl.textContent = l.label || 'LED';
+  el.appendChild(lbl);
+
+  const est = document.createElement('div');
+  est.className = 'led-est';
+  est.textContent = ledEstadoTexto(l);
+  el.appendChild(est);
+
+  if (l.modelObjectName) {
+    const t3 = document.createElement('div');
+    t3.className = 'led-3d';
+    t3.textContent = '⬢ 3D';
+    t3.title = 'Pinta también el objeto ' + l.modelObjectName;
+    el.appendChild(t3);
+  }
+
+  ['right','left','top','bottom'].forEach(side => {
+    const dot = document.createElement('div');
+    dot.className = 'port-dot port-' + side;
+    dot.addEventListener('mousedown', e => { e.stopPropagation(); startConn(l.id); });
+    el.appendChild(dot);
+  });
+
+  el.addEventListener('click', e => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey) { e.stopPropagation(); toggleMultiSelect(l.id); return; }
+    if (DIAG.pendingConn && DIAG.pendingConn.fromId !== l.id) { completeConn(l.id); return; }
+    if (!DIAG.pendingConn) {
+      if (DIAG.multi.length) clearMultiSelection(false);
+      selectLed(l.id);
+    }
+  });
+  el.addEventListener('dblclick', e => { e.stopPropagation(); openLedDetail(l.id); });
+
+  makeNodeDraggable(el, l);
+  inner.appendChild(el);
+}
+
 function openAddPanelModal() {
   populateAssemblySelect('new-panel-assembly');
   document.getElementById('new-panel-name').value = '';
@@ -13539,7 +14625,7 @@ function scheduleRenderDiagram() {
 function renderDiagram() {
   const inner = document.getElementById('diag-canvas-inner');
   if (!inner) return;
-  inner.querySelectorAll('.mach-node, .panel-node, .capsule-node').forEach(n => n.remove());
+  inner.querySelectorAll('.mach-node, .panel-node, .capsule-node, .led-node').forEach(n => n.remove());
 
   if (DIAG.openCapsuleId) {
     // ── Capsule view: show machines + panels belonging to this capsule ──
@@ -13551,6 +14637,9 @@ function renderDiagram() {
       STATE.diagPanels
         .filter(p => (cap.childPanelIds || []).includes(p.id))
         .forEach(p => renderPanelNode(p, inner));
+      (STATE.diagLeds || [])
+        .filter(l => (cap.childLedIds || []).includes(l.id))
+        .forEach(l => renderLedNode(l, inner));
     }
   } else {
     // ── Main view: capsules + non-encapsulated panels + non-encapsulated machines ──
@@ -13559,6 +14648,8 @@ function renderDiagram() {
     STATE.diagCapsules.forEach(c => renderCapsuleNode(c, inner));
     STATE.diagPanels.filter(p => !encapsulatedPanelIds.has(p.id)).forEach(p => renderPanelNode(p, inner));
     STATE.diagMachines.filter(m => !encapsulatedMachIds.has(m.id)).forEach(m => renderMachineNode(m, inner));
+    const encapsulatedLedIds = new Set(STATE.diagCapsules.flatMap(c => c.childLedIds || []));
+    (STATE.diagLeds || []).filter(l => !encapsulatedLedIds.has(l.id)).forEach(l => renderLedNode(l, inner));
   }
   renderConnections();
   autoSizeDiagCanvas();   // el lienzo crece con el contenido
@@ -14605,7 +15696,7 @@ function switchTab(view, el) {
   // dentro de Tiempo Real.
   if (esModoBasico() && view === 'diagram') view = 'realtime';
   // Módulo apagado → la vista no existe para este usuario
-  const modDeVista = { map: 'mapa', history: 'hist', diagram: 'diag2d', offline: 'offline' };
+  const modDeVista = { map: 'mapa', history: 'hist', diagram: 'diag2d', offline: 'offline', prog: 'prog' };
   if (modDeVista[view] && !modulo(modDeVista[view])) view = 'realtime';
   STATE.currentTab = view;
   // Al salir del mapa se carga recién la escena del equipo elegido ahí
@@ -14631,6 +15722,7 @@ function switchTab(view, el) {
   if (view === 'history') renderHistoryView();
   if (view === 'map') abrirMapa();
   if (view === 'offline') renderOfflineView();
+  if (view === 'prog') renderProgView();
   if (view === 'settings') populateSettings();
 
   // En modo básico no hay vista 3D: "Tiempo Real" muestra el diagrama,
@@ -15537,6 +16629,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (cayeron.length) {
       toast('⚠ Sin reportes de ' + cayeron.join(', '), 'warn', 7000);
     }
+  }, 3000);
+
+  // Las fallas aparecen y se van sin que cambie el estado en línea, así que
+  // el mapa se repinta aparte. Es barato: solo se redibuja el pin que cambió.
+  setInterval(() => {
+    if (STATE.currentTab === 'map' && typeof actualizarMapa === 'function') actualizarMapa();
   }, 3000);
 });
 </script>
