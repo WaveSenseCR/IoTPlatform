@@ -843,31 +843,37 @@
   .capsule-breadcrumb-name { font-size: 11px; color: #a78bfa; font-weight: 600; }
 
   /* ─── Panel node (standalone board/enclosure) ─── */
+  /* Los paneles son tableros, no máquinas: esquinas rectas, banda de color
+     a la izquierda y fondo propio para distinguirlos de un vistazo. */
   .panel-node {
     position: absolute;
     width: 200px;
-    background: var(--panel);
-    border: 1.5px dashed var(--border2);
-    border-radius: 10px;
+    background:
+      repeating-linear-gradient(135deg, rgba(255,255,255,.018) 0 6px, transparent 6px 12px),
+      var(--bg2);
+    border: 1px solid var(--border2);
+    border-left: 4px solid var(--pt, var(--accent2));
+    border-radius: 3px;
     cursor: move;
     user-select: none;
     overflow: visible;
     transition: border-color .15s, box-shadow .15s;
   }
-  .panel-node:hover { border-color: var(--accent); }
+  .panel-node:hover { box-shadow: 0 0 0 1px var(--pt, var(--accent2)); }
   .panel-node.selected { border-color: var(--accent2); box-shadow: 0 0 0 2px rgba(0,180,255,0.25); }
   .panel-node.conn-target:hover { border-color: #ff6b35; box-shadow: 0 0 0 2px rgba(255,107,53,0.3); }
 
   .panel-header {
     padding: 7px 10px 6px;
     border-bottom: 1px solid var(--border);
-    border-radius: 8px 8px 0 0;
+    border-radius: 0;
+    background: rgba(255,255,255,.03);
     display: flex; align-items: center; gap: 7px;
   }
   .panel-header-accent { width: 3px; height: 22px; border-radius: 2px; flex-shrink: 0; }
   .panel-header-text { flex: 1; min-width: 0; }
   .panel-title { font-size: 11px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .panel-type-lbl { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em; }
+  .panel-type-lbl { font-size: 9px; color: var(--pt, var(--text3)); text-transform: uppercase; letter-spacing: .08em; }
 
   .panel-thumb {
     width: 100%; height: 70px;
@@ -920,6 +926,87 @@
              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .led-est { font-size: 8px; color: var(--text3); text-transform: uppercase; letter-spacing: .06em; }
   .led-3d  { font-size: 8px; color: var(--accent2); }
+
+  /* ─── Lista con búsqueda (reemplaza a un <select> largo) ─── */
+  .cbx { position: relative; flex: 1 1 auto; min-width: 0; }
+  .cbx-inp {
+    width: 100%; padding: 6px 26px 6px 26px; background: var(--bg3);
+    border: 1px solid var(--border2); color: var(--text);
+    border-radius: 4px; font-family: var(--font); font-size: 11px;
+    text-overflow: ellipsis;
+  }
+  .cbx-inp:focus { border-color: var(--accent); outline: none; }
+  .cbx-inp::placeholder { color: var(--text3); }
+  /* Lupa dibujada, no un carácter: así se ve igual en cualquier tipografía */
+  .cbx::before {
+    content: ''; position: absolute; left: 9px; top: 50%; width: 9px; height: 9px;
+    margin-top: -6px; border: 1.4px solid var(--text3); border-radius: 50%;
+    pointer-events: none;
+  }
+  .cbx-inp + .cbx-lista { pointer-events: auto; }
+  .cbx .cbx-mango {
+    position: absolute; left: 16px; top: 50%; width: 5px; height: 1.4px;
+    background: var(--text3); transform: rotate(45deg); margin-top: 3px;
+    pointer-events: none;
+  }
+  .cbx::after {
+    content: '▾'; position: absolute; right: 9px; top: 50%; transform: translateY(-50%);
+    font-size: 9px; color: var(--text3); pointer-events: none;
+  }
+  .cbx.abierto::after { content: '▴'; color: var(--accent); }
+
+  /* La lista no se ata al ancho del campo: los nombres se leen completos */
+  .cbx-lista {
+    display: none; position: absolute; left: 0; top: calc(100% + 4px);
+    z-index: 3000; min-width: 100%; width: max-content;
+    max-width: min(440px, 78vw); max-height: 280px; overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--accent);
+    border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.65);
+    padding: 4px;
+  }
+  .cbx.abierto .cbx-lista { display: block; }
+  .cbx.arriba .cbx-lista { top: auto; bottom: calc(100% + 4px); }
+
+  .cbx-grp {
+    font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: .08em;
+    padding: 7px 8px 3px; border-top: 1px solid var(--border);
+  }
+  .cbx-lista > .cbx-grp:first-child { border-top: none; padding-top: 4px; }
+
+  .cbx-op {
+    padding: 5px 8px; border-radius: 5px; cursor: pointer;
+    display: flex; flex-direction: column; gap: 1px;
+  }
+  .cbx-op:hover, .cbx-op.marcada { background: rgba(0,229,160,.10); }
+  .cbx-op.marcada { box-shadow: inset 0 0 0 1px rgba(0,229,160,.35); }
+  .cbx-n { font-size: 11.5px; color: var(--text); white-space: nowrap; }
+  .cbx-k { font-size: 9px; color: var(--text3); white-space: nowrap; }
+  .cbx-op b { color: var(--accent); font-weight: 700; }
+  .cbx-op.vacia .cbx-n { color: var(--text3); font-style: italic; }
+  .cbx-nada { padding: 10px 9px; font-size: 10px; color: var(--text3); }
+  .cbx-pie {
+    font-size: 9px; color: var(--text3); padding: 6px 8px 3px;
+    border-top: 1px solid var(--border); margin-top: 3px;
+  }
+
+  /* ─── Texto suelto del diagrama ─── */
+  .txt-node {
+    position: absolute; cursor: move; user-select: none;
+    padding: 4px 6px; border: 1px dashed transparent; border-radius: 6px;
+    color: var(--text); line-height: 1.35; white-space: pre-wrap; max-width: 420px;
+  }
+  .txt-node:hover { border-color: var(--border2); }
+  .txt-node.selected, .txt-node.multi-selected { border-color: var(--accent2); border-style: solid; }
+  .txt-node.editando {
+    border-color: var(--accent); border-style: solid; cursor: text;
+    user-select: text; background: var(--bg3);
+  }
+
+  /* ─── Recuadro de selección (Ctrl + arrastrar) ─── */
+  #diag-marco {
+    position: absolute; z-index: 60; pointer-events: none;
+    border: 1px dashed var(--accent2); background: rgba(0,180,255,.10); display: none;
+  }
 
   /* ─── Port dots ─── */
   .port-dot {
@@ -2186,6 +2273,7 @@ body.mod-off-prog [data-mod="prog"]{display:none !important;}
       <button class="btn-sm" id="btn-add-machine" onclick="openAddMachineModal()">+ Máquina</button>
       <button class="btn-sm" id="btn-add-panel" onclick="openAddPanelModal()">+ Panel</button>
       <button class="btn-sm" id="btn-add-led"      onclick="openAddLedModal()" title="Luz piloto que cambia de color según el estado">💡 LED</button>
+      <button class="btn-sm" id="btn-add-texto"    onclick="agregarTextoDiag()" title="Rótulo o nota en el diagrama">T Texto</button>
       <button class="btn-sm" id="btn-add-capsule" onclick="openAddCapsuleModal()" style="color:#a78bfa;border-color:rgba(167,139,250,0.4);">⬡ Cápsula</button>
       <span style="font-size:10px;color:var(--text3);margin-left:4px;">Nueva conexión:</span>
       <select id="new-conn-type" onchange="DIAG.newConnType=this.value"
@@ -3057,6 +3145,7 @@ const STATE = {
   diagPanels: [],        // {id, label, panelType, assemblyName, elements:[{id,sensorKey}], x, y}
   diagCapsules: [],      // {id, label, assemblyName, childMachineIds[], x, y}
   diagLeds: [],          // {id, label, forma, tam, pinRule, modelObjectName, modelObjectPath, x, y}
+  diagTextos: [],        // {id, texto, tam, color, negrita, x, y}
   objectLinks: {},       // objectName -> {nodeId, sensorKey, deviceId}  (legacy 3D links)
   model: null,
   glbData: null,     // { name, data(base64) } del GLB cargado (para export/import)
@@ -3313,6 +3402,7 @@ function persistAllNow() {
   saveLocal('diagPanels', STATE.diagPanels);
   saveLocal('diagCapsules', STATE.diagCapsules);
   saveLocal('diagLeds', STATE.diagLeds || []);
+  saveLocal('diagTextos', STATE.diagTextos || []);
   saveLocal('objectLinks', STATE.objectLinks);
   saveLocal('offlineQueue', STATE.offlineQueue);
   saveLocal('sensorDefs', STATE.sensorDefs);
@@ -3336,6 +3426,8 @@ function persistAllNow() {
   saveLocal('diagChartOn', !!STATE.diagChartOn);
   saveLocal('currentSceneDev', STATE.currentSceneDev || null);
   if (typeof markSceneDirty === 'function') markSceneDirty();
+  // Foto del diagrama para poder deshacer (Ctrl+Z)
+  if (typeof diagHistRegistrar === 'function') diagHistRegistrar();
 }
 
 function loadPersisted() {
@@ -3346,6 +3438,7 @@ function loadPersisted() {
   STATE.diagPanels = loadLocal('diagPanels', []);
   STATE.diagCapsules = loadLocal('diagCapsules', []);
   STATE.diagLeds = loadLocal('diagLeds', []) || [];
+  STATE.diagTextos = loadLocal('diagTextos', []) || [];
   STATE.objectLinks = loadLocal('objectLinks', {});
   STATE.offlineQueue = loadLocal('offlineQueue', []);
   STATE.sensorDefs = loadLocal('sensorDefs', {});
@@ -3604,7 +3697,7 @@ function verificarCambioDeCuenta(email) {
     STATE.sensorDefs = {}; STATE.channels = {};
     STATE.scenes = {}; STATE.assets = {}; STATE.currentSceneDev = null;
     STATE.diagMachines = []; STATE.diagConnections = []; STATE.diagPanels = [];
-    STATE.diagCapsules = []; STATE.diagLeds = [];
+    STATE.diagCapsules = []; STATE.diagLeds = []; STATE.diagTextos = [];
     STATE.objectLinks = {}; STATE.diagCommands = []; STATE.colorRules = {};
     STATE.glbData = null; STATE.selectedDevice = null; STATE.sceneFileId = null;
     try { localStorage.removeItem('iot_glbData'); } catch (e) {}
@@ -5414,7 +5507,7 @@ function renderPlcBoardChart() {
       '</div>';
   }
   const sel = document.getElementById('plc-chart-sel');
-  if (sel) sel.value = k;
+  if (sel) { sel.value = k; comboBuscable(sel, 'Buscar canal…'); }
   const d = STATE.liveData[k] || {};
   const val = document.getElementById('plc-chart-val');
   if (val) {
@@ -5922,6 +6015,7 @@ function renderDiagChart() {
     }).join('');
   }
   sel.value = k;
+  comboBuscable(sel, 'Buscar canal…');
 
   const d = STATE.liveData[k] || {};
   const def = STATE.sensorDefs[k] || {};
@@ -5989,6 +6083,7 @@ function captureCurrentScene() {
     diagPanels: STATE.diagPanels || [],
     diagCapsules: STATE.diagCapsules || [],
     diagLeds: STATE.diagLeds || [],
+    diagTextos: STATE.diagTextos || [],
     objectLinks: STATE.objectLinks || {},
     diagCommands: STATE.diagCommands || [],
     colorRules: STATE.colorRules || {}
@@ -6007,6 +6102,7 @@ function applySceneObject(sc, opts) {
   STATE.diagPanels      = sc.diagPanels || [];
   STATE.diagCapsules    = sc.diagCapsules || [];
   STATE.diagLeds        = sc.diagLeds || [];
+  STATE.diagTextos      = sc.diagTextos || [];
   STATE.objectLinks     = sc.objectLinks || {};
   STATE.diagCommands    = sc.diagCommands || [];
   STATE.colorRules      = sc.colorRules || {};
@@ -6156,6 +6252,12 @@ function selectDevice(id) {
   } else {
     STATE._escenaPendiente = null;
     switchDeviceScene(id);            // trae el modelo y diagrama de ese equipo
+  }
+  // Un equipo sin modelo 3D no tiene nada que mostrar en Tiempo Real: se
+  // abre directo su diagrama 2D, que es donde el usuario iba a terminar.
+  if (!esModoBasico() && STATE.currentTab === 'realtime' &&
+      modulo('diag2d') && vistaDeEquipo(id) === '2d') {
+    switchTab('diagram');
   }
   if (typeof updateGoogleUI === 'function') updateGoogleUI();
   renderDevices();
@@ -8047,6 +8149,7 @@ function buildSceneObject() {
     diagPanels: STATE.diagPanels,
     diagCapsules: STATE.diagCapsules,
     diagLeds: STATE.diagLeds || [],
+    diagTextos: STATE.diagTextos || [],
     objectLinks: STATE.objectLinks,
     diagCommands: STATE.diagCommands || [],
     sensorDefs: STATE.sensorDefs,
@@ -8085,6 +8188,7 @@ function importSceneObj(obj, opts) {
   STATE.diagPanels = obj.diagPanels || [];
   STATE.diagCapsules = obj.diagCapsules || [];
   STATE.diagLeds = obj.diagLeds || [];
+  STATE.diagTextos = obj.diagTextos || [];
   STATE.objectLinks = obj.objectLinks || {};
   STATE.diagCommands = obj.diagCommands || [];
   STATE.sensorDefs = obj.sensorDefs || {};
@@ -8808,11 +8912,13 @@ function visibleDiagNodes() {
       c.childMachineIds.forEach(id => inCap.add(id));
       (c.childPanelIds || []).forEach(id => inCap.add(id));
       (c.childLedIds || []).forEach(id => inCap.add(id));
+      (c.childTxtIds || []).forEach(id => inCap.add(id));
     });
     add(STATE.diagMachines.filter(m => !inCap.has(m.id)), 160, 160);
     add(STATE.diagPanels.filter(p => !inCap.has(p.id)), 200, 150);
     add(STATE.diagCapsules, 170, 140);
     add((STATE.diagLeds || []).filter(l => !inCap.has(l.id)), 70, 70);
+    add((STATE.diagTextos || []).filter(t => !inCap.has(t.id)), 160, 40);
   }
   return out;
 }
@@ -8831,6 +8937,11 @@ function initDiagViewControls() {
   wrap.addEventListener('mousedown', e => {
     // Solo desplazar si se arrastra el fondo (no un nodo, botón o conexión)
     if (e.target !== wrap && e.target.id !== 'diag-canvas-inner' && e.target.id !== 'diag-svg') return;
+    // Con Ctrl (o Shift) el arrastre sobre el fondo elige varios elementos
+    if (e.button === 0 && (e.ctrlKey || e.metaKey || e.shiftKey)) {
+      diagIniciarMarco(e, wrap);
+      return;
+    }
     if (e.button === 1 || e.button === 0) {
       DIAG.panning = true;
       DIAG.panStartX = e.clientX; DIAG.panStartY = e.clientY;
@@ -8842,6 +8953,9 @@ function initDiagViewControls() {
 
   document.addEventListener('mousemove', e => {
     if (!DIAG.panning) return;
+    if (Math.abs(e.clientX - DIAG.panStartX) > 4 || Math.abs(e.clientY - DIAG.panStartY) > 4) {
+      DIAG._arrastroFondo = true;      // se movió la vista: el clic no deselecciona
+    }
     DIAG.panX = DIAG.panOrigX + (e.clientX - DIAG.panStartX);
     DIAG.panY = DIAG.panOrigY + (e.clientY - DIAG.panStartY);
     applyDiagTransform();
@@ -8849,6 +8963,23 @@ function initDiagViewControls() {
 
   document.addEventListener('mouseup', () => {
     if (DIAG.panning) { DIAG.panning = false; wrap.style.cursor = 'default'; }
+  });
+
+  // Un clic en el fondo (sin arrastrar) suelta lo que estuviera elegido: si
+  // no, la barra de alineación quedaba flotando sin selección detrás.
+  wrap.addEventListener('click', e => {
+    const fondo = e.target === wrap || e.target.id === 'diag-canvas-inner' || e.target.id === 'diag-svg';
+    if (!fondo || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    if (DIAG._arrastroFondo) { DIAG._arrastroFondo = false; return; }   // fue un desplazamiento
+    if (!DIAG.multi.length && !DIAG.selected && !DIAG.pendingConn) return;
+    DIAG.pendingConn = null;
+    DIAG.multi = [];
+    DIAG.selected = null;
+    DIAG.selectedType = null;
+    const panel = document.getElementById('conn-detail-panel');
+    if (panel) panel.style.display = 'none';
+    renderDiagram();
+    updateMultiBar();
   });
 }
 
@@ -8987,6 +9118,7 @@ function autoSizeDiagCanvas() {
     STATE.diagPanels.forEach(n => { n.x += dx; n.y += dy; });
     STATE.diagCapsules.forEach(n => { n.x += dx; n.y += dy; });
     (STATE.diagLeds || []).forEach(n => { n.x += dx; n.y += dy; });
+    (STATE.diagTextos || []).forEach(n => { n.x += dx; n.y += dy; });
     STATE.diagConnections.forEach(c => (c.waypoints || []).forEach(w => { w.x += dx; w.y += dy; }));
     DIAG.panX -= dx * DIAG.zoom;   // compensar para que la vista no salte
     DIAG.panY -= dy * DIAG.zoom;
@@ -9009,6 +9141,7 @@ function isMultiSelected(id) { return DIAG.multi.indexOf(id) !== -1; }
 
 function clearMultiSelection(rerender) {
   DIAG.multi = [];
+  if (typeof updateMultiBar === 'function') updateMultiBar();
   if (rerender !== false) renderDiagram();
 }
 
@@ -9068,6 +9201,10 @@ function deleteMultiSelection() {
   STATE.diagMachines = STATE.diagMachines.filter(m => !ids.has(m.id));
   STATE.diagPanels   = STATE.diagPanels.filter(p => !ids.has(p.id));
   STATE.diagLeds = (STATE.diagLeds || []).filter(l => !ids.has(l.id));
+  STATE.diagTextos = (STATE.diagTextos || []).filter(t => !ids.has(t.id));
+  STATE.diagCapsules.forEach(c => {
+    if (c.childTxtIds) c.childTxtIds = c.childTxtIds.filter(x => !ids.has(x));
+  });
   STATE.diagCapsules.forEach(c => {
     if (c.childLedIds) c.childLedIds = c.childLedIds.filter(x => !ids.has(x));
   });
@@ -11903,10 +12040,19 @@ function resumenEquipo(id) {
 }
 
 // Qué vista corresponde a un equipo: 3D si tiene modelo y no es modo básico
+// ¿Este equipo tiene modelo 3D? Para el equipo abierto se mira lo que está
+// cargado en memoria: serializar la escena entera solo para preguntarlo
+// costaba varios MB de base64 en cada clic.
+function tieneModelo3D(id) {
+  const sc = (STATE.scenes && STATE.scenes[id]) || null;
+  if (sc && sc.glb && sc.glb.data) return true;
+  if (id === STATE.currentSceneDev && STATE.glbData && STATE.glbData.data) return true;
+  return false;
+}
+
 function vistaDeEquipo(id) {
   if (esModoBasico()) return '2d';
-  const sc = (STATE.scenes && STATE.scenes[id]) || (id === STATE.currentSceneDev ? captureCurrentScene() : null);
-  return (sc && sc.glb && sc.glb.data) ? '3d' : '2d';
+  return tieneModelo3D(id) ? '3d' : '2d';
 }
 
 function abrirEquipoDesdeMapa(id) {
@@ -13281,6 +13427,7 @@ function findDiagNode(id) {
       || STATE.diagPanels.find(n => n.id === id)
       || STATE.diagCapsules.find(n => n.id === id)
       || (STATE.diagLeds || []).find(n => n.id === id)
+      || (STATE.diagTextos || []).find(n => n.id === id)
       || null;
 }
 
@@ -13288,6 +13435,7 @@ function getNodeCenter(node) {
   if (STATE.diagPanels.some(p => p.id === node.id)) return [node.x + 100, node.y + 75];
   if (STATE.diagCapsules.some(c => c.id === node.id)) return [node.x + 85, node.y + 70];
   if ((STATE.diagLeds || []).some(l => l.id === node.id)) return [node.x + 34, node.y + 32];
+  if ((STATE.diagTextos || []).some(t => t.id === node.id)) return [node.x + 40, node.y + 10];
   return [node.x + 80, node.y + 80];
 }
 
@@ -13314,9 +13462,37 @@ function closeDiagram() {
 }
 
 function diagKeyHandler(e) {
-  if (e.key !== 'Delete' && e.key !== 'Backspace') return;
   const tag = document.activeElement ? document.activeElement.tagName : '';
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  // Mientras se escribe dentro de un texto del diagrama, las teclas son del texto
+  if (DIAG.editandoTexto) return;
+  if (document.activeElement && document.activeElement.isContentEditable) return;
+
+  // ── Atajos: copiar, pegar, deshacer, rehacer, seleccionar todo ──
+  if (e.ctrlKey || e.metaKey) {
+    const k = (e.key || '').toLowerCase();
+    if (k === 'c') { e.preventDefault(); diagCopiar(); return; }
+    if (k === 'v') { e.preventDefault(); diagPegar(); return; }
+    if (k === 'a') { e.preventDefault(); diagSeleccionarTodo(); return; }
+    if (k === 'z') {
+      e.preventDefault();
+      if (!isDiagEditable()) return;
+      if (e.shiftKey) diagRehacer(); else diagDeshacer();
+      return;
+    }
+    if (k === 'y') { e.preventDefault(); if (isDiagEditable()) diagRehacer(); return; }
+    return;
+  }
+
+  // Con un texto elegido, + y - le cambian el tamaño
+  if (DIAG.selectedType === 'texto' && DIAG.selected &&
+      (e.key === '+' || e.key === '=' || e.key === '-')) {
+    e.preventDefault();
+    textoCambiarTam(DIAG.selected, e.key === '-' ? -2 : 2);
+    return;
+  }
+
+  if (e.key !== 'Delete' && e.key !== 'Backspace') return;
   if (!isDiagEditable()) return;   // edición bloqueada
   // Selección múltiple tiene prioridad
   if (DIAG.multi.length) { e.preventDefault(); deleteMultiSelection(); return; }
@@ -13336,6 +13512,8 @@ function diagKeyHandler(e) {
   } else if (DIAG.selectedType === 'led') {
     DIAG.editingLedId = DIAG.selected;
     removeLed();
+  } else if (DIAG.selectedType === 'texto') {
+    removeTexto(DIAG.selected);
   }
   DIAG.selected = null;
   DIAG.selectedType = null;
@@ -13841,6 +14019,13 @@ function pgPintarEditor() {
         '<button class="pg-del" onclick="pgQuitarAccion(\'' + campo + '\',' + i + ')">✕</button></div>';
     }).join('') || '<div style="font-size:10px;color:var(--text3);margin-bottom:6px;">Sin acciones.</div>';
   });
+  pgBuscables();
+}
+
+// Las listas del editor de reglas se rehacen en cada cambio: se vuelven a
+// convertir en buscables después de cada pintada.
+function pgBuscables() {
+  ['pg-conds', 'pg-hacer', 'pg-alsalir'].forEach(function (id) { hacerBuscables(id, 8); });
 }
 
 function pgAgregarCond() {
@@ -13900,6 +14085,521 @@ function pgBorrarRegla() {
   if (PG.editando >= 0) p.reglas.splice(PG.editando, 1);
   closeModal('pg-regla-modal');
   progGuardarLocal(dev);
+}
+
+
+/* ══════════════════════════════════════════════════════
+   LISTAS CON BÚSQUEDA
+   Un <select> con cincuenta canales no hay forma de usarlo. Esto lo deja
+   como un campo donde se escribe y la lista se filtra sola. El <select>
+   original queda oculto y es el que sigue guardando el valor, así que
+   ninguna de las funciones que lo leen tuvo que cambiar.
+══════════════════════════════════════════════════════ */
+function _sinTildes(t) {
+  return String(t || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/* Opciones de sensor: nombre del sensor y, chiquita, la clave completa.
+   Buscar por cualquiera de las dos encuentra lo mismo. */
+function opcionesSensor(excluir) {
+  const fuera = excluir || [];
+  let claves = Object.keys(STATE.liveData).filter(function (k) {
+    if (fuera.indexOf(k) >= 0) return false;
+    const dev = k.split('/')[0];
+    return !!STATE.devices[dev];          // restos de equipos borrados: fuera
+  });
+  if (typeof cmpCanales === 'function') { try { claves = claves.sort(cmpCanales); } catch (e) { claves.sort(); } }
+  else claves.sort();
+  return claves.map(function (k) {
+    const nom = (typeof sensorDisplayName === 'function') ? sensorDisplayName(k) : k;
+    const dev = k.split('/')[0];
+    const etiqueta = (nom && nom !== k) ? (nom + '  ·  ' + k) : k;
+    return '<option value="' + chEsc(k) + '">' + chEsc(etiqueta) + '</option>';
+  }).join('');
+}
+
+function comboBuscable(sel, placeholder) {
+  if (!sel || sel.multiple) return;
+  let caja = sel._cbx;
+  if (!caja) {
+    caja = document.createElement('div');
+    caja.className = 'cbx';
+    sel.parentNode.insertBefore(caja, sel);
+    caja.appendChild(sel);
+    sel.style.display = 'none';
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.className = 'cbx-inp';
+    inp.autocomplete = 'off';
+    const lista = document.createElement('div');
+    lista.className = 'cbx-lista';
+    caja.appendChild(inp);
+    caja.appendChild(lista);
+    sel._cbx = caja; caja._inp = inp; caja._lista = lista; caja._sel = sel;
+
+    const abrir = function () {
+      caja.classList.add('abierto');
+      // El campo se vacía para escribir de una: lo elegido queda de fondo
+      // en el placeholder, y si no se toca nada se restituye al salir.
+      caja._etiqueta = inp.value;
+      inp.placeholder = caja._etiqueta || 'Escribí para buscar…';
+      inp.value = '';
+      cbxFiltrar(caja, '');
+      cbxUbicar(caja);
+    };
+    inp.addEventListener('focus', abrir);
+    inp.addEventListener('click', abrir);
+    inp.addEventListener('input', function () { caja.classList.add('abierto'); cbxFiltrar(caja, inp.value); });
+    inp.addEventListener('keydown', function (e) {
+      const ops = Array.from(lista.querySelectorAll('.cbx-op'));
+      let i = ops.findIndex(function (o) { return o.classList.contains('marcada'); });
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!caja.classList.contains('abierto')) { caja.classList.add('abierto'); cbxFiltrar(caja, inp.value); return; }
+        if (!ops.length) return;
+        i = (e.key === 'ArrowDown') ? Math.min(ops.length - 1, i + 1) : Math.max(0, i - 1);
+        ops.forEach(function (o) { o.classList.remove('marcada'); });
+        ops[i].classList.add('marcada');
+        ops[i].scrollIntoView({ block: 'nearest' });
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (ops[i < 0 ? 0 : i]) cbxElegir(caja, ops[i < 0 ? 0 : i].dataset.valor);
+      } else if (e.key === 'Escape') {
+        caja.classList.remove('abierto');
+        cbxMostrarActual(caja);
+        inp.blur();
+      }
+    });
+    inp.addEventListener('blur', function () {
+      // Se cierra un instante después para que el clic en una opción llegue
+      setTimeout(function () {
+        caja.classList.remove('abierto');
+        inp.placeholder = caja._ph || 'Escribí para buscar…';
+        cbxMostrarActual(caja);
+      }, 160);
+    });
+    lista.addEventListener('mousedown', function (e) {
+      const op = e.target.closest('.cbx-op');
+      if (!op) return;
+      e.preventDefault();
+      cbxElegir(caja, op.dataset.valor);
+    });
+  }
+  caja._ph = placeholder || 'Escribí para buscar…';
+  caja._inp.placeholder = caja._ph;
+  cbxMostrarActual(caja);
+}
+
+function cbxTextoDe(op) { return op.textContent || op.value; }
+
+// Si abajo no hay lugar, la lista se abre hacia arriba
+function cbxUbicar(caja) {
+  const r = caja.getBoundingClientRect();
+  caja.classList.toggle('arriba', (window.innerHeight - r.bottom) < 250 && r.top > 280);
+}
+
+// Resalta en el texto lo que el usuario escribió
+function cbxResaltar(texto, partes) {
+  let salida = chEsc(texto);
+  if (!partes.length) return salida;
+  const plano = _sinTildes(texto);
+  const marcas = [];
+  partes.forEach(function (p) {
+    let desde = 0, i;
+    while (p && (i = plano.indexOf(p, desde)) >= 0) { marcas.push([i, i + p.length]); desde = i + p.length; }
+  });
+  if (!marcas.length) return salida;
+  marcas.sort(function (a, b) { return a[0] - b[0]; });
+  let fin = 0, out = '';
+  marcas.forEach(function (m) {
+    if (m[0] < fin) return;
+    out += chEsc(texto.slice(fin, m[0])) + '<b>' + chEsc(texto.slice(m[0], m[1])) + '</b>';
+    fin = m[1];
+  });
+  return out + chEsc(texto.slice(fin));
+}
+
+// Nombre del equipo al que pertenece una clave "WS_A/loquesea"
+function cbxEquipoDe(valor) {
+  const dev = String(valor || '').split('/')[0];
+  if (!dev || !STATE.devices[dev]) return '';
+  return STATE.devices[dev].name || dev;
+}
+
+function cbxMostrarActual(caja) {
+  const sel = caja._sel;
+  const op = sel.options[sel.selectedIndex];
+  caja._inp.value = op ? cbxTextoDe(op).replace('  ·  ', ' · ') : '';
+  caja._inp.title = caja._inp.value;      // el nombre completo, al pasar el mouse
+}
+
+function cbxFiltrar(caja, texto) {
+  const q = _sinTildes(texto).trim();
+  const partes = q ? q.split(/\s+/) : [];
+  const sel = caja._sel;
+
+  // Las opciones se parten en nombre y clave: "Caudal  ·  WS_A/plc_FLOW"
+  const items = [];
+  let vacia = null;
+  Array.from(sel.options).forEach(function (op) {
+    const t = cbxTextoDe(op);
+    if (!op.value) { vacia = { valor: '', nombre: t }; return; }     // "Seleccionar…"
+    const trozos = t.split('  ·  ');
+    const nombre = trozos[0];
+    const clave = trozos.length > 1 ? trozos.slice(1).join(' · ') : '';
+    const base = _sinTildes(t + ' ' + op.value);
+    if (partes.length && !partes.every(function (p) { return base.indexOf(p) >= 0; })) return;
+    items.push({ valor: op.value, nombre: nombre, clave: clave, grupo: cbxEquipoDe(op.value) });
+  });
+
+  if (!items.length) {
+    caja._lista.innerHTML = '<div class="cbx-nada">Nada coincide con «' + chEsc(texto) + '»</div>';
+    return;
+  }
+
+  // Se agrupa por equipo solo si hay más de uno: si no, es ruido
+  const grupos = [];
+  items.forEach(function (it) { if (grupos.indexOf(it.grupo) < 0) grupos.push(it.grupo); });
+  const agrupar = grupos.filter(Boolean).length > 1;
+
+  const fila = function (it) {
+    return '<div class="cbx-op" data-valor="' + chEsc(it.valor) + '">' +
+      '<div class="cbx-n">' + cbxResaltar(it.nombre, partes) + '</div>' +
+      (it.clave ? '<div class="cbx-k">' + cbxResaltar(it.clave, partes) + '</div>' : '') +
+      '</div>';
+  };
+
+  let html = '';
+  // Limpiar la elección solo tiene sentido si ya hay algo elegido
+  if (vacia && sel.value) {
+    html += '<div class="cbx-op vacia" data-valor=""><div class="cbx-n">' + chEsc(vacia.nombre) + '</div></div>';
+  }
+  if (agrupar) {
+    grupos.forEach(function (g) {
+      const delGrupo = items.filter(function (it) { return it.grupo === g; });
+      if (!delGrupo.length) return;
+      html += '<div class="cbx-grp">' + chEsc(g || 'Otros') + '</div>' + delGrupo.map(fila).join('');
+    });
+  } else {
+    html += items.map(fila).join('');
+  }
+  if (partes.length) {
+    html += '<div class="cbx-pie">' + items.length +
+            (items.length === 1 ? ' coincidencia' : ' coincidencias') + '</div>';
+  }
+  caja._lista.innerHTML = html;
+  const primera = caja._lista.querySelector('.cbx-op:not(.vacia)') || caja._lista.querySelector('.cbx-op');
+  if (primera) primera.classList.add('marcada');
+}
+
+function cbxElegir(caja, valor) {
+  const sel = caja._sel;
+  sel.value = valor;
+  caja.classList.remove('abierto');
+  cbxMostrarActual(caja);
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+/* Convierte en buscables todas las listas largas que haya dentro de algo.
+   Se llama después de armar un modal: si la lista es corta no hace nada,
+   porque un desplegable normal se usa más rápido. */
+function hacerBuscables(raiz, minimo) {
+  const cont = (typeof raiz === 'string') ? document.getElementById(raiz) : raiz;
+  if (!cont) return;
+  const tope = minimo || 8;
+  cont.querySelectorAll('select').forEach(function (sel) {
+    if (sel.dataset.nobuscar === '1') return;
+    if (sel._cbx) { comboBuscable(sel); return; }      // ya era buscable: refrescar
+    if (sel.options.length >= tope) comboBuscable(sel);
+  });
+}
+
+/* ══════════════════════════════════════════════════════
+   TEXTOS DEL DIAGRAMA
+   Rótulos y notas sueltas: títulos de zona, aclaraciones, referencias.
+   Se editan haciendo doble clic sobre el texto mismo.
+══════════════════════════════════════════════════════ */
+function textosDiag() { return STATE.diagTextos || (STATE.diagTextos = []); }
+
+function agregarTextoDiag() {
+  if (!isDiagEditable()) { toast('Activá el modo edición del diagrama', 'warn'); return; }
+  const t = { id: 'txt_' + Date.now(), texto: 'Texto', tam: 14, color: '', negrita: false,
+              x: 60 + Math.random() * 380, y: 60 + Math.random() * 220 };
+  textosDiag().push(t);
+  if (DIAG.openCapsuleId) {
+    const cap = STATE.diagCapsules.find(c => c.id === DIAG.openCapsuleId);
+    if (cap) (cap.childTxtIds || (cap.childTxtIds = [])).push(t.id);
+  }
+  persistAll();
+  renderDiagram();
+  setTimeout(function () { editarTextoDiag(t.id); }, 30);   // listo para escribir
+}
+
+function textoPorId(id) { return textosDiag().find(t => t.id === id) || null; }
+
+function editarTextoDiag(id) {
+  const el = document.querySelector('#diag-canvas-inner [data-id="' + id + '"]');
+  const t = textoPorId(id);
+  if (!el || !t) return;
+  el.classList.add('editando');
+  el.contentEditable = 'true';
+  DIAG.editandoTexto = id;             // frena el redibujado mientras se escribe
+  el.focus();
+  // Dejar el cursor al final
+  const sel = window.getSelection(), rango = document.createRange();
+  rango.selectNodeContents(el); rango.collapse(false);
+  sel.removeAllRanges(); sel.addRange(rango);
+
+  const terminar = function () {
+    DIAG.editandoTexto = null;
+    DIAG._redibujoPendiente = false;
+    el.contentEditable = 'false';
+    el.classList.remove('editando');
+    t.texto = (el.innerText || '').replace(/ /g, ' ').trim() || 'Texto';
+    el.removeEventListener('blur', terminar);
+    el.removeEventListener('keydown', teclas);
+    persistAll();
+    renderDiagram();
+  };
+  const teclas = function (ev) {
+    ev.stopPropagation();                       // no disparar los atajos del diagrama
+    if (ev.key === 'Escape' || (ev.key === 'Enter' && !ev.shiftKey)) { ev.preventDefault(); el.blur(); }
+  };
+  el.addEventListener('blur', terminar);
+  el.addEventListener('keydown', teclas);
+}
+
+function textoCambiarTam(id, delta) {
+  const t = textoPorId(id);
+  if (!t) return;
+  t.tam = Math.max(9, Math.min(48, (Number(t.tam) || 14) + delta));
+  persistAll();
+  renderDiagram();
+}
+
+function renderTextoNode(t, inner) {
+  const el = document.createElement('div');
+  el.className = 'txt-node'
+    + (DIAG.selected === t.id && DIAG.selectedType === 'texto' ? ' selected' : '')
+    + (isMultiSelected(t.id) ? ' multi-selected' : '');
+  el.dataset.id = t.id;
+  el.style.left = t.x + 'px';
+  el.style.top  = t.y + 'px';
+  el.style.fontSize = (Number(t.tam) || 14) + 'px';
+  if (t.color) el.style.color = t.color;
+  if (t.negrita) el.style.fontWeight = '700';
+  el.textContent = t.texto || 'Texto';
+  el.title = 'Doble clic para editar';
+
+  el.addEventListener('click', e => {
+    if (el.classList.contains('editando')) return;
+    if (e.ctrlKey || e.metaKey || e.shiftKey) { e.stopPropagation(); toggleMultiSelect(t.id); return; }
+    if (DIAG.multi.length) clearMultiSelection(false);
+    DIAG.selected = t.id; DIAG.selectedType = 'texto';
+    renderDiagram();
+  });
+  el.addEventListener('dblclick', e => { e.stopPropagation(); editarTextoDiag(t.id); });
+
+  makeNodeDraggable(el, t);
+  inner.appendChild(el);
+}
+
+function removeTexto(id) {
+  STATE.diagTextos = textosDiag().filter(t => t.id !== id);
+  STATE.diagCapsules.forEach(c => {
+    if (c.childTxtIds) c.childTxtIds = c.childTxtIds.filter(x => x !== id);
+  });
+  persistAll();
+  renderDiagram();
+}
+
+/* ══════════════════════════════════════════════════════
+   COPIAR, PEGAR Y DESHACER
+   El historial guarda una copia del diagrama cada vez que cambia algo
+   (persistAll es el punto por donde pasan todos los cambios), así no hay
+   que acordarse de registrar en cada función que modifica algo.
+══════════════════════════════════════════════════════ */
+const DIAG_HIST = { pila: [], pos: -1, aplicando: false, max: 40 };
+
+function diagEstadoActual() {
+  return JSON.stringify({
+    m: STATE.diagMachines, p: STATE.diagPanels, c: STATE.diagCapsules,
+    l: STATE.diagLeds || [], t: STATE.diagTextos || [], x: STATE.diagConnections,
+    k: STATE.diagCommands || []
+  });
+}
+
+function diagHistRegistrar() {
+  if (DIAG_HIST.aplicando) return;
+  const s = diagEstadoActual();
+  if (DIAG_HIST.pos >= 0 && DIAG_HIST.pila[DIAG_HIST.pos] === s) return;
+  DIAG_HIST.pila = DIAG_HIST.pila.slice(0, DIAG_HIST.pos + 1);
+  DIAG_HIST.pila.push(s);
+  if (DIAG_HIST.pila.length > DIAG_HIST.max) DIAG_HIST.pila.shift();
+  DIAG_HIST.pos = DIAG_HIST.pila.length - 1;
+}
+
+function diagHistAplicar(s) {
+  const o = JSON.parse(s);
+  DIAG_HIST.aplicando = true;
+  STATE.diagMachines    = o.m || [];
+  STATE.diagPanels      = o.p || [];
+  STATE.diagCapsules    = o.c || [];
+  STATE.diagLeds        = o.l || [];
+  STATE.diagTextos      = o.t || [];
+  STATE.diagConnections = o.x || [];
+  STATE.diagCommands    = o.k || [];
+  clearMultiSelection(false);
+  DIAG.selected = null; DIAG.selectedType = null;
+  renderDiagram();
+  persistAll();
+  DIAG_HIST.aplicando = false;
+}
+
+function diagDeshacer() {
+  if (DIAG_HIST.pos <= 0) { toast('No hay nada que deshacer', 'warn', 2500); return; }
+  DIAG_HIST.pos--;
+  diagHistAplicar(DIAG_HIST.pila[DIAG_HIST.pos]);
+  toast('Deshecho', 'ok', 1800);
+}
+
+function diagRehacer() {
+  if (DIAG_HIST.pos >= DIAG_HIST.pila.length - 1) { toast('No hay nada que rehacer', 'warn', 2500); return; }
+  DIAG_HIST.pos++;
+  diagHistAplicar(DIAG_HIST.pila[DIAG_HIST.pos]);
+  toast('Rehecho', 'ok', 1800);
+}
+
+// Qué está seleccionado ahora (uno o varios)
+function diagSeleccion() {
+  if (DIAG.multi.length) return DIAG.multi.slice();
+  return DIAG.selected ? [DIAG.selected] : [];
+}
+
+function diagCopiar() {
+  const ids = diagSeleccion();
+  if (!ids.length) { toast('Elegí algo para copiar', 'warn', 2500); return; }
+  const copia = [];
+  ids.forEach(function (id) {
+    const n = findDiagNode(id);
+    if (!n) return;
+    let tipo = 'machine';
+    if (STATE.diagPanels.some(p => p.id === id)) tipo = 'panel';
+    else if (STATE.diagCapsules.some(c => c.id === id)) tipo = 'capsule';
+    else if ((STATE.diagLeds || []).some(l => l.id === id)) tipo = 'led';
+    else if ((STATE.diagTextos || []).some(t => t.id === id)) tipo = 'texto';
+    copia.push({ tipo: tipo, nodo: JSON.parse(JSON.stringify(n)) });
+  });
+  if (!copia.length) return;
+  DIAG.portapapeles = copia;
+  toast(copia.length + (copia.length === 1 ? ' elemento copiado' : ' elementos copiados'), 'ok', 2500);
+}
+
+function diagPegar() {
+  if (!isDiagEditable()) return;
+  const cp = DIAG.portapapeles;
+  if (!cp || !cp.length) { toast('No hay nada copiado', 'warn', 2500); return; }
+  const nuevos = [];
+  cp.forEach(function (item) {
+    const n = JSON.parse(JSON.stringify(item.nodo));
+    const pref = { machine: 'mach_', panel: 'panel_', capsule: 'cap_', led: 'led_', texto: 'txt_' }[item.tipo];
+    n.id = pref + Date.now() + '_' + Math.floor(Math.random() * 1000);
+    n.x = (Number(n.x) || 0) + 30;
+    n.y = (Number(n.y) || 0) + 30;
+    // Una copia no hereda el vínculo con el objeto 3D: si no, dos nodos
+    // pintarían la misma pieza y no se sabría cuál manda.
+    if (item.tipo === 'machine' || item.tipo === 'led') { n.modelObjectName = ''; n.modelObjectPath = null; }
+    if (item.tipo === 'panel' || item.tipo === 'capsule') n.assemblyName = '';
+    if (item.tipo === 'capsule') { n.childMachineIds = []; n.childPanelIds = []; n.childLedIds = []; n.childTxtIds = []; }
+    if (item.tipo === 'machine')      STATE.diagMachines.push(n);
+    else if (item.tipo === 'panel')   STATE.diagPanels.push(n);
+    else if (item.tipo === 'capsule') STATE.diagCapsules.push(n);
+    else if (item.tipo === 'led')     (STATE.diagLeds || (STATE.diagLeds = [])).push(n);
+    else                              textosDiag().push(n);
+    nuevos.push(n.id);
+  });
+  DIAG.multi = nuevos.length > 1 ? nuevos : [];
+  DIAG.selected = nuevos.length === 1 ? nuevos[0] : null;
+  DIAG.selectedType = null;
+  persistAll();
+  renderDiagram();
+  if (typeof updateMultiBar === 'function') updateMultiBar();
+  toast(nuevos.length + (nuevos.length === 1 ? ' elemento pegado' : ' elementos pegados'), 'ok', 2500);
+}
+
+function diagSeleccionarTodo() {
+  const ids = [];
+  const agregar = function (arr) { (arr || []).forEach(function (o) { ids.push(o.id); }); };
+  if (DIAG.openCapsuleId) {
+    const cap = STATE.diagCapsules.find(c => c.id === DIAG.openCapsuleId) || {};
+    agregar(STATE.diagMachines.filter(m => (cap.childMachineIds || []).includes(m.id)));
+    agregar(STATE.diagPanels.filter(p => (cap.childPanelIds || []).includes(p.id)));
+    agregar((STATE.diagLeds || []).filter(l => (cap.childLedIds || []).includes(l.id)));
+    agregar((STATE.diagTextos || []).filter(t => (cap.childTxtIds || []).includes(t.id)));
+  } else {
+    const dentro = new Set();
+    STATE.diagCapsules.forEach(function (c) {
+      (c.childMachineIds || []).forEach(x => dentro.add(x));
+      (c.childPanelIds || []).forEach(x => dentro.add(x));
+      (c.childLedIds || []).forEach(x => dentro.add(x));
+      (c.childTxtIds || []).forEach(x => dentro.add(x));
+    });
+    agregar(STATE.diagMachines.filter(m => !dentro.has(m.id)));
+    agregar(STATE.diagPanels.filter(p => !dentro.has(p.id)));
+    agregar(STATE.diagCapsules);
+    agregar((STATE.diagLeds || []).filter(l => !dentro.has(l.id)));
+    agregar((STATE.diagTextos || []).filter(t => !dentro.has(t.id)));
+  }
+  DIAG.multi = ids;
+  DIAG.selected = null; DIAG.selectedType = null;
+  renderDiagram();
+  if (typeof updateMultiBar === 'function') updateMultiBar();
+}
+
+/* ── Selección por recuadro: Ctrl + arrastrar sobre el fondo ──────── */
+function diagIniciarMarco(e, wrap) {
+  const marco = document.getElementById('diag-marco') || (function () {
+    const d = document.createElement('div');
+    d.id = 'diag-marco';
+    wrap.appendChild(d);
+    return d;
+  })();
+  const r0 = wrap.getBoundingClientRect();
+  const x0 = e.clientX - r0.left, y0 = e.clientY - r0.top;
+  marco.style.display = 'block';
+  marco.style.left = x0 + 'px'; marco.style.top = y0 + 'px';
+  marco.style.width = '0px';    marco.style.height = '0px';
+
+  const mover = function (ev) {
+    const x = ev.clientX - r0.left, y = ev.clientY - r0.top;
+    marco.style.left = Math.min(x0, x) + 'px';
+    marco.style.top  = Math.min(y0, y) + 'px';
+    marco.style.width  = Math.abs(x - x0) + 'px';
+    marco.style.height = Math.abs(y - y0) + 'px';
+  };
+  const soltar = function (ev) {
+    document.removeEventListener('mousemove', mover);
+    document.removeEventListener('mouseup', soltar);
+    marco.style.display = 'none';
+    const caja = { x1: Math.min(e.clientX, ev.clientX), y1: Math.min(e.clientY, ev.clientY),
+                   x2: Math.max(e.clientX, ev.clientX), y2: Math.max(e.clientY, ev.clientY) };
+    if (caja.x2 - caja.x1 < 6 && caja.y2 - caja.y1 < 6) return;    // fue un clic
+    const ids = [];
+    document.querySelectorAll('#diag-canvas-inner [data-id]').forEach(function (el) {
+      const r = el.getBoundingClientRect();
+      if (r.right > caja.x1 && r.left < caja.x2 && r.bottom > caja.y1 && r.top < caja.y2) {
+        ids.push(el.dataset.id);
+      }
+    });
+    if (!ids.length) return;
+    DIAG.multi = ids;
+    DIAG.selected = null; DIAG.selectedType = null;
+    renderDiagram();
+    if (typeof updateMultiBar === 'function') updateMultiBar();
+  };
+  document.addEventListener('mousemove', mover);
+  document.addEventListener('mouseup', soltar);
+  e.preventDefault();
 }
 
 function ledsDiag() { return STATE.diagLeds || (STATE.diagLeds = []); }
@@ -14218,11 +14918,10 @@ function openPanelDetail(panelId) {
 
   const sel = document.getElementById('panel-add-sensor-select');
   const usedKeys = p.elements.map(e => e.sensorKey);
-  sel.innerHTML = '<option value="">Seleccionar...</option>' +
-    Object.keys(STATE.liveData).filter(k => !usedKeys.includes(k))
-      .map(k => `<option value="${k}">${k}</option>`).join('');
+  sel.innerHTML = '<option value="">Seleccionar...</option>' + opcionesSensor(usedKeys);
 
   openModal('panel-detail-modal');
+  hacerBuscables('panel-detail-modal');
 }
 
 function updatePanelLabel(val) {
@@ -14547,11 +15246,10 @@ function openMachineDetail(machineId) {
     : '<div style="font-size:11px;color:var(--text3);padding:6px 0;">Sin sensores asignados</div>';
 
   const sel = document.getElementById('mach-add-sensor-select');
-  sel.innerHTML = '<option value="">Seleccionar...</option>' +
-    Object.keys(STATE.liveData).filter(k => !m.sensorKeys.includes(k))
-      .map(k => `<option value="${k}">${k}</option>`).join('');
+  sel.innerHTML = '<option value="">Seleccionar...</option>' + opcionesSensor(m.sensorKeys);
 
   openModal('machine-detail-modal');
+  hacerBuscables('machine-detail-modal');
 }
 
 function updateMachineLabel(val) {
@@ -14614,6 +15312,9 @@ let _diagRenderPend = false;
 function scheduleRenderDiagram() {
   if (_diagRenderPend) return;
   if (DIAG.dragging) return;          // no rehacer nodos bajo el mouse
+  // Con cada dato que llega se redibuja el diagrama; si eso pasa mientras
+  // se escribe un texto, el nodo se destruye y la edición se corta sola.
+  if (DIAG.editandoTexto) return;
   _diagRenderPend = true;
   requestAnimationFrame(function () {
     _diagRenderPend = false;
@@ -14625,7 +15326,13 @@ function scheduleRenderDiagram() {
 function renderDiagram() {
   const inner = document.getElementById('diag-canvas-inner');
   if (!inner) return;
-  inner.querySelectorAll('.mach-node, .panel-node, .capsule-node, .led-node').forEach(n => n.remove());
+  // Mientras se escribe un texto NO se redibuja: rehacer los nodos destruye
+  // el que está en edición y la escritura se corta sola. processRTDBData
+  // llama acá directo con cada dato que llega, por eso la guarda va acá.
+  if (DIAG.editandoTexto) { DIAG._redibujoPendiente = true; return; }
+  // Un blur puede sacar un nodo del DOM en medio del recorrido
+  Array.from(inner.querySelectorAll('.mach-node, .panel-node, .capsule-node, .led-node, .txt-node'))
+    .forEach(n => { if (n.isConnected) n.remove(); });
 
   if (DIAG.openCapsuleId) {
     // ── Capsule view: show machines + panels belonging to this capsule ──
@@ -14640,6 +15347,9 @@ function renderDiagram() {
       (STATE.diagLeds || [])
         .filter(l => (cap.childLedIds || []).includes(l.id))
         .forEach(l => renderLedNode(l, inner));
+      (STATE.diagTextos || [])
+        .filter(t => (cap.childTxtIds || []).includes(t.id))
+        .forEach(t => renderTextoNode(t, inner));
     }
   } else {
     // ── Main view: capsules + non-encapsulated panels + non-encapsulated machines ──
@@ -14650,6 +15360,8 @@ function renderDiagram() {
     STATE.diagMachines.filter(m => !encapsulatedMachIds.has(m.id)).forEach(m => renderMachineNode(m, inner));
     const encapsulatedLedIds = new Set(STATE.diagCapsules.flatMap(c => c.childLedIds || []));
     (STATE.diagLeds || []).filter(l => !encapsulatedLedIds.has(l.id)).forEach(l => renderLedNode(l, inner));
+    const encapsuladosTxt = new Set(STATE.diagCapsules.flatMap(c => c.childTxtIds || []));
+    (STATE.diagTextos || []).filter(t => !encapsuladosTxt.has(t.id)).forEach(t => renderTextoNode(t, inner));
   }
   renderConnections();
   autoSizeDiagCanvas();   // el lienzo crece con el contenido
@@ -14773,7 +15485,7 @@ function renderPanelNode(p, inner) {
   el.dataset.id = p.id;
   el.style.left = p.x + 'px';
   el.style.top  = p.y + 'px';
-  el.style.borderColor = pt.color + '88';
+  el.style.setProperty('--pt', pt.color);       // banda y rótulo del tipo
 
   // Header
   const header = document.createElement('div');
@@ -16010,6 +16722,11 @@ function borrarCanalesHuerfanos(devId) {
       toast(h.length + ' canal(es) viejos borrados', 'ok');
     })
     .catch(e => toast('No se pudieron borrar: ' + e.message, 'err', 6000));
+}
+
+// Después de armar un modal grande, las listas largas se vuelven buscables
+function buscablesEnModal(id) {
+  setTimeout(function () { hacerBuscables(id, 8); }, 30);
 }
 
 function openChannelConfig() {
