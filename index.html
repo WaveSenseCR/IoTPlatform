@@ -927,6 +927,51 @@
   .led-est { font-size: 8px; color: var(--text3); text-transform: uppercase; letter-spacing: .06em; }
   .led-3d  { font-size: 8px; color: var(--accent2); }
 
+  /* ─── Gestión de equipos y accesos ─── */
+  .eq-ficha {
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg2); padding: 12px 14px; margin-bottom: 10px;
+  }
+  .eq-cab { display: flex; align-items: flex-start; gap: 10px; }
+  .eq-id { font-size: 12px; font-weight: 600; color: var(--text); word-break: break-all; }
+  .eq-sub { font-size: 9px; color: var(--text3); margin-top: 2px; }
+  .eq-chapa {
+    font-size: 8px; padding: 2px 7px; border-radius: 10px; white-space: nowrap;
+    border: 1px solid var(--accent); color: var(--accent); text-transform: uppercase; letter-spacing: .06em;
+  }
+  .eq-chapa.compartido { border-color: var(--accent2); color: var(--accent2); }
+  .eq-chapa.visor { border-color: var(--warn); color: var(--warn); }
+  .eq-acc { display: flex; gap: 6px; flex-shrink: 0; margin-left: auto; }
+  .eq-gente { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+  .eq-gente-t { font-size: 9px; color: var(--text3); text-transform: uppercase; letter-spacing: .07em; margin-bottom: 6px; }
+  .eq-p {
+    display: flex; align-items: center; gap: 8px; padding: 5px 0;
+    border-bottom: 1px solid rgba(255,255,255,.04);
+  }
+  .eq-p:last-child { border-bottom: none; }
+  .eq-mail { font-size: 10.5px; color: var(--text2); flex: 1; min-width: 0;
+             overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .eq-p select { font-size: 9px; padding: 3px 5px; background: var(--bg3);
+                 border: 1px solid var(--border2); color: var(--text); border-radius: 4px; width: auto; }
+  .eq-x { background: none; border: none; color: var(--err); cursor: pointer; font-size: 12px; padding: 0 3px; }
+  .eq-vacio { font-size: 10px; color: var(--text3); font-style: italic; }
+
+  /* ─── Acceso de solo lectura ─── */
+  #rol-chip {
+    display: none; align-items: center; gap: 5px; padding: 4px 10px;
+    border-radius: 20px; font-size: 10px; letter-spacing: .05em;
+    border: 1px solid var(--warn); color: var(--warn); white-space: nowrap;
+  }
+  /* Lo que cambia algo del equipo se apaga para un visor */
+  body.solo-lectura [data-edita] {
+    opacity: .4; pointer-events: none; filter: grayscale(.6);
+  }
+  .dev-rol {
+    font-size: 8px; padding: 1px 5px; border-radius: 8px; margin-left: 5px;
+    border: 1px solid var(--border2); color: var(--text3); white-space: nowrap;
+  }
+  .dev-rol.visor { border-color: var(--warn); color: var(--warn); }
+
   /* ─── Lista con búsqueda (reemplaza a un <select> largo) ─── */
   .cbx { position: relative; flex: 1 1 auto; min-width: 0; }
   .cbx-inp {
@@ -1722,6 +1767,7 @@ body.mod-off-prog [data-mod="prog"]{display:none !important;}
         <input type="checkbox" id="sw-basico" onchange="setModoBasico(this.checked)">
         <span class="ws-track"></span><span class="ws-lbl">Básico</span>
       </label>
+      <div id="rol-chip" title="Acceso de solo lectura"></div>
       <div class="status-badge online" id="conn-badge">EN LÍNEA</div>
       <input type="file" id="scene-import-input" accept=".json" style="display:none" onchange="importSceneFile(event)">
 
@@ -1800,8 +1846,8 @@ body.mod-off-prog [data-mod="prog"]{display:none !important;}
     <div class="sidebar-section" style="flex:1">
       <div class="sidebar-label">Sensores Activos</div>
       <div id="sensors-list"></div>
-      <button class="btn-sm accent" style="width:100%;margin-top:8px;" onclick="openChannelConfig()">⚙ Configurar Canales / Sensores</button>
-      <button class="btn-sm" data-mod="cmd" style="width:100%;margin-top:6px;" onclick="openActionsPanel()">🎛 Enviar Comandos</button>
+      <button class="btn-sm accent" data-edita="1" style="width:100%;margin-top:8px;" onclick="openChannelConfig()">⚙ Configurar Canales / Sensores</button>
+      <button class="btn-sm" data-mod="cmd" data-edita="1" style="width:100%;margin-top:6px;" onclick="openActionsPanel()">🎛 Enviar Comandos</button>
       <button class="btn-sm" data-mod="mant" style="width:100%;margin-top:6px;" onclick="openMaintenance()">🛠 Análisis y Mantenimiento</button>
     </div>
     <!-- Marca del fabricante de la solución -->
@@ -2053,6 +2099,9 @@ body.mod-off-prog [data-mod="prog"]{display:none !important;}
       </div>
 
       <div class="settings-section">
+        <div class="settings-title">Vista compartida del equipo</div>
+        <div id="vista-comp" style="margin-bottom:22px;"></div>
+
         <div class="settings-title">Módulos de la Plataforma</div>
         <div style="font-size:10px;color:var(--text3);margin-bottom:6px;line-height:1.6;">
           Apagá lo que este cliente no necesita: desaparece de las pestañas, de los
@@ -2155,7 +2204,7 @@ body.mod-off-prog [data-mod="prog"]{display:none !important;}
           Modbus TCP: módulo W5500 (firmware 2.7.0). Modbus RTU: RS-485, TX→GPIO17, RX→GPIO16, DE/RE→GPIO4.
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn-sm accent" onclick="abrirPlcConfig(STATE.selectedDevice)">⚙ Registros del PLC del equipo seleccionado</button>
+          <button class="btn-sm accent" data-edita="1" onclick="abrirPlcConfig(STATE.selectedDevice)">⚙ Registros del PLC del equipo seleccionado</button>
           <button class="btn-sm" onclick="abrirTableroPlc(STATE.selectedDevice)">▦ Tablero PLC</button>
           <button class="btn-sm" onclick="abrirConfigEquipo(STATE.selectedDevice)">⧉ Exportar / copiar configuración</button>
         </div>
@@ -2179,7 +2228,8 @@ body.mod-off-prog [data-mod="prog"]{display:none !important;}
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
           <button class="btn-sm accent" onclick="vincularTelegram('chat')">💬 Vincular un chat</button>
           <button class="btn-sm accent" onclick="vincularTelegram('grupo')">👥 Vincular un grupo</button>
-          <button class="btn-sm" onclick="probarTelegram()">🔔 Enviar prueba</button>
+          <button class="btn-sm" onclick="probarTelegram()" title="Prueba el tramo servicio → Telegram">🔔 Enviar prueba</button>
+          <button class="btn-sm" onclick="probarTelegramEquipo()" title="El equipo manda el aviso, igual que con una falla real">📟 Probar desde el equipo</button>
         </div>
         <div id="tg-avisos" style="margin-top:14px;"></div>
         <details style="margin-top:12px;">
@@ -2854,6 +2904,41 @@ body.mod-off-prog [data-mod="prog"]{display:none !important;}
   </div>
 </div>
 
+<!-- ─── MODAL: Compartir un equipo ─── -->
+<div class="modal-overlay" id="share-modal">
+  <div class="modal" style="max-width:440px;">
+    <button class="modal-close" onclick="closeModal('share-modal')">✕</button>
+    <div class="modal-title">Compartir equipo</div>
+    <div class="modal-sub" id="share-sub">—</div>
+    <div class="field-group">
+      <label>Correo de Google de la persona</label>
+      <input type="email" id="share-mail" placeholder="nombre@gmail.com" autocomplete="off">
+      <div style="font-size:9px;color:var(--text3);margin-top:4px;">
+        Tiene que ser la misma cuenta con la que va a iniciar sesión.
+      </div>
+    </div>
+    <div class="field-group">
+      <label>Qué va a poder hacer</label>
+      <label class="mod-row" style="cursor:pointer;">
+        <div><div class="mod-n">Editor</div>
+          <div class="mod-d">Ve todo y además edita el diagrama, la configuración y manda comandos al equipo.</div></div>
+        <input type="radio" name="share-rol" value="editor" checked style="width:auto;">
+      </label>
+      <label class="mod-row" style="cursor:pointer;">
+        <div><div class="mod-n">Visor</div>
+          <div class="mod-d">Solo mira: mediciones, estado, histórico y alarmas. No puede cambiar nada ni operar el equipo.</div></div>
+        <input type="radio" name="share-rol" value="viewer" style="width:auto;">
+      </label>
+    </div>
+    <label class="ws-sw" style="font-size:11px;margin-top:6px;">
+      <input type="checkbox" id="share-avisar" checked><span class="ws-track"></span>
+      <span class="ws-lbl">Mandarle una invitación por correo</span>
+    </label>
+    <button class="btn-sm accent" style="width:100%;margin-top:14px;" onclick="confirmarCompartir()">Dar acceso</button>
+    <div id="share-msg" style="font-size:10px;margin-top:8px;"></div>
+  </div>
+</div>
+
 <!-- ─── MODAL: Regla de programación ─── -->
 <div class="modal-overlay" id="pg-regla-modal">
   <div class="modal" style="max-width:720px;">
@@ -3403,6 +3488,7 @@ function persistAllNow() {
   saveLocal('diagCapsules', STATE.diagCapsules);
   saveLocal('diagLeds', STATE.diagLeds || []);
   saveLocal('diagTextos', STATE.diagTextos || []);
+  saveLocal('vistaPropia', STATE.vistaPropia || {});
   saveLocal('objectLinks', STATE.objectLinks);
   saveLocal('offlineQueue', STATE.offlineQueue);
   saveLocal('sensorDefs', STATE.sensorDefs);
@@ -3439,6 +3525,8 @@ function loadPersisted() {
   STATE.diagCapsules = loadLocal('diagCapsules', []);
   STATE.diagLeds = loadLocal('diagLeds', []) || [];
   STATE.diagTextos = loadLocal('diagTextos', []) || [];
+  STATE.vistaPropia = loadLocal('vistaPropia', null) || {};
+  STATE.publicarAuto = loadLocal('publicarAuto', true) !== false;
   STATE.objectLinks = loadLocal('objectLinks', {});
   STATE.offlineQueue = loadLocal('offlineQueue', []);
   STATE.sensorDefs = loadLocal('sensorDefs', {});
@@ -3649,14 +3737,63 @@ function subscribeRTDB() {
     // o le quita un equipo, se refleja al instante)
     _rtdbLista = STATE.db.ref('usuarios/' + k);
     _rtdbLista.on('value', snap => {
-      const ids = Object.keys(snap.val() || {});
+      const val = snap.val() || {};
+      const ids = Object.keys(val);
       STATE.misEquipos = ids;
+      // El valor de cada equipo es el rol: 'owner' | 'editor' | 'viewer'.
+      // Los compartidos de antes no traen rol: valen como editor.
+      STATE.roles = {};
+      ids.forEach(function (id) {
+        const v = val[id];
+        STATE.roles[id] = (v === 'viewer' || v === 'owner' || v === 'editor') ? v : 'editor';
+      });
+      aplicarRol();
       Object.keys(_rtdbRefs).forEach(id => { if (ids.indexOf(id) < 0) desuscribirEquipo(id); });
       ids.forEach(id => suscribirEquipo(basePath, id));
       quitarEquiposNoPermitidos(ids);
       if (!ids.length) programarProcesoRTDB();
     }, errorRTDB);
   });
+}
+
+/* ══════════════════════════════════════════════════════
+   ROLES: quién puede tocar qué
+   'owner' y 'editor' pueden todo; 'viewer' solo mira. El rol lo decide el
+   Apps Script y viaja por la base, así que no se puede falsear desde acá
+   (las reglas de la base tampoco dejan escribir a un visor).
+══════════════════════════════════════════════════════ */
+function rolDeEquipo(id) {
+  if (!id) return 'owner';
+  if (id === DEMO_DEVICE_ID) return 'owner';           // el demo es de cada uno
+  if (STATE.esAdmin) return 'editor';
+  const r = (STATE.roles || {})[id];
+  return r || 'editor';                                 // sin dato: como antes
+}
+
+function esVisor(id) { return rolDeEquipo(id || STATE.selectedDevice) === 'viewer'; }
+
+/** ¿Se puede modificar el equipo que está abierto? */
+function puedeEditarEquipo(id) { return !esVisor(id || STATE.selectedDevice); }
+
+/** Avisa y corta: se usa en cada acción que cambia algo. */
+function bloqueadoPorVisor(que) {
+  if (puedeEditarEquipo()) return false;
+  toast('Tenés acceso de solo lectura a este equipo' + (que ? ': no podés ' + que : ''), 'warn', 5000);
+  return true;
+}
+
+// Pinta la interfaz según el rol del equipo abierto
+function aplicarRol() {
+  const visor = esVisor();
+  document.body.classList.toggle('solo-lectura', visor);
+  if (visor && DIAG.editMode) { DIAG.editMode = false; if (typeof applyDiagEditMode === 'function') applyDiagEditMode(); }
+  const chip = document.getElementById('rol-chip');
+  if (chip) {
+    chip.style.display = visor ? '' : 'none';
+    chip.textContent = '👁 Solo lectura';
+    chip.title = 'Este equipo te lo compartieron como visor: podés ver todo, pero no cambiar nada.';
+  }
+  if (typeof renderDevices === 'function') renderDevices();
 }
 
 function errorRTDB(err) {
@@ -4321,9 +4458,14 @@ function renderDevices() {
       seen = ' · visto hace ' + (segs < 90 ? segs + ' s' : Math.floor(segs / 60) + ' min');
     }
     const hasGps = !!deviceCoords(id);
+    const rol = (typeof rolDeEquipo === 'function') ? rolDeEquipo(id) : 'editor';
+    const chapaRol = rol === 'viewer'
+      ? '<span class="dev-rol visor" title="Te lo compartieron como visor">solo lectura</span>'
+      : (rol === 'owner' && Object.keys(STATE.roles || {}).length
+          ? '' : '');
     card.innerHTML = `
       <div class="device-name">
-        <span>${dev.name}</span>
+        <span>${dev.name}${chapaRol}</span>
         <span style="display:flex;align-items:center;gap:6px;">
           <button class="device-map-btn" title="${hasGps ? 'Ver ubicación en el mapa' : 'Definir ubicación'}" data-dev-id="${id}"
              style="background:none;border:none;cursor:pointer;font-size:12px;padding:0 2px;opacity:${hasGps ? '1' : '.4'};">📍</button>
@@ -5619,7 +5761,10 @@ async function cargarTelegram() {
       (equipoAvisaSolo(dev) ? '' :
         '<br><span style="color:var(--warn);">⚠ Firmware ' + (fwTextoDe(dev) || 'anterior a ' + TG_FW_MIN) +
         ': los avisos salen solo con la plataforma abierta. Actualizá a ' + TG_FW_MIN +
-        ' para que el equipo avise por su cuenta.</span>');
+        ' para que el equipo avise por su cuenta.</span>') +
+      (fwAlMenos(dev, TG_PRUEBA_FW) === true ? '' :
+        '<br><span style="color:var(--text3);">La prueba desde el equipo necesita firmware ' +
+        TG_PRUEBA_FW + '.</span>');
     lista.innerHTML = ids.length
       ? ids.map(function (id) {
           const c = chats[id] || {};
@@ -5705,6 +5850,43 @@ async function quitarChatTelegram(chatId) {
     toast('Chat desvinculado', 'ok');
     cargarTelegram();
   } catch (e) { toast('No se pudo quitar: ' + e.message, 'err'); }
+}
+
+/* Prueba de punta a punta: el aviso sale del equipo, como una falla real.
+   Sirve para saber en qué tramo se corta cuando no llega nada. */
+const TG_PRUEBA_FW = '2.9.1';
+
+function probarTelegramEquipo() {
+  const dev = tgDev();
+  if (!dev) return;
+  if (fwAlMenos(dev, TG_PRUEBA_FW) !== true) {
+    toast('Esta prueba necesita firmware ' + TG_PRUEBA_FW + ' en el equipo (tiene ' +
+          (fwTextoDe(dev) || 'una versión anterior') + ')', 'warn', 7000);
+    return;
+  }
+  const antes = ((STATE.devices[dev] || {}).meta || {}).tgUltTs || 0;
+  const prev = STATE.actionsDevice;
+  STATE.actionsDevice = dev;
+  sendAction('tgProbar', {}, null, 'Aviso de prueba desde el equipo');
+  STATE.actionsDevice = prev;
+  toast('Pedido enviado al equipo. El resultado aparece acá abajo en unos segundos.', 'ok', 6000);
+
+  // Se espera a que el equipo publique cómo le fue
+  let intentos = 0;
+  const reloj = setInterval(function () {
+    intentos++;
+    const m = (STATE.devices[dev] || {}).meta || {};
+    if ((Number(m.tgUltTs) || 0) > antes || (intentos > 1 && m.tgUlt && antes === 0)) {
+      clearInterval(reloj);
+      cargarTelegram();
+      const bien = /enviado/i.test(String(m.tgUlt || ''));
+      toast((bien ? '✔ El equipo mandó el aviso: ' : '⚠ El equipo no pudo: ') + (m.tgUlt || '—'),
+            bien ? 'ok' : 'err', 9000);
+    } else if (intentos >= 20) {          // ~40 s
+      clearInterval(reloj);
+      toast('El equipo no respondió. Revisá si está en línea y si tiene firmware ' + TG_PRUEBA_FW, 'warn', 9000);
+    }
+  }, 2000);
 }
 
 async function probarTelegram() {
@@ -6074,6 +6256,221 @@ function scenesStore() {
 }
 
 // Toma el estado de trabajo actual y lo devuelve como objeto de escena
+
+/* ══════════════════════════════════════════════════════
+   VISTA COMPARTIDA DEL EQUIPO
+   El diagrama y el modelo 3D se publican bajo el propio equipo en la base
+   de datos, que es a lo que ya tienen acceso los invitados. No se usa
+   Drive porque el permiso que pide la plataforma (drive.file) solo deja
+   leer los archivos creados por ella PARA ESA CUENTA: el invitado nunca
+   podría abrir el archivo del propietario, ni compartiéndoselo.
+══════════════════════════════════════════════════════ */
+const ESCENA_TROZO = 240000;      // caracteres de base64 por trozo
+const ESCENA_MAX   = 6000000;     // ~4,5 MB de modelo: más que eso no se publica
+
+function baseRTDB() {
+  return (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
+}
+
+// Lo que se comparte del equipo: todo menos el modelo (va aparte)
+function escenaCompartible(devId) {
+  const sc = (devId === STATE.currentSceneDev)
+    ? captureCurrentScene()
+    : ((STATE.scenes || {})[devId] || null);
+  if (!sc) return null;
+  const copia = Object.assign({}, sc);
+  delete copia.glb;                 // el modelo viaja por su propio camino
+  return copia;
+}
+
+function firmaTexto(t) {           // hash corto para saber si cambió
+  let h = 5381;
+  for (let i = 0; i < t.length; i++) h = ((h << 5) + h + t.charCodeAt(i)) | 0;
+  return String(h >>> 0) + '-' + t.length;
+}
+
+/** Publica la vista para que la vean los invitados. */
+async function publicarVista(devId, opts) {
+  opts = opts || {};
+  devId = devId || STATE.selectedDevice;
+  if (!devId || !STATE.db) return false;
+  if (!puedeEditarEquipo(devId)) {
+    if (!opts.silencioso) toast('Solo lectura: no podés publicar la vista de este equipo', 'warn', 5000);
+    return false;
+  }
+  const sc = escenaCompartible(devId);
+  if (!sc) return false;
+
+  const ref = STATE.db.ref(baseRTDB() + '/' + devId);
+  const diagrama = JSON.stringify(sc);
+  const glb = (devId === STATE.currentSceneDev)
+    ? STATE.glbData
+    : (((STATE.scenes || {})[devId] || {}).glb || null);
+
+  // El diagrama primero: es lo liviano y lo que más importa
+  try {
+    await ref.child('escena').set({
+      v: 1, ts: Math.floor(Date.now() / 1000), por: ownerId() || '',
+      firma: firmaTexto(diagrama), diagrama: diagrama
+    });
+  } catch (e) {
+    if (!opts.silencioso) toast(mensajeDePublicacion(e, 'el diagrama'), 'err', 9000);
+    return false;
+  }
+
+  // El modelo, aparte: si falla, el diagrama ya quedó publicado
+  let modeloOk = true, modeloMsg = '';
+  try {
+    if (!glb || !glb.data) {
+      await ref.child('modelo').set(null);          // se quitó el modelo
+    } else if (glb.data.length > ESCENA_MAX) {
+      modeloMsg = 'el modelo 3D pesa demasiado para compartirlo (' +
+                  Math.round(glb.data.length / 1400000) + ' MB)';
+      modeloOk = false;
+      await ref.child('modelo').set(null);
+    } else {
+      const firma = firmaTexto(glb.data);
+      const yaEsta = await ref.child('modelo/firma').once('value');
+      if (yaEsta.val() !== firma) {                  // no resubir lo mismo
+        const partes = {};
+        let i = 0;
+        for (let p = 0; p < glb.data.length; p += ESCENA_TROZO) {
+          partes['p' + (i++)] = glb.data.substr(p, ESCENA_TROZO);
+        }
+        await ref.child('modelo').set(Object.assign({
+          nombre: glb.name || 'modelo.glb', firma: firma, trozos: i,
+          ts: Math.floor(Date.now() / 1000)
+        }, partes));
+      }
+    }
+  } catch (e) {
+    modeloOk = false;
+    modeloMsg = mensajeDePublicacion(e, 'el modelo 3D');
+  }
+
+  if (!opts.silencioso || !modeloOk) {
+    if (modeloOk) toast('Vista publicada: quienes tengan acceso la van a ver', 'ok', 5000);
+    else toast('El diagrama se publicó, pero ' + modeloMsg, 'warn', 10000);
+  }
+  return true;
+}
+
+/* Traduce el rechazo de la base a algo accionable. El caso típico es tener
+   la plataforma nueva con las reglas viejas todavía publicadas. */
+function mensajeDePublicacion(e, que) {
+  const t = String((e && (e.message || e.code)) || '');
+  if (/permission[_ ]denied/i.test(t)) {
+    return 'la base de datos rechazó ' + que + '. Publicá las reglas nuevas ' +
+           '(database.rules.json) en Firebase → Realtime Database → Reglas.';
+  }
+  return 'no se pudo publicar ' + que + ': ' + t;
+}
+
+/** Trae la vista que publicó el propietario y la aplica. */
+async function traerVistaCompartida(devId, opts) {
+  opts = opts || {};
+  if (!devId || !STATE.db) return false;
+  const ref = STATE.db.ref(baseRTDB() + '/' + devId);
+  try {
+    const snapE = await ref.child('escena').once('value');
+    const esc = snapE.val();
+    if (!esc || !esc.diagrama) {
+      if (!opts.silencioso) toast('El propietario todavía no publicó una vista de este equipo', 'warn', 6000);
+      return false;
+    }
+    const sc = JSON.parse(esc.diagrama);
+
+    // El modelo 3D, en trozos y con aviso de progreso
+    const snapM = await ref.child('modelo').once('value');
+    const mod = snapM.val();
+    if (mod && mod.trozos) {
+      let datos = '';
+      for (let i = 0; i < mod.trozos; i++) {
+        datos += (mod['p' + i] || '');
+        if (!opts.silencioso && mod.trozos > 4 && i % 4 === 0) {
+          toast('Bajando el modelo 3D… ' + Math.round((i / mod.trozos) * 100) + ' %', 'info', 1200);
+        }
+      }
+      sc.glb = { name: mod.nombre || 'modelo.glb', data: datos };
+    }
+
+    (STATE.scenes || (STATE.scenes = {}))[devId] = sc;
+    STATE.vistaPropia = STATE.vistaPropia || {};
+    STATE.vistaPropia[devId] = false;              // esta vista es del dueño
+    STATE._firmaVista = STATE._firmaVista || {};
+    STATE._firmaVista[devId] = esc.firma || '';
+    if (STATE.currentSceneDev === devId) applySceneObject(sc);
+    persistAll();
+    if (!opts.silencioso) toast('Vista del propietario cargada', 'ok', 4000);
+    return true;
+  } catch (e) {
+    if (!opts.silencioso) toast('No se pudo traer la vista: ' + e.message, 'err', 7000);
+    return false;
+  }
+}
+
+/** ¿Este usuario armó su propia vista para este equipo? */
+function vistaEsPropia(devId) {
+  const m = STATE.vistaPropia || {};
+  if (m[devId] === false) return false;
+  const sc = (STATE.scenes || {})[devId];
+  return !!(sc && (sc.glb || (sc.diagMachines && sc.diagMachines.length) ||
+                   (sc.diagPanels && sc.diagPanels.length)));
+}
+
+/** Al abrir un equipo: si no hay vista propia, se usa la del propietario. */
+function vistaAlAbrir(devId) {
+  if (!devId || !STATE.db) return;
+  if (vistaEsPropia(devId)) return;                 // la del usuario manda
+  traerVistaCompartida(devId, { silencioso: true });
+}
+
+/* El usuario decide con cuál se queda */
+function usarVistaPropietario() {
+  const dev = STATE.selectedDevice;
+  if (!dev) return;
+  if (!confirm('Se va a reemplazar lo que tengas armado para este equipo por la vista del propietario.\n\n¿Seguir?')) return;
+  traerVistaCompartida(dev);
+}
+
+function usarVistaPropia() {
+  const dev = STATE.selectedDevice;
+  if (!dev) return;
+  STATE.vistaPropia = STATE.vistaPropia || {};
+  STATE.vistaPropia[dev] = true;
+  persistAll();
+  toast('Desde ahora se usa tu propia vista para este equipo', 'ok', 5000);
+  renderVistaCompartidaUI();
+}
+
+/* Sección de Ajustes */
+function renderVistaCompartidaUI() {
+  const c = document.getElementById('vista-comp');
+  if (!c) return;
+  const dev = STATE.selectedDevice;
+  if (!dev) { c.innerHTML = '<div style="font-size:10px;color:var(--text3);">Elegí un equipo.</div>'; return; }
+  const nombre = (STATE.devices[dev] || {}).name || dev;
+  const puede = puedeEditarEquipo(dev);
+  const propia = vistaEsPropia(dev);
+  c.innerHTML =
+    '<div style="font-size:10px;color:var(--text3);margin-bottom:8px;line-height:1.6;">' +
+      'El diagrama y el modelo 3D de <b>' + chEsc(nombre) + '</b> se guardan en tu cuenta. ' +
+      'Publicarlos hace que los vean todos los que tengan acceso al equipo, sin que cada uno tenga que armarlo.' +
+    '</div>' +
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+      (puede ? '<button class="btn-sm accent" onclick="publicarVista()">⬆ Publicar mi vista</button>' : '') +
+      '<button class="btn-sm" onclick="usarVistaPropietario()">⬇ Traer la del propietario</button>' +
+      (propia ? '' : '<button class="btn-sm" onclick="usarVistaPropia()">Usar la mía</button>') +
+    '</div>' +
+    '<div style="font-size:9px;color:var(--text3);margin-top:6px;">' +
+      (propia ? 'Ahora estás viendo tu propia vista.' : 'Ahora estás viendo la vista del propietario.') +
+    '</div>' +
+    (puede ? '<label class="ws-sw" style="font-size:11px;margin-top:10px;">' +
+      '<input type="checkbox" id="vista-auto"' + (STATE.publicarAuto !== false ? ' checked' : '') +
+      ' onchange="STATE.publicarAuto=this.checked;saveLocal(\'publicarAuto\',this.checked);">' +
+      '<span class="ws-track"></span><span class="ws-lbl">Publicar sola cada vez que guardo</span></label>' : '');
+}
+
 function captureCurrentScene() {
   return {
     glb: STATE.glbData || null,
@@ -6202,6 +6599,8 @@ function switchDeviceScene(devId) {
   if (cdp) cdp.style.display = 'none';
 
   applySceneObject(store[devId] || {});
+  // Sin vista propia, se trae la que publicó el propietario
+  if (typeof vistaAlAbrir === 'function') vistaAlAbrir(devId);
   // Encuadrar el diagrama del equipo nuevo. Antes se conservaban el zoom y
   // el desplazamiento del anterior, y el diagrama nuevo quedaba corrido o
   // fuera de la vista. Se espera un frame para medir los nodos ya dibujados.
@@ -6259,6 +6658,7 @@ function selectDevice(id) {
       modulo('diag2d') && vistaDeEquipo(id) === '2d') {
     switchTab('diagram');
   }
+  if (typeof aplicarRol === 'function') aplicarRol();
   if (typeof updateGoogleUI === 'function') updateGoogleUI();
   renderDevices();
   renderSensors();
@@ -9416,7 +9816,9 @@ function completePickObject(hitMesh, key) {
    Por defecto el diagrama está en solo lectura: se puede ver, navegar y
    ejecutar comandos, pero no mover ni modificar elementos por accidente.
 ══════════════════════════════════════════════════════ */
-function isDiagEditable() { return !!DIAG.editMode; }
+function isDiagEditable() {
+  return !!DIAG.editMode && (typeof puedeEditarEquipo !== 'function' || puedeEditarEquipo());
+}
 
 function toggleDiagEdit() {
   DIAG.editMode = !DIAG.editMode;
@@ -9570,47 +9972,133 @@ function loadMyDevices() {
       if (!res || !res.ok) { cont.textContent = (res && res.error) || 'No se pudo consultar'; return; }
       const list = res.devices || [];
       if (!list.length) { cont.textContent = 'Todavía no tenés equipos vinculados.'; return; }
-      cont.innerHTML = list.map(d => `
-        <div style="border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin-bottom:6px;background:var(--bg2);">
-          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">
-            <div style="min-width:0;">
-              <div style="font-size:11px;color:var(--text);font-weight:600;">${chEsc(d.device)}</div>
-              <div style="font-size:9px;color:var(--text3);">
-                ${d.role === 'owner' ? 'Propietario' : 'Compartido por ' + chEsc(d.owner)}
-                ${(d.members && d.members.length) ? ' · ' + d.members.length + ' invitado(s)' : ''}
-              </div>
-            </div>
-            ${d.role === 'owner' ? `<div style="display:flex;gap:4px;flex-shrink:0;">
-              <button class="btn-sm" style="font-size:9px;padding:3px 7px;min-height:0;"
-                onclick="shareDevice('${chEsc(d.device)}')">+ Compartir</button>
-              <button class="btn-sm" style="font-size:9px;padding:3px 7px;min-height:0;color:var(--err);border-color:var(--err);"
-                onclick="unlinkDevice('${chEsc(d.device)}')">Liberar</button>
-            </div>` : ''}
-          </div>
-          ${(d.members && d.members.length) ? `<div style="font-size:9px;color:var(--text3);margin-top:5px;">
-            ${d.members.map(m => chEsc(m) + ` <a href="#" onclick="event.preventDefault();shareDevice('${chEsc(d.device)}','${chEsc(m)}',true)" style="color:var(--err);">✕</a>`).join(' · ')}
-          </div>` : ''}
-        </div>`).join('');
+      cont.innerHTML = list.map(fichaEquipo).join('');
     })
     .catch(e => { cont.textContent = e.message; });
 }
 
-// Comparte el acceso con otra cuenta (o se lo quita)
-function shareDevice(device, member, remove) {
-  let quien = member;
-  if (!quien) {
-    quien = prompt('Correo de Google de la persona con quien compartir "' + device + '":', '');
-    if (!quien) return;
-  } else if (remove) {
-    if (!confirm('¿Quitar el acceso de ' + quien + '?')) return;
+/* Una ficha por equipo: qué es tuyo, quién más entra y con qué permiso. */
+function fichaEquipo(d) {
+  const nombre = (STATE.devices[d.device] && STATE.devices[d.device].name) || '';
+  const esDueno = d.role === 'owner';
+  const chapa = esDueno
+    ? '<span class="eq-chapa">Tuyo</span>'
+    : (d.role === 'viewer'
+        ? '<span class="eq-chapa visor">Solo lectura</span>'
+        : '<span class="eq-chapa compartido">Compartido</span>');
+
+  const gente = (d.members || []).map(function (m) {
+    const correo = (typeof m === 'string') ? m : m.email;
+    const rol = (typeof m === 'string') ? 'editor' : (m.rol || 'editor');
+    return '<div class="eq-p">' +
+      '<span class="eq-mail" title="' + chEsc(correo) + '">' + chEsc(correo) + '</span>' +
+      '<select onchange="cambiarRol(\'' + chEsc(d.device) + '\',\'' + chEsc(correo) + '\',this.value)">' +
+        '<option value="editor"' + (rol === 'editor' ? ' selected' : '') + '>Editor</option>' +
+        '<option value="viewer"' + (rol === 'viewer' ? ' selected' : '') + '>Visor</option>' +
+      '</select>' +
+      '<button class="btn-sm" style="font-size:9px;padding:2px 6px;min-height:0;" title="Reenviar la invitación por correo" ' +
+        'onclick="reenviarInvitacion(\'' + chEsc(d.device) + '\',\'' + chEsc(correo) + '\')">✉</button>' +
+      '<button class="eq-x" title="Quitar el acceso" ' +
+        'onclick="quitarAcceso(\'' + chEsc(d.device) + '\',\'' + chEsc(correo) + '\')">✕</button>' +
+    '</div>';
+  }).join('');
+
+  return '<div class="eq-ficha">' +
+    '<div class="eq-cab">' +
+      '<div style="min-width:0;">' +
+        '<div class="eq-id">' + chEsc(nombre || d.device) + '</div>' +
+        '<div class="eq-sub">' + (nombre ? chEsc(d.device) + ' · ' : '') +
+          (esDueno ? 'sos el propietario' : 'te lo compartió ' + chEsc(d.owner)) + '</div>' +
+      '</div>' +
+      chapa +
+      (esDueno ? '<div class="eq-acc">' +
+        '<button class="btn-sm" style="font-size:9px;padding:3px 8px;min-height:0;" ' +
+          'onclick="abrirCompartir(\'' + chEsc(d.device) + '\')">+ Compartir</button>' +
+        '<button class="btn-sm" style="font-size:9px;padding:3px 8px;min-height:0;color:var(--err);border-color:var(--err);" ' +
+          'onclick="unlinkDevice(\'' + chEsc(d.device) + '\')">Liberar</button>' +
+      '</div>' : '') +
+    '</div>' +
+    (esDueno ? '<div class="eq-gente">' +
+      '<div class="eq-gente-t">Quién más entra</div>' +
+      (gente || '<div class="eq-vacio">Nadie más. Tocá «Compartir» para invitar a alguien.</div>') +
+    '</div>' : '') +
+  '</div>';
+}
+
+/* ── Compartir ─────────────────────────────────────────────────────── */
+function abrirCompartir(device) {
+  STATE._compartirDev = device;
+  const nombre = (STATE.devices[device] && STATE.devices[device].name) || device;
+  document.getElementById('share-sub').textContent = 'Equipo: ' + nombre;
+  document.getElementById('share-mail').value = '';
+  document.getElementById('share-msg').textContent = '';
+  const r = document.querySelector('input[name="share-rol"][value="editor"]');
+  if (r) r.checked = true;
+  openModal('share-modal');
+  setTimeout(function () { document.getElementById('share-mail').focus(); }, 80);
+}
+
+function confirmarCompartir() {
+  const device = STATE._compartirDev;
+  const correo = (document.getElementById('share-mail').value || '').trim().toLowerCase();
+  const rolEl = document.querySelector('input[name="share-rol"]:checked');
+  const rol = rolEl ? rolEl.value : 'editor';
+  const avisar = !!(document.getElementById('share-avisar') || {}).checked;
+  const msg = document.getElementById('share-msg');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(correo)) {
+    msg.style.color = 'var(--err)';
+    msg.textContent = 'Ese correo no parece válido.';
+    return;
   }
-  gasPost({ action: 'pairShare', device, owner: ownerId(),
-            member: quien.trim().toLowerCase(), remove: !!remove })
-    .then(res => {
-      if (res && res.ok) { toast(remove ? 'Acceso retirado' : 'Acceso compartido', 'ok'); loadMyDevices(); }
-      else toast((res && res.error) || 'No se pudo', 'err');
+  msg.style.color = 'var(--text3)';
+  msg.textContent = 'Dando acceso…';
+  gasPost({ action: 'pairShare', device: device, member: correo, rol: rol, avisar: avisar })
+    .then(function (res) {
+      if (!res || !res.ok) { msg.style.color = 'var(--err)'; msg.textContent = (res && res.error) || 'No se pudo'; return; }
+      closeModal('share-modal');
+      toast('Acceso dado a ' + correo + ' como ' + (rol === 'viewer' ? 'visor' : 'editor') +
+            (res.avisado ? ' · invitación enviada' : (avisar ? ' · no se pudo mandar el correo' : '')),
+            res.avisado || !avisar ? 'ok' : 'warn', 7000);
+      loadMyDevices();
     })
-    .catch(e => toast(e.message, 'err'));
+    .catch(function (e) { msg.style.color = 'var(--err)'; msg.textContent = e.message; });
+}
+
+function cambiarRol(device, correo, rol) {
+  gasPost({ action: 'pairShare', device: device, member: correo, rol: rol, avisar: false })
+    .then(function (res) {
+      if (res && res.ok) toast(correo + ' ahora es ' + (rol === 'viewer' ? 'visor' : 'editor'), 'ok', 4000);
+      else toast((res && res.error) || 'No se pudo', 'err');
+      loadMyDevices();
+    })
+    .catch(function (e) { toast(e.message, 'err'); });
+}
+
+function quitarAcceso(device, correo) {
+  if (!confirm('¿Quitarle el acceso a ' + correo + '?')) return;
+  gasPost({ action: 'pairShare', device: device, member: correo, remove: true })
+    .then(function (res) {
+      if (res && res.ok) toast('Acceso retirado', 'warn', 4000);
+      else toast((res && res.error) || 'No se pudo', 'err');
+      loadMyDevices();
+    })
+    .catch(function (e) { toast(e.message, 'err'); });
+}
+
+function reenviarInvitacion(device, correo) {
+  gasPost({ action: 'pairInvitar', device: device, member: correo })
+    .then(function (res) {
+      toast(res && res.ok ? 'Invitación reenviada a ' + correo
+                          : ((res && res.error) || 'No se pudo mandar'),
+            res && res.ok ? 'ok' : 'warn', 6000);
+    })
+    .catch(function (e) { toast(e.message, 'err'); });
+}
+
+// Compatibilidad: algo del código viejo todavía llama a shareDevice
+function shareDevice(device, member, remove) {
+  if (remove && member) return quitarAcceso(device, member);
+  return abrirCompartir(device);
 }
 
 function unlinkDevice(device) {
@@ -12982,7 +13470,27 @@ async function loadSceneFromDrive(opts) {
 }
 
 // Marca que hay cambios pendientes y programa el guardado automático
+// Un visor no guarda escena: no es suya y no debe pisar la del propietario
 function markSceneDirty() {
+  if (typeof esVisor === 'function' && esVisor()) return;
+  return markSceneDirty_();
+}
+
+function markSceneDirty_() {
+  // Si el usuario cambia algo, esa vista pasa a ser suya
+  const _d = STATE.currentSceneDev;
+  if (_d) {
+    STATE.vistaPropia = STATE.vistaPropia || {};
+    if (STATE.vistaPropia[_d] === false) STATE.vistaPropia[_d] = true;
+  }
+  if (_d && STATE.publicarAuto !== false && typeof puedeEditarEquipo === 'function' && puedeEditarEquipo(_d)) {
+    clearTimeout(STATE._pubT);
+    STATE._pubT = setTimeout(function () { publicarVista(_d, { silencioso: true }); }, 9000);
+  }
+  return markSceneDirtyOrig_();
+}
+
+function markSceneDirtyOrig_() {
   STATE.sceneDirty = true;
   if (!googleReady()) return;
   clearTimeout(STATE._sceneSaveT);
@@ -16466,6 +16974,7 @@ function populateSettings() {
   const ota = document.getElementById('cfg-ota-url');
   if (ota) ota.value = loadLocal('otaUrlPrueba', '') || '';
   renderModulosUI();
+  if (typeof renderVistaCompartidaUI === 'function') renderVistaCompartidaUI();
   sincronizarSwitches();
   renderTgBarra();
   if (!STATE._tgCargado) { STATE._tgCargado = true; cargarTelegram(); }
@@ -17045,6 +17554,11 @@ function actNum(id) { const v = parseFloat(actVal(id)); return isFinite(v) ? v :
 function sendAction(type, params, confirmMsg, label) {
   const devId = STATE.actionsDevice;
   if (!devId) { toast('Elegí un dispositivo', 'err'); return; }
+  // Un visor no le manda nada al equipo, ni siquiera por un atajo del código
+  if (esVisor(devId)) {
+    toast('Solo lectura: no podés mandarle comandos a este equipo', 'warn', 5000);
+    return;
+  }
   if (!STATE.db) { toast('Sin conexión al servidor', 'err'); return; }
   if (confirmMsg && !confirm(confirmMsg)) return;
   const basePath = (STATE.config.firebase && STATE.config.firebase.basePath) || '/dispositivos';
